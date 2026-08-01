@@ -6,15 +6,11 @@ import { Sparkles } from 'lucide-react'
 
 export function DemoPage() {
   const navigate = useNavigate()
-  const { preferences, updatePreferences } = useApp()
+  const { preferences } = useApp()
+  const boxing = preferences.martialArt === 'boxing'
 
   const startDemo = () => {
-    updatePreferences({
-      stance: 'orthodox',
-      callStyle: 'hybrid',
-      speech: { ...preferences.speech, callStyle: 'hybrid' },
-    })
-
+    // Temporary demo values only — never mutate saved preferences
     const config = createDefaultWorkout({
       martialArt: preferences.martialArt,
       mode: 'demo',
@@ -32,6 +28,9 @@ export function DemoPage() {
       includeElbows: false,
       includeHeadKicks: false,
       includeClinch: false,
+      categories: boxing
+        ? ['punch', 'defense', 'movement', 'counter']
+        : ['punch', 'kick', 'teep', 'defense', 'movement'],
       speech: { ...preferences.speech, callStyle: 'hybrid' },
       sound: preferences.sound,
       sideTerminology: 'lead-rear',
@@ -54,11 +53,19 @@ export function DemoPage() {
 
       <ol className="panel list-decimal space-y-2 p-5 pl-10 text-sm text-[var(--text-muted)]">
         <li>Selects orthodox stance</li>
-        <li>Uses hybrid calls (One, two / jab, cross, rear low kick)</li>
+        <li>
+          {boxing
+            ? 'Uses hybrid calls (One, two / jab, cross, lead hook)'
+            : 'Uses hybrid calls (One, two / jab, cross, rear low kick)'}
+        </li>
         <li>Runs a 60-second technical round</li>
-        <li>Calls curated beginner combinations</li>
+        <li>Calls curated beginner combinations for {boxing ? 'Boxing' : 'Muay Thai'}</li>
         <li>Includes a defensive counter and a movement exit</li>
-        <li>Gives kicks more time than punches</li>
+        <li>
+          {boxing
+            ? 'Gives hooks and uppercuts more recovery time than jabs'
+            : 'Gives kicks more time than punches'}
+        </li>
         <li>Ends with a session summary</li>
       </ol>
 

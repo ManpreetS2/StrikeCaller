@@ -1,3 +1,4 @@
+import { resolveCombo } from '../utils/resolveCombo'
 import { Link, useNavigate } from 'react-router-dom'
 import {
   ArrowRight,
@@ -15,7 +16,7 @@ import {
 } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { SafetyNotice } from '../components/SafetyNotice'
-import { getComboStats, CURATED_COMBOS, COMBO_MAP } from '../data/combos'
+import { getComboStats } from '../data/combos'
 import { getQuickStartPresets, type QuickStartId } from '../data/quickStart'
 import { computeStatsPreview } from '../engines/statsEngine'
 import { APP_VERSION } from '../data/defaults'
@@ -39,11 +40,13 @@ const PRESET_ICONS: Record<string, typeof Play> = {
 
 export function HomePage() {
   const navigate = useNavigate()
-  const { preferences, updatePreferences, history, favorites } = useApp()
+  const { preferences, updatePreferences, history, favorites, customCombos } = useApp()
   const stats = getComboStats()
   const preview = computeStatsPreview(history)
-  const recent = history[0]
-  const favoriteCombo = favorites[0] ? COMBO_MAP[favorites[0]] : CURATED_COMBOS[5]
+  const recent = history.find((h) => !h.excludeFromStats && !h.isDemo && h.mode !== 'demo')
+  const favoriteCombo = favorites[0]
+    ? resolveCombo(favorites[0], { customCombos, history })
+    : null
   const presets = getQuickStartPresets(preferences.martialArt)
 
   const setSport = (art: MartialArt) => {
@@ -61,6 +64,14 @@ export function HomePage() {
       return
     }
     navigate('/session', { state: { config: preset.build(preferences) } })
+  }
+
+  const trainAgain = () => {
+    if (recent?.workoutConfig) {
+      navigate('/session', { state: { config: recent.workoutConfig } })
+      return
+    }
+    startQuick(preferences.martialArt === 'boxing' ? 'quick-boxing' : 'quick-train')
   }
 
   return (
@@ -101,7 +112,16 @@ export function HomePage() {
               <Sparkles size={18} aria-hidden />
               Guided Demo
             </Link>
-            <Link to="/train" className="btn btn-ghost">
+            <Link
+              to="/train"
+              className="btn"
+              onClick={(e) => {
+                if (!preferences.onboardingComplete) {
+                  e.preventDefault()
+                  navigate('/onboarding', { state: { after: 'train' } })
+                }
+              }}
+            >
               <SlidersHorizontal size={18} aria-hidden />
               Customize Workout
             </Link>
@@ -115,20 +135,18 @@ export function HomePage() {
         <PreviewStat label="Current streak" value={`${preview.currentStreak}d`} />
       </section>
 
-      <section aria-labelledby="sports-heading">
-        <h2 id="sports-heading" className="display text-4xl">
-          Martial arts
-        </h2>
-        <p className="muted mt-1 text-sm">Select a sport to load matching Quick Starts.</p>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <section aria-label="Martial arts">
+        <h2 className="mb-3 text-2xl font-semibold">Martial arts</h2>
+        <p className="mb-4 text-sm text-[var(--text-muted)]">Select a sport to load matching Quick Starts.</p>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <button
             type="button"
             className={`panel p-4 text-left ${preferences.martialArt === 'muay-thai' ? 'border-[var(--accent)]' : ''}`}
             aria-pressed={preferences.martialArt === 'muay-thai'}
             onClick={() => setSport('muay-thai')}
           >
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--accent-text)]">Available</p>
-            <h3 className="mt-2 text-2xl font-semibold">Muay Thai</h3>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--success)]">Available</p>
+            <h3 className="mt-1 text-xl font-semibold">Muay Thai</h3>
             <p className="mt-1 text-sm text-[var(--text-muted)]">125 curated combos</p>
             {preferences.martialArt === 'muay-thai' && (
               <p className="mt-2 text-xs font-semibold text-[var(--accent-text)]">Selected</p>
@@ -141,19 +159,18 @@ export function HomePage() {
             onClick={() => setSport('boxing')}
           >
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--accent-text)]">New in v1.1</p>
-            <h3 className="mt-2 text-2xl font-semibold">Boxing</h3>
+            <h3 className="mt-1 text-xl font-semibold">Boxing</h3>
             <p className="mt-1 text-sm text-[var(--text-muted)]">100+ curated combos</p>
             {preferences.martialArt === 'boxing' && (
               <p className="mt-2 text-xs font-semibold text-[var(--accent-text)]">Selected</p>
             )}
           </button>
           {COMING_SOON.map((name) => (
-            <div key={name} className="panel flex items-start justify-between gap-3 p-4 opacity-70" aria-disabled="true">
-              <div>
-                <h3 className="text-xl font-semibold">{name}</h3>
-                <p className="mt-1 text-sm text-[var(--text-dim)]">Coming soon</p>
-              </div>
-              <Lock size={16} className="mt-1 text-[var(--text-dim)]" aria-label="Coming soon" />
+            <div key={name} className="panel p-4 opacity-60" aria-disabled="true">
+              <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-dim)]">
+                <Lock size={12} aria-hidden /> Coming soon
+              </p>
+              <h3 className="mt-1 text-xl font-semibold">{name}</h3>
             </div>
           ))}
         </div>
@@ -163,36 +180,34 @@ export function HomePage() {
         </p>
       </section>
 
-      <section aria-labelledby="quick-start-heading">
-        <h2 id="quick-start-heading" className="display text-4xl">
-          Quick Start
-        </h2>
-        <p className="muted text-sm">
+      <section aria-label="Quick Start">
+        <h2 className="mb-2 text-2xl font-semibold">Quick Start</h2>
+        <p className="mb-4 text-sm text-[var(--text-muted)]">
           One press. Uses your saved sport, stance, experience, calls, and pace.
         </p>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {presets.map((preset) => {
             const Icon = PRESET_ICONS[preset.id] ?? Play
             return (
               <button
                 key={preset.id}
                 type="button"
-                className="panel block p-5 text-left transition hover:border-[var(--accent)]"
+                className="panel p-4 text-left transition hover:border-[var(--accent)]"
                 onClick={() => startQuick(preset.id)}
               >
-                <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-[var(--accent-soft)] text-[var(--accent-text)]">
-                  <Icon size={20} aria-hidden />
+                <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-[var(--accent-soft)] text-[var(--accent-text)]">
+                  <Icon size={18} aria-hidden />
                 </div>
-                <h3 className="text-xl font-semibold">{preset.title}</h3>
+                <h3 className="font-semibold">{preset.title}</h3>
                 <p className="mt-1 text-sm text-[var(--text-muted)]">{preset.body}</p>
               </button>
             )
           })}
-          <Link to="/train" className="panel block p-5 transition hover:border-[var(--accent)]">
-            <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-[var(--bg-elevated)] text-[var(--text-muted)]">
-              <SlidersHorizontal size={20} aria-hidden />
+          <Link to="/train" className="panel block p-4 transition hover:border-[var(--accent)]">
+            <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-[var(--accent-soft)] text-[var(--accent-text)]">
+              <SlidersHorizontal size={18} aria-hidden />
             </div>
-            <h3 className="text-xl font-semibold">Customize Workout</h3>
+            <h3 className="font-semibold">Customize Workout</h3>
             <p className="mt-1 text-sm text-[var(--text-muted)]">Full mode, rounds, pace, and technique filters.</p>
           </Link>
         </div>
@@ -227,9 +242,7 @@ export function HomePage() {
               <button
                 type="button"
                 className="inline-flex items-center gap-1 text-[var(--accent-text)]"
-                onClick={() =>
-                  startQuick(preferences.martialArt === 'boxing' ? 'quick-boxing' : 'quick-train')
-                }
+                onClick={trainAgain}
               >
                 Train again <ArrowRight size={14} aria-hidden />
               </button>

@@ -108,7 +108,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (preferences.theme !== 'system') return
     const mq = window.matchMedia('(prefers-color-scheme: light)')
-    const handler = () => setResolvedTheme(resolveTheme('system'))
+    const handler = () => {
+      const theme = resolveTheme('system')
+      setResolvedTheme(theme)
+      document.documentElement.dataset.theme = theme
+    }
     mq.addEventListener('change', handler)
     return () => mq.removeEventListener('change', handler)
   }, [preferences.theme])
@@ -147,7 +151,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       history,
       addHistory: (summary) => {
         setHistory((prev) => {
-          const next = [summary, ...prev].slice(0, 50)
+          if (prev.some((h) => h.id === summary.id)) return prev
+          if (summary.excludeFromStats || summary.isDemo || summary.mode === 'demo') {
+            // Prefer not storing demos; keep state unchanged
+            return prev
+          }
+          const next = [summary, ...prev]
           saveHistory(next)
           return next
         })

@@ -7,8 +7,8 @@ import type {
   TrainingMode,
   UnlockedMilestone,
 } from '../types'
-
-const DAY_MS = 86_400_000
+import { addLocalDays, startOfLocalDay } from '../utils/localDate'
+import { getPaceMultiplier } from './timingEngine'
 
 export const MILESTONES: MilestoneDefinition[] = [
   { id: 'first-session', title: 'First session', description: 'Completed your first training session.' },
@@ -25,16 +25,18 @@ export const MILESTONES: MilestoneDefinition[] = [
   { id: 'streak-7', title: 'Seven-day streak', description: 'Trained on seven consecutive days.' },
 ]
 
-function startOfDay(ts: number): number {
-  const d = new Date(ts)
-  d.setHours(0, 0, 0, 0)
-  return d.getTime()
+function isGenuineSession(summary: SessionSummary): boolean {
+  if (summary.cancelled) return false
+  if (summary.excludeFromStats || summary.isDemo || summary.mode === 'demo') return false
+  return true
 }
 
 function inRange(summary: SessionSummary, range: StatsRange, now = Date.now()): boolean {
   if (range === 'all') return true
+  const start = startOfLocalDay(now)
   const days = range === '7d' ? 7 : 30
-  return summary.startedAt >= now - days * DAY_MS
+  const cutoff = addLocalDays(start, -(days - 1))
+  return summary.startedAt >= cutoff
 }
 
 export function filterHistory(
@@ -43,7 +45,7 @@ export function filterHistory(
 ): SessionSummary[] {
   const range = options.range ?? 'all'
   return history.filter((h) => {
-    if (h.cancelled) return false
+    if (!isGenuineSession(h)) return false
     if (!inRange(h, range)) return false
     if (options.martialArt && options.martialArt !== 'all' && h.martialArt !== options.martialArt) return false
     if (options.mode && options.mode !== 'all' && h.mode !== options.mode) return false
@@ -53,7 +55,7 @@ export function filterHistory(
 
 export function computeStreaks(history: SessionSummary[], now = Date.now()): { current: number; longest: number } {
   const days = new Set(
-    history.filter((h) => !h.cancelled).map((h) => startOfDay(h.startedAt)),
+    history.filter(isGenuineSession).map((h) => startOfLocalDay(h.startedAt)),
   )
   if (days.size === 0) return { current: 0, longest: 0 }
 
@@ -61,7 +63,7 @@ export function computeStreaks(history: SessionSummary[], now = Date.now()): { c
   let longest = 1
   let run = 1
   for (let i = 1; i < sorted.length; i++) {
-    if (sorted[i]! - sorted[i - 1]! === DAY_MS) {
+    if (sorted[i] === addLocalDays(sorted[i - 1]!, 1)) {
       run += 1
       longest = Math.max(longest, run)
     } else {
@@ -70,13 +72,13 @@ export function computeStreaks(history: SessionSummary[], now = Date.now()): { c
   }
 
   let current = 0
-  let cursor = startOfDay(now)
+  let cursor = startOfLocalDay(now)
   if (!days.has(cursor)) {
-    cursor -= DAY_MS
+    cursor = addLocalDays(cursor, -1)
   }
   while (days.has(cursor)) {
     current += 1
-    cursor -= DAY_MS
+    cursor = addLocalDays(cursor, -1)
   }
 
   return { current, longest: Math.max(longest, current) }
@@ -129,7 +131,7 @@ export interface TrainingStats {
 function dayLabels(now: number) {
   const labels: { start: number; label: string }[] = []
   for (let i = 6; i >= 0; i--) {
-    const start = startOfDay(now) - i * DAY_MS
+    const start = addLocalDays(startOfLocalDay(now), -i)
     const d = new Date(start)
     labels.push({
       start,
@@ -137,6 +139,11 @@ function dayLabels(now: number) {
     })
   }
   return labels
+}
+
+function paceSpeed(summary: SessionSummary): number {
+  // Lower multiplier = faster calls
+  return getPaceMultiplier(summary.pace, summary.customPaceMultiplier ?? 1)
 }
 
 export function computeTrainingStats(
@@ -221,7 +228,7 @@ export function computeTrainingStats(
     .slice(0, 8)
 
   const weekly = dayLabels(now).map(({ start, label }) => {
-    const daySessions = filtered.filter((h) => startOfDay(h.startedAt) === start)
+    const daySessions = filtered.filter((h) => startOfLocalDay(h.startedAt) === start)
     return {
       dayLabel: label,
       minutes: Math.round(daySessions.reduce((s, h) => s + h.totalTrainingMs, 0) / 60000),
@@ -229,20 +236,23 @@ export function computeTrainingStats(
     }
   })
 
-  // Most active week (rolling 7-day windows over filtered set)
+  // Most active week (rolling 7 local-day windows)
   let mostActiveWeekMinutes = 0
-  const allDays = [...new Set(filtered.map((h) => startOfDay(h.startedAt)))].sort((a, b) => a - b)
+  const allDays = [...new Set(filtered.map((h) => startOfLocalDay(h.startedAt)))].sort((a, b) => a - b)
   for (const day of allDays) {
+    const windowEnd = addLocalDays(day, 7)
     const windowMs = filtered
-      .filter((h) => h.startedAt >= day && h.startedAt < day + 7 * DAY_MS)
+      .filter((h) => h.startedAt >= day && h.startedAt < windowEnd)
       .reduce((s, h) => s + h.totalTrainingMs, 0)
     mostActiveWeekMinutes = Math.max(mostActiveWeekMinutes, Math.round(windowMs / 60000))
   }
 
-  const paceRank: PacePreset[] = ['learn', 'slow', 'technical', 'normal', 'fast', 'fight', 'custom']
   let fastestPace: PacePreset | null = null
+  let fastestSpeed = Number.POSITIVE_INFINITY
   for (const h of filtered) {
-    if (!fastestPace || paceRank.indexOf(h.pace) > paceRank.indexOf(fastestPace)) {
+    const speed = paceSpeed(h)
+    if (speed < fastestSpeed) {
+      fastestSpeed = speed
       fastestPace = h.pace
     }
   }
@@ -297,7 +307,7 @@ export function computeTrainingStats(
 }
 
 export function unlockMilestones(history: SessionSummary[], now = Date.now()): UnlockedMilestone[] {
-  const active = history.filter((h) => !h.cancelled).sort((a, b) => a.startedAt - b.startedAt)
+  const active = history.filter(isGenuineSession).sort((a, b) => a.startedAt - b.startedAt)
   if (!active.length) return []
 
   const unlocked: UnlockedMilestone[] = []

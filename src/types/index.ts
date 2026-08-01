@@ -242,13 +242,18 @@ export interface SessionSummary {
   mode: TrainingMode
   stance: Stance
   pace: PacePreset
+  /** Actual custom pace multiplier when pace === 'custom' */
+  customPaceMultiplier?: number
   totalTrainingMs: number
+  /** Fully elapsed rounds only (not the in-progress round). */
   roundsCompleted: number
   combinationsCompleted: number
   techniquesCalled: number
   techniqueCounts: Record<string, number>
   techniqueCategoryCounts: Record<string, number>
   comboIds: string[]
+  /** Snapshots for generated/custom combos so favorites and stats can resolve titles. */
+  comboSnapshots?: Combo[]
   defenseActions: number
   movementActions: number
   averagePaceLabel: string
@@ -256,6 +261,13 @@ export interface SessionSummary {
   cancelled: boolean
   favoriteComboIds: string[]
   usedCustomCombo: boolean
+  /** Replay configuration for Train Again */
+  workoutConfig?: WorkoutConfig
+  /** Guided demos are excluded from genuine training stats */
+  excludeFromStats?: boolean
+  isDemo?: boolean
+  /** Pending Daily Drill phase completed only after a successful (non-cancelled) summary */
+  dailyPhase?: 'slowDone' | 'normalDone' | 'fightDone'
   /** Internal: older records assigned defaults */
   migrated?: boolean
 }

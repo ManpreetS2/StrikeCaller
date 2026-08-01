@@ -31,14 +31,20 @@ export interface SessionSnapshot {
   movementActions: number
   paused: boolean
   speechSupported: boolean
+  canSkipOrRepeat: boolean
 }
 
 type Listener = (snapshot: SessionSnapshot) => void
+
+function canMutateCombo(phase: SessionPhase, paused: boolean): boolean {
+  return !paused && phase === 'work'
+}
 
 export class SessionEngine {
   private config: WorkoutConfig
   private phase: SessionPhase = 'idle'
   private round = 0
+  private roundsFullyCompleted = 0
   private timeRemainingMs = 0
   private combo: Combo | null = null
   private stepIndex = 0
@@ -66,14 +72,18 @@ export class SessionEngine {
   private events: SessionTechniqueEvent[] = []
   private wakeLock: WakeLockSentinel | null = null
   private demoMode = false
-  /** Invalidates in-flight async playback loops on pause/stop/skip. */
   private runToken = 0
   private resumeInFlight = false
   private completedComboIds: string[] = []
+  private comboSnapshots = new Map<string, Combo>()
   private techniqueCategoryCounts: Record<string, number> = {}
+  private sessionFavoriteIds = new Set<string>()
+  private visibilityHandler: (() => void) | null = null
+  private wakeLockEnabled = true
 
-  constructor(config: WorkoutConfig) {
+  constructor(config: WorkoutConfig, options?: { wakeLock?: boolean }) {
     this.config = config
+    this.wakeLockEnabled = options?.wakeLock !== false
     audioEngine.setVolume(config.sound.masterVolume)
     audioEngine.setEnabled(config.sound.tonesEnabled || config.sound.bellsEnabled)
   }
@@ -110,6 +120,7 @@ export class SessionEngine {
       movementActions: this.movementActions,
       paused: this.paused,
       speechSupported: this.speech.supported,
+      canSkipOrRepeat: canMutateCombo(this.phase, this.paused),
     }
   }
 
@@ -127,8 +138,20 @@ export class SessionEngine {
     return this.config.resumeBehavior ?? 'restart-combo'
   }
 
+  markFavorite(comboId: string) {
+    this.sessionFavoriteIds.add(comboId)
+  }
+
+  unmarkFavorite(comboId: string) {
+    this.sessionFavoriteIds.delete(comboId)
+  }
+
+  getSessionFavorites(): string[] {
+    return [...this.sessionFavoriteIds]
+  }
+
   async start(options?: { demo?: boolean; comboQueue?: Combo[] }) {
-    this.demoMode = Boolean(options?.demo)
+    this.demoMode = Boolean(options?.demo) || this.config.mode === 'demo'
     this.cancelled = false
     this.paused = false
     this.resumeInFlight = false
@@ -143,16 +166,38 @@ export class SessionEngine {
     this.events = []
     this.recentComboIds = []
     this.completedComboIds = []
+    this.comboSnapshots.clear()
     this.techniqueCategoryCounts = {}
+    this.sessionFavoriteIds.clear()
+    this.roundsFullyCompleted = 0
     this.round = 1
     this.comboQueue =
       options?.comboQueue ??
       (this.demoMode ? getDemoCombos(this.config.stance, this.config.martialArt ?? 'muay-thai') : [])
+    this.bindVisibility()
     await this.requestWakeLock()
     const token = this.runToken
     await this.runCountdown(token)
     if (this.cancelled || token !== this.runToken) return
     await this.startWorkPeriod(token, true)
+  }
+
+  private bindVisibility() {
+    if (typeof document === 'undefined') return
+    this.unbindVisibility()
+    this.visibilityHandler = () => {
+      if (document.visibilityState === 'visible' && !this.cancelled && this.phase !== 'summary' && this.phase !== 'idle') {
+        void this.requestWakeLock()
+      }
+    }
+    document.addEventListener('visibilitychange', this.visibilityHandler)
+  }
+
+  private unbindVisibility() {
+    if (this.visibilityHandler && typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', this.visibilityHandler)
+    }
+    this.visibilityHandler = null
   }
 
   private async runCountdown(token: number) {
@@ -166,7 +211,6 @@ export class SessionEngine {
         void this.speech.speak(String(n))
       }
       if (this.config.sound.tonesEnabled) {
-        // Tone first briefly, then wait — avoid overlapping with voice when possible
         void audioEngine.playCountdownTick()
       }
       await this.wait(900)
@@ -254,6 +298,8 @@ export class SessionEngine {
     audioEngine.stopAll()
     if (this.config.sound.bellsEnabled) void audioEngine.playBell()
 
+    this.roundsFullyCompleted += 1
+
     const totalRounds =
       this.config.mode === 'demo' ? 1 : this.config.mode === 'round' ? this.config.rounds : 1
 
@@ -279,19 +325,35 @@ export class SessionEngine {
     }
   }
 
+  private rememberCombo(combo: Combo) {
+    this.comboSnapshots.set(combo.id, combo)
+  }
+
   private pickCombo(): Combo {
     if (this.comboQueue.length) {
-      return this.comboQueue.shift()!
+      const next = this.comboQueue.shift()!
+      this.rememberCombo(next)
+      return next
     }
     if (this.demoMode) {
-      this.comboQueue = getDemoCombos(this.config.stance)
-      return this.comboQueue.shift()!
+      this.comboQueue = getDemoCombos(this.config.stance, this.config.martialArt ?? 'muay-thai')
+      const next = this.comboQueue.shift()!
+      this.rememberCombo(next)
+      return next
     }
     if (this.config.selectedComboIds?.length) {
       const id = this.config.selectedComboIds[this.combinationsCompleted % this.config.selectedComboIds.length]!
-      return getCombo(id)
+      try {
+        const curated = getCombo(id)
+        this.rememberCombo(curated)
+        return curated
+      } catch {
+        // fall through to generator
+      }
     }
-    return nextCombo(optionsFromWorkout(this.config), this.recentComboIds)
+    const generated = nextCombo(optionsFromWorkout(this.config), this.recentComboIds)
+    this.rememberCombo(generated)
+    return generated
   }
 
   private async playNextCombo(token: number) {
@@ -317,6 +379,7 @@ export class SessionEngine {
 
     const step = this.combo.techniques[this.stepIndex]
     if (!step) {
+      // Full combo finished — count completion
       this.combinationsCompleted += 1
       if (this.combo) this.completedComboIds.push(this.combo.id)
       const pause = this.config.timingMultipliers.pauseBetweenCombosMs
@@ -408,13 +471,11 @@ export class SessionEngine {
         return
       }
 
-      // Pause during countdown may leave the work clock unset — restore duration first.
       if (this.pausedFrom === 'countdown' && this.timeRemainingMs <= 0) {
         await this.startWorkPeriod(token, true)
         return
       }
 
-      // work (or countdown with remaining time) → resume work from saved clock
       this.phase = 'work'
       this.lastTick = Date.now()
       this.startClock()
@@ -432,32 +493,30 @@ export class SessionEngine {
   }
 
   async skipCombo() {
+    if (!canMutateCombo(this.phase, this.paused)) return
     this.speech.cancel()
     audioEngine.stopAll()
     this.abortWait()
-    if (this.combo) this.combinationsCompleted += 1
+    // Do not count skipped combos as completed
     this.stepIndex = 0
     const token = ++this.runToken
-    this.paused = false
     this.resumeInFlight = false
-    this.phase = 'work'
     this.lastTick = Date.now()
     if (!this.timerId) this.startClock()
     await this.playNextCombo(token)
   }
 
   async repeatCombo() {
+    if (!canMutateCombo(this.phase, this.paused)) return
     if (!this.combo) return
     this.speech.cancel()
     audioEngine.stopAll()
     this.abortWait()
-    const repeat = { ...this.combo }
+    const repeat = { ...this.combo, techniques: [...this.combo.techniques] }
     this.comboQueue.unshift(repeat)
     this.stepIndex = 0
     const token = ++this.runToken
-    this.paused = false
     this.resumeInFlight = false
-    this.phase = 'work'
     this.lastTick = Date.now()
     if (!this.timerId) this.startClock()
     await this.wait(this.config.timingMultipliers.pauseBeforeRepeatMs)
@@ -475,6 +534,7 @@ export class SessionEngine {
     this.abortWait()
     this.clearClock()
     this.releaseWakeLock()
+    this.unbindVisibility()
     this.finish(true)
   }
 
@@ -488,6 +548,7 @@ export class SessionEngine {
     this.abortWait()
     this.clearClock()
     this.releaseWakeLock()
+    this.unbindVisibility()
   }
 
   private finish(cancelled: boolean) {
@@ -497,6 +558,7 @@ export class SessionEngine {
     this.abortWait()
     this.clearClock()
     this.releaseWakeLock()
+    this.unbindVisibility()
     this.phase = 'summary'
     this.paused = false
     this.emit()
@@ -505,6 +567,8 @@ export class SessionEngine {
 
   getSummary(): SessionSummary {
     const endedAt = Date.now()
+    const isDemo = this.demoMode || this.config.mode === 'demo'
+
     return {
       id: `session-${this.startedAt}`,
       startedAt: this.startedAt,
@@ -513,20 +577,29 @@ export class SessionEngine {
       mode: this.config.mode,
       stance: this.config.stance,
       pace: this.config.pace,
+      customPaceMultiplier: this.config.customPaceMultiplier,
       totalTrainingMs: this.workElapsedMs,
-      roundsCompleted: this.config.mode === 'round' || this.config.mode === 'demo' ? this.round : 1,
+      roundsCompleted: this.roundsFullyCompleted,
       combinationsCompleted: this.combinationsCompleted,
       techniquesCalled: this.techniquesCalled,
       techniqueCounts: { ...this.techniqueCounts },
       techniqueCategoryCounts: { ...this.techniqueCategoryCounts },
       comboIds: [...this.completedComboIds],
+      comboSnapshots: [...this.comboSnapshots.values()].filter((c) =>
+        this.completedComboIds.includes(c.id),
+      ),
       defenseActions: this.defenseActions,
       movementActions: this.movementActions,
       averagePaceLabel: this.config.pace,
-      dailyDrillCompleted: this.config.mode === 'daily',
+      dailyDrillCompleted: false,
       cancelled: false,
-      favoriteComboIds: [],
+      favoriteComboIds: [...this.sessionFavoriteIds].filter((id) =>
+        this.completedComboIds.includes(id),
+      ),
       usedCustomCombo: Boolean(this.config.customComboId),
+      workoutConfig: { ...this.config },
+      excludeFromStats: isDemo,
+      isDemo,
     }
   }
 
@@ -551,6 +624,7 @@ export class SessionEngine {
   }
 
   private async requestWakeLock() {
+    if (!this.wakeLockEnabled) return
     if (typeof navigator === 'undefined') return
     try {
       if ('wakeLock' in navigator) {

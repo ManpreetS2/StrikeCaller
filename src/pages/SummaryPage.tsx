@@ -1,9 +1,10 @@
-import { Link, useLocation } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { getTechnique } from '../data/techniques'
 import type { SessionSummary } from '../types'
 
 export function SummaryPage() {
   const location = useLocation()
+  const navigate = useNavigate()
   const summary = (location.state as { summary?: SessionSummary } | null)?.summary
 
   if (!summary) {
@@ -12,7 +13,7 @@ export function SummaryPage() {
         <h1 className="display text-5xl">Session summary</h1>
         <p className="text-[var(--text-muted)]">No summary available.</p>
         <Link to="/train" className="btn btn-primary">
-          Train again
+          Customize Workout
         </Link>
       </div>
     )
@@ -21,6 +22,19 @@ export function SummaryPage() {
   const topTechniques = Object.entries(summary.techniqueCounts)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 8)
+
+  const trainAgain = () => {
+    if (summary.workoutConfig) {
+      navigate('/session', {
+        state: {
+          config: summary.workoutConfig,
+          demo: summary.isDemo,
+        },
+      })
+      return
+    }
+    navigate('/train')
+  }
 
   return (
     <div className="space-y-6">
@@ -51,12 +65,20 @@ export function SummaryPage() {
           <p className="text-sm text-[var(--text-muted)]">No techniques recorded.</p>
         ) : (
           <ul className="space-y-2">
-            {topTechniques.map(([id, count]) => (
-              <li key={id} className="flex items-center justify-between gap-3 text-sm">
-                <span>{getTechnique(id).name}</span>
-                <span className="mono text-[var(--text-muted)]">{count}</span>
-              </li>
-            ))}
+            {topTechniques.map(([id, count]) => {
+              let name = id
+              try {
+                name = getTechnique(id).name
+              } catch {
+                // legacy
+              }
+              return (
+                <li key={id} className="flex items-center justify-between gap-3 text-sm">
+                  <span>{name}</span>
+                  <span className="mono text-[var(--text-muted)]">{count}</span>
+                </li>
+              )
+            })}
           </ul>
         )}
       </section>
@@ -68,9 +90,9 @@ export function SummaryPage() {
       )}
 
       <div className="flex flex-wrap gap-3">
-        <Link to="/train" className="btn btn-primary">
+        <button type="button" className="btn btn-primary" onClick={trainAgain}>
           Train again
-        </Link>
+        </button>
         <Link to="/" className="btn">
           Home
         </Link>

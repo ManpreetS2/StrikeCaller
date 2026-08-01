@@ -1,7 +1,17 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { getTechniquesByCategory, getTechnique } from '../data/techniques'
 import { MAX_COMBO_LENGTH, validateTechniqueSequence } from '../engines/comboValidator'
 import { useApp } from '../context/AppContext'
+import { createDefaultWorkout } from '../data/defaults'
+import { ConfirmDialog } from '../components/ConfirmDialog'
+import {
+  clampRepeatCount,
+  clampTechniqueIds,
+  customComboToRuntime,
+  MAX_REPEAT_COUNT,
+  MIN_REPEAT_COUNT,
+} from '../utils/customCombo'
 import type { CustomCombo, TechniqueCategory } from '../types'
 
 const MT_CATEGORIES: TechniqueCategory[] = [
@@ -26,6 +36,7 @@ export function BuilderPage() {
     preferences,
     updatePreferences,
   } = useApp()
+  const navigate = useNavigate()
   const art = preferences.martialArt
   const categories = art === 'boxing' ? BX_CATEGORIES : MT_CATEGORIES
   const [title, setTitle] = useState('My combo')
@@ -34,6 +45,7 @@ export function BuilderPage() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [repeatCount, setRepeatCount] = useState(3)
   const [notice, setNotice] = useState<string | null>(null)
+  const [deleteId, setDeleteId] = useState<string | null>(null)
 
   useEffect(() => {
     const migrated = customCombos.filter((c) => c.migrated)
@@ -57,22 +69,57 @@ export function BuilderPage() {
   }
 
   const save = () => {
-    if (!validation.valid || sequence.length > MAX_COMBO_LENGTH) return
+    if (!validation.valid || sequence.length === 0 || sequence.length > MAX_COMBO_LENGTH) return
     const now = Date.now()
     const combo: CustomCombo = {
       id: editingId ?? `custom-${now}`,
       title: title.trim() || 'Custom combo',
-      techniqueIds: sequence.slice(0, MAX_COMBO_LENGTH),
+      techniqueIds: clampTechniqueIds(sequence),
       createdAt: editingId
         ? (customCombos.find((c) => c.id === editingId)?.createdAt ?? now)
         : now,
       updatedAt: now,
       favorite: false,
-      repeatCount,
+      repeatCount: clampRepeatCount(repeatCount),
       martialArt: art,
     }
     upsertCustomCombo(combo)
     setEditingId(combo.id)
+  }
+
+  const trainCombo = (combo: CustomCombo) => {
+    const runtime = customComboToRuntime(combo)
+    const repeats = clampRepeatCount(combo.repeatCount)
+    const queue = Array.from({ length: repeats }, () => ({
+      ...runtime,
+      techniques: [...runtime.techniques],
+    }))
+    const config = createDefaultWorkout({
+      martialArt: runtime.martialArt,
+      mode: 'custom',
+      stance: preferences.stance,
+      difficulty: preferences.experience,
+      callStyle: preferences.callStyle,
+      pace: preferences.pace,
+      sessionDurationSec: Math.max(60, repeats * 20),
+      roundDurationSec: Math.max(60, repeats * 20),
+      rounds: 1,
+      customComboId: combo.id,
+      repeatCount: repeats,
+      speech: { ...preferences.speech, callStyle: preferences.callStyle },
+      sound: preferences.sound,
+      sideTerminology: preferences.sideTerminology,
+      resumeBehavior: preferences.resumeBehavior,
+      categories:
+        runtime.martialArt === 'boxing'
+          ? ['punch', 'defense', 'movement', 'counter']
+          : ['punch', 'kick', 'teep', 'defense', 'movement'],
+      includeKnees: runtime.martialArt === 'muay-thai',
+      includeElbows: false,
+      includeHeadKicks: false,
+      includeClinch: false,
+    })
+    navigate('/session', { state: { config, comboQueue: queue } })
   }
 
   return (
@@ -142,14 +189,14 @@ export function BuilderPage() {
         )}
       </section>
 
-      <div className="flex flex-wrap gap-2" role="tablist" aria-label="Technique categories">
+      <div role="tablist" aria-label="Technique categories" className="flex flex-wrap gap-2">
         {categories.map((cat) => (
           <button
             key={cat}
             type="button"
             role="tab"
             aria-selected={category === cat}
-            className={`chip ${category === cat ? 'chip-active' : ''}`}
+            className={`btn ${category === cat ? 'btn-primary' : ''}`}
             onClick={() => setCategory(cat)}
           >
             {cat}
@@ -157,23 +204,16 @@ export function BuilderPage() {
         ))}
       </div>
 
-      <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3">
+      <div className="flex flex-wrap gap-2">
         {palette.map((tech) => (
           <button
             key={tech.id}
             type="button"
-            className="btn justify-start"
+            className="btn"
             disabled={atMax}
-            aria-disabled={atMax}
             onClick={() => addTechnique(tech.id)}
-            onKeyDown={(e) => {
-              if ((e.key === 'Enter' || e.key === ' ') && !atMax) {
-                e.preventDefault()
-                addTechnique(tech.id)
-              }
-            }}
           >
-            {preferences.sideTerminology === 'lead-rear' ? tech.name : tech.shortCall}
+            {tech.name}
           </button>
         ))}
       </div>
@@ -183,10 +223,11 @@ export function BuilderPage() {
         <input
           id="repeat-count"
           type="number"
-          min={1}
-          max={20}
+          min={MIN_REPEAT_COUNT}
+          max={MAX_REPEAT_COUNT}
           value={repeatCount}
-          onChange={(e) => setRepeatCount(Number(e.target.value))}
+          aria-label="Repeat count"
+          onChange={(e) => setRepeatCount(clampRepeatCount(Number(e.target.value)))}
         />
       </div>
 
@@ -206,6 +247,7 @@ export function BuilderPage() {
             setSequence(['jab', 'cross'])
             setTitle('My combo')
             setEditingId(null)
+            setRepeatCount(3)
           }}
         >
           Reset builder
@@ -235,22 +277,27 @@ export function BuilderPage() {
                         }
                       })
                       .join(' → ')}
+                    {' · '}
+                    {clampRepeatCount(combo.repeatCount)} reps
                   </p>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" className="btn btn-primary" onClick={() => trainCombo(combo)}>
+                    Train Combo
+                  </button>
                   <button
                     type="button"
                     className="btn"
                     onClick={() => {
                       setEditingId(combo.id)
                       setTitle(combo.title)
-                      setSequence(combo.techniqueIds.slice(0, MAX_COMBO_LENGTH))
-                      setRepeatCount(combo.repeatCount)
+                      setSequence(clampTechniqueIds(combo.techniqueIds))
+                      setRepeatCount(clampRepeatCount(combo.repeatCount))
                     }}
                   >
                     Edit
                   </button>
-                  <button type="button" className="btn btn-danger" onClick={() => removeCustomCombo(combo.id)}>
+                  <button type="button" className="btn btn-danger" onClick={() => setDeleteId(combo.id)}>
                     Delete
                   </button>
                 </div>
@@ -259,6 +306,21 @@ export function BuilderPage() {
           </ul>
         )}
       </section>
+
+      {deleteId && (
+        <ConfirmDialog
+          title="Delete custom combo?"
+          confirmLabel="Delete"
+          danger
+          onConfirm={() => {
+            removeCustomCombo(deleteId)
+            setDeleteId(null)
+          }}
+          onCancel={() => setDeleteId(null)}
+        >
+          This removes the saved combo from this device. This cannot be undone.
+        </ConfirmDialog>
+      )}
     </div>
   )
 }

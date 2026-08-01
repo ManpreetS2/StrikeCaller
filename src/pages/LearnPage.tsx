@@ -1,32 +1,45 @@
 import { useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { filterCombos } from '../data/combos'
 import { ComboDisplay } from '../components/ComboDisplay'
 import { useApp } from '../context/AppContext'
 import { createDefaultWorkout } from '../data/defaults'
 import { getTechnique } from '../data/techniques'
-import type { PacePreset } from '../types'
+import type { PacePreset, WorkoutConfig } from '../types'
+
+interface LearnLocationState {
+  workoutSeed?: WorkoutConfig
+}
 
 export function LearnPage() {
   const { preferences } = useApp()
   const navigate = useNavigate()
+  const location = useLocation()
+  const seed = (location.state as LearnLocationState | null)?.workoutSeed
+  const martialArt = seed?.martialArt ?? preferences.martialArt
+  const stance = seed?.stance ?? preferences.stance
+  const callStyle = seed?.callStyle ?? preferences.callStyle
+  const terminology = seed?.sideTerminology ?? preferences.sideTerminology
+  const difficulty = seed?.difficulty ?? preferences.experience
+
   const combos = useMemo(
     () =>
       filterCombos({
-        martialArt: preferences.martialArt,
-        difficulty: preferences.experience,
-        includeDefense: preferences.includeDefense,
-        includeMovement: preferences.includeMovement,
-        includeClinch: false,
-        includeElbows: false,
-        includeHeadKicks: false,
-        includeKnees: preferences.martialArt === 'muay-thai',
+        martialArt,
+        difficulty,
+        includeDefense: (seed?.defenseFrequency ?? 0.35) > 0,
+        includeMovement: (seed?.movementFrequency ?? 0.4) > 0,
+        includeClinch: Boolean(seed?.includeClinch),
+        includeElbows: Boolean(seed?.includeElbows),
+        includeHeadKicks: Boolean(seed?.includeHeadKicks),
+        includeKnees: martialArt === 'muay-thai' && (seed?.includeKnees ?? true),
+        equipment: seed?.equipment,
       }),
-    [preferences],
+    [martialArt, difficulty, seed],
   )
   const [index, setIndex] = useState(0)
   const [step, setStep] = useState(0)
-  const [pace, setPace] = useState<PacePreset>('learn')
+  const [pace, setPace] = useState<PacePreset>(seed?.pace === 'fight' || seed?.pace === 'fast' ? 'technical' : seed?.pace ?? 'learn')
   const combo = combos[index] ?? combos[0]
 
   if (!combo) {
@@ -37,20 +50,21 @@ export function LearnPage() {
 
   const practice = () => {
     const config = createDefaultWorkout({
-      martialArt: preferences.martialArt,
+      ...(seed ?? {}),
+      martialArt,
       mode: 'learn',
-      stance: preferences.stance,
-      difficulty: preferences.experience,
+      stance,
+      difficulty,
       pace,
-      callStyle: preferences.callStyle,
-      sessionDurationSec: 90,
-      roundDurationSec: 90,
+      callStyle,
+      sessionDurationSec: seed?.sessionDurationSec ?? 90,
+      roundDurationSec: seed?.roundDurationSec ?? 90,
       rounds: 1,
       selectedComboIds: [combo.id],
-      speech: { ...preferences.speech, callStyle: preferences.callStyle },
-      sound: preferences.sound,
-      sideTerminology: preferences.sideTerminology,
-      resumeBehavior: preferences.resumeBehavior,
+      speech: { ...(seed?.speech ?? preferences.speech), callStyle },
+      sound: seed?.sound ?? preferences.sound,
+      sideTerminology: terminology,
+      resumeBehavior: seed?.resumeBehavior ?? preferences.resumeBehavior,
     })
     navigate('/session', { state: { config } })
   }
@@ -92,9 +106,9 @@ export function LearnPage() {
       <ComboDisplay
         combo={combo}
         activeIndex={step}
-        callStyle={preferences.callStyle}
-        stance={preferences.stance}
-        terminology={preferences.sideTerminology}
+        callStyle={callStyle}
+        stance={stance}
+        terminology={terminology}
       />
 
       <section className="panel space-y-3 p-5">

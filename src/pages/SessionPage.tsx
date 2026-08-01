@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useBlocker, useLocation, useNavigate } from 'react-router-dom'
 import {
   Pause,
   Play,
   SkipForward,
   Repeat,
   Square,
-  Volume2,
   Maximize,
   Minimize,
 } from 'lucide-react'
@@ -14,19 +13,23 @@ import { SessionEngine, type SessionSnapshot } from '../engines/sessionEngine'
 import { createDefaultWorkout } from '../data/defaults'
 import { useApp } from '../context/AppContext'
 import { ComboDisplay } from '../components/ComboDisplay'
+import { ConfirmDialog } from '../components/ConfirmDialog'
 import { formatClock } from '../utils/format'
-import type { WorkoutConfig } from '../types'
+import type { SessionSummary, WorkoutConfig } from '../types'
 
 interface LocationState {
   config?: WorkoutConfig
   demo?: boolean
+  dailyPhase?: 'slowDone' | 'normalDone' | 'fightDone'
+  comboQueue?: import('../types').Combo[]
 }
 
 export function SessionPage() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { preferences, addHistory, toggleFavorite, favorites } = useApp()
+  const { preferences, addHistory, toggleFavorite, favorites, dailyDrill, setDailyDrill } = useApp()
   const state = (location.state as LocationState | null) ?? {}
+  const isDemo = Boolean(state.demo) || state.config?.mode === 'demo'
   const config = useMemo(
     () =>
       state.config ??
@@ -38,22 +41,33 @@ export function SessionPage() {
         speech: preferences.speech,
         sound: preferences.sound,
         resumeBehavior: preferences.resumeBehavior,
-        mode: state.demo ? 'demo' : 'round',
-        roundDurationSec: state.demo ? 60 : 180,
+        mode: isDemo ? 'demo' : 'round',
+        roundDurationSec: isDemo ? 60 : 180,
         rounds: 1,
       }),
-    [state.config, state.demo, preferences],
+    [state.config, isDemo, preferences],
   )
 
   const engineRef = useRef<SessionEngine | null>(null)
   const endedRef = useRef(false)
+  const endButtonRef = useRef<HTMLButtonElement>(null)
   const [snap, setSnap] = useState<SessionSnapshot | null>(null)
   const [confirmEnd, setConfirmEnd] = useState(false)
   const [minimal, setMinimal] = useState(config.minimalMode)
-  const [volume, setVolume] = useState(config.sound.masterVolume)
+
+  const hasMeaningfulProgress = Boolean(
+    snap && (snap.techniquesCalled > 0 || snap.combinationsCompleted > 0 || snap.phase === 'work' || snap.phase === 'rest'),
+  )
+
+  const blocker = useBlocker(
+    ({ currentLocation, nextLocation }) =>
+      !endedRef.current &&
+      hasMeaningfulProgress &&
+      currentLocation.pathname !== nextLocation.pathname,
+  )
 
   useEffect(() => {
-    const engine = new SessionEngine(config)
+    const engine = new SessionEngine(config, { wakeLock: preferences.wakeLock })
     engineRef.current = engine
     let alive = true
 
@@ -61,14 +75,11 @@ export function SessionPage() {
       if (!alive) return
       setSnap(next)
       if (next.phase === 'summary' && !endedRef.current) {
-        endedRef.current = true
-        const summary = engine.getSummary()
-        addHistory({ ...summary, cancelled: false })
-        navigate('/summary', { state: { summary }, replace: true })
+        finalize(false)
       }
     })
 
-    void engine.start({ demo: Boolean(state.demo) || config.mode === 'demo' })
+    void engine.start({ demo: isDemo, comboQueue: state.comboQueue })
 
     return () => {
       alive = false
@@ -79,22 +90,66 @@ export function SessionPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const endSession = () => {
+  useEffect(() => {
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (endedRef.current || !hasMeaningfulProgress) return
+      event.preventDefault()
+      event.returnValue = ''
+    }
+    window.addEventListener('beforeunload', onBeforeUnload)
+    return () => window.removeEventListener('beforeunload', onBeforeUnload)
+  }, [hasMeaningfulProgress])
+
+  const applyDailyPhase = (summary: SessionSummary, cancelled: boolean) => {
+    if (cancelled || !state.dailyPhase) return summary
+    const phase = state.dailyPhase
+    const key = dailyDrill?.dateKey
+    const base = dailyDrill ?? {
+      dateKey: key ?? '',
+      comboId: summary.workoutConfig?.selectedComboIds?.[0] ?? '',
+      martialArt: summary.martialArt,
+      slowDone: false,
+      normalDone: false,
+      fightDone: false,
+      completed: false,
+    }
+    if (!base.dateKey) return { ...summary, dailyPhase: phase }
+    const next = { ...base, [phase]: true }
+    const completed = Boolean(next.slowDone && next.normalDone && next.fightDone)
+    setDailyDrill({ ...next, completed })
+    return { ...summary, dailyPhase: phase, dailyDrillCompleted: completed }
+  }
+
+  const finalize = (cancelled: boolean) => {
     if (endedRef.current) return
     endedRef.current = true
-    engineRef.current?.stop()
-    const summary = engineRef.current?.getSummary()
-    if (summary) {
-      addHistory({ ...summary, cancelled: true })
-      navigate('/summary', { state: { summary: { ...summary, cancelled: true } }, replace: true })
-    } else {
-      navigate('/train')
+    if (cancelled) engineRef.current?.stop()
+    let summary = engineRef.current?.getSummary()
+    if (!summary) {
+      navigate('/train', { replace: true })
+      return
     }
+    summary = { ...summary, cancelled }
+    summary = applyDailyPhase(summary, cancelled)
+
+    if (!isDemo && !summary.excludeFromStats) {
+      addHistory(summary)
+    }
+
+    navigate('/summary', { state: { summary }, replace: true })
+  }
+
+  const endSession = () => {
+    setConfirmEnd(false)
+    finalize(true)
   }
 
   if (!snap) {
     return <p className="p-8 text-[var(--text-muted)]">Preparing session…</p>
   }
+
+  const skipDisabled = !snap.canSkipOrRepeat
+  const workActive = snap.phase === 'work' && !snap.paused
 
   return (
     <div className={`${minimal ? 'fixed inset-0 z-50 overflow-auto bg-[var(--bg)] p-4' : 'space-y-4'}`}>
@@ -134,7 +189,7 @@ export function SessionPage() {
         >
           {config.speech.captionsEnabled !== false ? snap.caption || '—' : '·'}
         </p>
-        {snap.nextTechniqueLabel && snap.phase === 'work' && (
+        {snap.nextTechniqueLabel && workActive && (
           <p className="text-sm text-[var(--text-muted)]">Next: {snap.nextTechniqueLabel}</p>
         )}
         {!snap.speechSupported && (
@@ -171,6 +226,7 @@ export function SessionPage() {
             className="btn"
             onClick={() => engineRef.current?.pause()}
             aria-label="Pause session"
+            disabled={snap.phase === 'summary' || snap.phase === 'idle'}
           >
             <Pause size={18} aria-hidden /> Pause
           </button>
@@ -180,6 +236,7 @@ export function SessionPage() {
           className="btn"
           onClick={() => void engineRef.current?.skipCombo()}
           aria-label="Skip combination"
+          disabled={skipDisabled}
         >
           <SkipForward size={18} aria-hidden /> Skip combo
         </button>
@@ -188,6 +245,7 @@ export function SessionPage() {
           className="btn"
           onClick={() => void engineRef.current?.repeatCombo()}
           aria-label="Repeat combination"
+          disabled={skipDisabled || !snap.currentCombo}
         >
           <Repeat size={18} aria-hidden /> Repeat
         </button>
@@ -205,13 +263,20 @@ export function SessionPage() {
           <button
             type="button"
             className="btn"
-            onClick={() => toggleFavorite(snap.currentCombo!.id)}
+            onClick={() => {
+              const id = snap.currentCombo!.id
+              const next = !favorites.includes(id)
+              toggleFavorite(id)
+              if (next) engineRef.current?.markFavorite(id)
+              else engineRef.current?.unmarkFavorite(id)
+            }}
             aria-pressed={favorites.includes(snap.currentCombo.id)}
           >
             {favorites.includes(snap.currentCombo.id) ? 'Unfavorite' : 'Favorite'}
           </button>
         )}
         <button
+          ref={endButtonRef}
           type="button"
           className="btn btn-danger"
           onClick={() => setConfirmEnd(true)}
@@ -221,56 +286,41 @@ export function SessionPage() {
         </button>
       </div>
 
-      <div className="field max-w-sm">
-        <label htmlFor="session-volume" className="flex items-center gap-2">
-          <Volume2 size={16} aria-hidden /> Volume
-        </label>
-        <input
-          id="session-volume"
-          type="range"
-          min={0}
-          max={1}
-          step={0.05}
-          value={volume}
-          aria-label="Session volume"
-          onChange={(e) => {
-            const v = Number(e.target.value)
-            setVolume(v)
-            // volume applied via speech settings on next utterance through config mutation is limited;
-            // engine reads config.speech at speak time — update local engine config sound
-          }}
-        />
-      </div>
-
       <p className="text-sm text-[var(--text-muted)]">
         Combos {snap.combinationsCompleted} · Techniques {snap.techniquesCalled} · Defense {snap.defenseActions} ·
         Movement {snap.movementActions}
       </p>
 
       {confirmEnd && (
-        <div
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="end-title"
+        <ConfirmDialog
+          title="End this session?"
+          confirmLabel="End session"
+          cancelLabel="Keep training"
+          danger
+          onConfirm={endSession}
+          onCancel={() => {
+            setConfirmEnd(false)
+            endButtonRef.current?.focus()
+          }}
         >
-          <div className="panel max-w-md space-y-4 p-5">
-            <h2 id="end-title" className="text-xl font-semibold">
-              End this session?
-            </h2>
-            <p className="text-sm text-[var(--text-muted)]">
-              Progress for this round will stop and you will see a summary.
-            </p>
-            <div className="flex flex-wrap gap-2">
-              <button type="button" className="btn btn-danger" onClick={endSession}>
-                End session
-              </button>
-              <button type="button" className="btn" onClick={() => setConfirmEnd(false)}>
-                Keep training
-              </button>
-            </div>
-          </div>
-        </div>
+          Progress for this round will stop and you will see a summary.
+        </ConfirmDialog>
+      )}
+
+      {blocker.state === 'blocked' && (
+        <ConfirmDialog
+          title="Leave this workout?"
+          confirmLabel="Leave session"
+          cancelLabel="Stay"
+          danger
+          onConfirm={() => {
+            finalize(true)
+            blocker.proceed?.()
+          }}
+          onCancel={() => blocker.reset?.()}
+        >
+          You have an active session with progress. Leaving will end it early.
+        </ConfirmDialog>
       )}
     </div>
   )

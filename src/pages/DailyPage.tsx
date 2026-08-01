@@ -1,14 +1,15 @@
 import { useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { BEGINNER_COMBOS, INTERMEDIATE_COMBOS, BOXING_COMBOS, getCombo } from '../data/combos'
 import { BOXING_BEGINNER, BOXING_INTERMEDIATE } from '../data/boxing'
 import { ComboDisplay } from '../components/ComboDisplay'
 import { useApp } from '../context/AppContext'
 import { createDefaultWorkout } from '../data/defaults'
-import type { MartialArt, PacePreset } from '../types'
+import { localDateKey } from '../utils/localDate'
+import type { MartialArt, PacePreset, WorkoutConfig } from '../types'
 
-function dateKey(d = new Date()) {
-  return d.toISOString().slice(0, 10)
+interface DailyLocationState {
+  workoutSeed?: WorkoutConfig
 }
 
 function pickDailyComboId(key: string, martialArt: MartialArt): string {
@@ -23,23 +24,26 @@ function pickDailyComboId(key: string, martialArt: MartialArt): string {
 
 export function DailyPage() {
   const navigate = useNavigate()
+  const location = useLocation()
+  const seed = (location.state as DailyLocationState | null)?.workoutSeed
   const { preferences, dailyDrill, setDailyDrill } = useApp()
-  const key = `${dateKey()}:${preferences.martialArt}`
+  const martialArt = seed?.martialArt ?? preferences.martialArt
+  const key = `${localDateKey()}:${martialArt}`
 
   const comboId = useMemo(() => {
-    if (dailyDrill?.dateKey === key && dailyDrill.martialArt === preferences.martialArt) {
+    if (dailyDrill?.dateKey === key && dailyDrill.martialArt === martialArt) {
       return dailyDrill.comboId
     }
-    return pickDailyComboId(key, preferences.martialArt)
-  }, [dailyDrill, key, preferences.martialArt])
+    return pickDailyComboId(key, martialArt)
+  }, [dailyDrill, key, martialArt])
 
   const combo = useMemo(() => {
     try {
       return getCombo(comboId)
     } catch {
-      return preferences.martialArt === 'boxing' ? BOXING_COMBOS[0]! : BEGINNER_COMBOS[0]!
+      return martialArt === 'boxing' ? BOXING_COMBOS[0]! : BEGINNER_COMBOS[0]!
     }
-  }, [comboId, preferences.martialArt])
+  }, [comboId, martialArt])
 
   const state =
     dailyDrill?.dateKey === key
@@ -47,7 +51,7 @@ export function DailyPage() {
       : {
           dateKey: key,
           comboId,
-          martialArt: preferences.martialArt,
+          martialArt,
           slowDone: false,
           normalDone: false,
           fightDone: false,
@@ -55,33 +59,43 @@ export function DailyPage() {
         }
 
   const startPhase = (pace: PacePreset, field: 'slowDone' | 'normalDone' | 'fightDone') => {
-    const next = {
+    // Persist date/combo identity without marking the phase complete yet
+    setDailyDrill({
       ...state,
       comboId: combo.id,
-      martialArt: preferences.martialArt,
+      martialArt,
       dateKey: key,
-      [field]: true,
-    }
-    const completed = Boolean(next.slowDone && next.normalDone && next.fightDone)
-    setDailyDrill({ ...next, completed })
+    })
 
     const config = createDefaultWorkout({
-      martialArt: preferences.martialArt,
+      ...(seed ?? {}),
+      martialArt,
       mode: 'daily',
-      stance: preferences.stance,
-      difficulty: preferences.experience,
+      stance: seed?.stance ?? preferences.stance,
+      difficulty: seed?.difficulty ?? preferences.experience,
+      equipment: seed?.equipment ?? preferences.equipment,
       pace,
-      callStyle: preferences.callStyle,
+      callStyle: seed?.callStyle ?? preferences.callStyle,
       sessionDurationSec: 45,
       roundDurationSec: 45,
       rounds: 1,
       selectedComboIds: [combo.id],
-      speech: { ...preferences.speech, callStyle: preferences.callStyle },
-      sound: preferences.sound,
-      sideTerminology: preferences.sideTerminology,
-      resumeBehavior: preferences.resumeBehavior,
+      speech: {
+        ...(seed?.speech ?? preferences.speech),
+        callStyle: seed?.callStyle ?? preferences.callStyle,
+      },
+      sound: seed?.sound ?? preferences.sound,
+      sideTerminology: seed?.sideTerminology ?? preferences.sideTerminology,
+      resumeBehavior: seed?.resumeBehavior ?? preferences.resumeBehavior,
+      includeKnees: seed?.includeKnees,
+      includeElbows: seed?.includeElbows,
+      includeHeadKicks: seed?.includeHeadKicks,
+      includeClinch: seed?.includeClinch,
+      defenseFrequency: seed?.defenseFrequency,
+      movementFrequency: seed?.movementFrequency,
+      categories: seed?.categories,
     })
-    navigate('/session', { state: { config } })
+    navigate('/session', { state: { config, dailyPhase: field } })
   }
 
   return (
@@ -95,9 +109,9 @@ export function DailyPage() {
 
       <ComboDisplay
         combo={combo}
-        callStyle={preferences.callStyle}
-        stance={preferences.stance}
-        terminology={preferences.sideTerminology}
+        callStyle={seed?.callStyle ?? preferences.callStyle}
+        stance={seed?.stance ?? preferences.stance}
+        terminology={seed?.sideTerminology ?? preferences.sideTerminology}
       />
 
       <div className="grid gap-3 sm:grid-cols-3">

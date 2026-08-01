@@ -1,4 +1,4 @@
-import { HashRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { HashRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { AppProvider, useApp } from './context/AppContext'
 import { AppLayout } from './components/AppLayout'
 import { HomePage } from './pages/HomePage'
@@ -15,8 +15,9 @@ import { StatsPage } from './pages/StatsPage'
 
 function OnboardingGate({ children }: { children: React.ReactNode }) {
   const { preferences } = useApp()
+  const location = useLocation()
   if (!preferences.onboardingComplete) {
-    return <Navigate to="/onboarding" replace />
+    return <Navigate to="/onboarding" replace state={{ after: 'train', from: location.pathname }} />
   }
   return children
 }

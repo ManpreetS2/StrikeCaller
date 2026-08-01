@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import { useApp } from '../context/AppContext'
 import { SafetyNotice } from '../components/SafetyNotice'
+import { ConfirmDialog } from '../components/ConfirmDialog'
 import { createSpeechEngine } from '../engines/speechEngine'
 import { isAudioSessionSupported, prepareCoachingAudioSession } from '../engines/audioSession'
 import { DEFAULT_TIMING_MULTIPLIERS } from '../engines/timingEngine'
+import { MAX_IMPORT_BYTES } from '../storage/localStore'
 import type { CallStyle, MartialArt, MusicCompatibilityResult, SideTerminology, Stance } from '../types'
 
 const COMPAT_OPTIONS: { id: MusicCompatibilityResult; label: string }[] = [
@@ -25,6 +27,8 @@ export function SettingsPage() {
     history,
   } = useApp()
   const [importMessage, setImportMessage] = useState('')
+  const [confirmClear, setConfirmClear] = useState(false)
+  const [confirmReset, setConfirmReset] = useState(false)
 
   return (
     <div className="space-y-6">
@@ -272,16 +276,22 @@ export function SettingsPage() {
               onChange={async (e) => {
                 const file = e.target.files?.[0]
                 if (!file) return
+                if (file.size > MAX_IMPORT_BYTES) {
+                  setImportMessage('Import file exceeds the 2 MB limit.')
+                  e.target.value = ''
+                  return
+                }
                 const text = await file.text()
                 const result = importData(text)
                 setImportMessage(result.message)
+                e.target.value = ''
               }}
             />
           </label>
-          <button type="button" className="btn" onClick={() => clearHistory()}>
+          <button type="button" className="btn" onClick={() => setConfirmClear(true)}>
             Clear workout history
           </button>
-          <button type="button" className="btn btn-danger" onClick={() => resetPreferences()}>
+          <button type="button" className="btn btn-danger" onClick={() => setConfirmReset(true)}>
             Reset preferences
           </button>
         </div>
@@ -291,6 +301,36 @@ export function SettingsPage() {
           </p>
         )}
       </section>
+
+      {confirmClear && (
+        <ConfirmDialog
+          title="Clear workout history?"
+          confirmLabel="Clear history"
+          danger
+          onConfirm={() => {
+            clearHistory()
+            setConfirmClear(false)
+          }}
+          onCancel={() => setConfirmClear(false)}
+        >
+          This permanently removes saved sessions from this device.
+        </ConfirmDialog>
+      )}
+
+      {confirmReset && (
+        <ConfirmDialog
+          title="Reset preferences?"
+          confirmLabel="Reset preferences"
+          danger
+          onConfirm={() => {
+            resetPreferences()
+            setConfirmReset(false)
+          }}
+          onCancel={() => setConfirmReset(false)}
+        >
+          Stance, call style, audio, and other preferences return to defaults. History is kept.
+        </ConfirmDialog>
+      )}
 
       <SafetyNotice />
     </div>

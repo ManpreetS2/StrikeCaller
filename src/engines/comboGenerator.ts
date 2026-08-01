@@ -157,16 +157,24 @@ export function generateRuleBasedCombo(options: GeneratorOptions, rand = Math.ra
     }
   }
 
-  // Ensure ending movement sometimes
-  if (rand() < options.movementFrequency) {
+  // Ensure ending movement sometimes without exceeding max length
+  if (rand() < options.movementFrequency && sequence.length < options.comboLength.max) {
     const exits = ['reset-stance', 'pivot-left', 'angle-out-left', 'step-back']
     const exit = pick(
-      exits.map((id) => getTechnique(id)).filter((t) => allowed.some((a) => a.id === t.id) || true),
+      exits
+        .map((id) => {
+          try {
+            return getTechnique(id)
+          } catch {
+            return null
+          }
+        })
+        .filter((t): t is ReturnType<typeof getTechnique> => t != null && allowed.some((a) => a.id === t.id)),
       rand,
     )
     if (exit) {
       const trial = [...sequence, exit.id]
-      if (validateTechniqueSequence(trial).valid) {
+      if (trial.length <= options.comboLength.max && validateTechniqueSequence(trial).valid) {
         sequence.push(exit.id)
       }
     }
@@ -186,6 +194,7 @@ export function generateRuleBasedCombo(options: GeneratorOptions, rand = Math.ra
     notes: 'Generated from validated follow-up rules — not a random string of strikes.',
     tags: ['generated'],
     stance: options.stance,
+    martialArt: options.martialArt ?? 'muay-thai',
   })
 }
 
@@ -213,9 +222,14 @@ export function nextCombo(
   const generated = generateRuleBasedCombo(options, rand)
   if (generated) return generated
 
-  const fallback = CURATED_COMBOS.find((c) => c.difficulty === 'beginner') ?? CURATED_COMBOS[0]!
+  const art = options.martialArt ?? 'muay-thai'
+  const fallback =
+    CURATED_COMBOS.find((c) => c.martialArt === art && c.difficulty === 'beginner') ??
+    CURATED_COMBOS.find((c) => c.martialArt === art) ??
+    CURATED_COMBOS[0]!
   return {
     ...fallback,
+    martialArt: art,
     techniques: mirrorTechniqueIds(
       fallback.techniques.map((t) => t.techniqueId),
       options.stance,

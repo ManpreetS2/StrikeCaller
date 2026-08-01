@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Check, Sparkles, AlertTriangle, ChevronDown } from 'lucide-react'
 import { useApp } from '../context/AppContext'
@@ -69,6 +69,15 @@ export function TrainPage() {
   const showRoundControls = mode === 'round'
   const showSessionDuration = mode === 'coach' || mode === 'reaction'
 
+  useEffect(() => {
+    if (equipment === 'shadowboxing') {
+      setIncludeClinch(false)
+    }
+    if (equipment === 'limited-space') {
+      // movement still allowed; clinch remains equipment-gated above
+    }
+  }, [equipment])
+
   const selectMartialArt = (art: MartialArt) => {
     setMartialArt(art)
     updatePreferences({ martialArt: art })
@@ -88,17 +97,19 @@ export function TrainPage() {
     }
   }
 
-  const buildConfig = (): WorkoutConfig =>
-    createDefaultWorkout({
+  const buildConfig = (overrideMode?: typeof mode): WorkoutConfig => {
+    const resolvedMode = overrideMode ?? mode
+    const roundish = resolvedMode === 'round'
+    return createDefaultWorkout({
       martialArt,
-      mode: mode === 'daily' || mode === 'learn' ? 'coach' : mode,
+      mode: resolvedMode === 'daily' ? 'daily' : resolvedMode === 'learn' ? 'learn' : resolvedMode,
       stance,
       difficulty,
       equipment,
       pace,
       callStyle,
-      rounds: showRoundControls ? rounds : 1,
-      roundDurationSec: showRoundControls ? roundDurationSec : sessionDurationSec,
+      rounds: roundish ? rounds : 1,
+      roundDurationSec: roundish ? roundDurationSec : sessionDurationSec,
       restDurationSec,
       sessionDurationSec,
       customPaceMultiplier,
@@ -134,6 +145,7 @@ export function TrainPage() {
       resumeBehavior: preferences.resumeBehavior,
       showNextTechnique: !minimalMode,
     })
+  }
 
   const start = () => {
     updatePreferences({
@@ -162,11 +174,11 @@ export function TrainPage() {
     })
 
     if (mode === 'daily') {
-      navigate('/daily')
+      navigate('/daily', { state: { workoutSeed: buildConfig('daily') } })
       return
     }
     if (mode === 'learn') {
-      navigate('/learn')
+      navigate('/learn', { state: { workoutSeed: buildConfig('learn') } })
       return
     }
 
@@ -404,7 +416,13 @@ export function TrainPage() {
                   <Field label="Equipment">
                     <select
                       value={equipment}
-                      onChange={(e) => setEquipment(e.target.value as Equipment)}
+                      onChange={(e) => {
+                        const next = e.target.value as Equipment
+                        setEquipment(next)
+                        if (next === 'shadowboxing') {
+                          setIncludeClinch(false)
+                        }
+                      }}
                       aria-label="Equipment"
                     >
                       <option value="shadowboxing">Shadowboxing</option>
@@ -456,6 +474,7 @@ export function TrainPage() {
                       <input
                         type="checkbox"
                         checked={includeClinch}
+                        disabled={equipment === 'shadowboxing'}
                         onChange={(e) => setIncludeClinch(e.target.checked)}
                       />
                       Include clinch

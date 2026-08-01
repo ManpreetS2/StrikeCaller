@@ -46,8 +46,8 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   customComboMigrationNoticeShown: false,
 }
 
-export const APP_VERSION = '1.1.0'
-export const APP_RELEASE_TITLE = 'StrikeCaller v1.1 — Boxing & Training Stats'
+export const APP_VERSION = '1.1.1'
+export const APP_RELEASE_TITLE = 'StrikeCaller v1.1.1 — Correctness Patch'
 
 export function createDefaultWorkout(partial?: Partial<WorkoutConfig>): WorkoutConfig {
   const martialArt = partial?.martialArt ?? 'muay-thai'

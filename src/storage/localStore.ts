@@ -224,7 +224,10 @@ export function migrateCustomCombo(raw: unknown): CustomCombo | null {
     createdAt: typeof raw.createdAt === 'number' ? raw.createdAt : Date.now(),
     updatedAt: typeof raw.updatedAt === 'number' ? raw.updatedAt : Date.now(),
     favorite: Boolean(raw.favorite),
-    repeatCount: typeof raw.repeatCount === 'number' ? raw.repeatCount : 1,
+    repeatCount:
+      typeof raw.repeatCount === 'number' && Number.isFinite(raw.repeatCount)
+        ? Math.min(20, Math.max(1, Math.round(raw.repeatCount)))
+        : 1,
     martialArt: raw.martialArt === 'boxing' ? 'boxing' : 'muay-thai',
     migrated: migrated || Boolean(raw.migrated),
   }
@@ -266,6 +269,22 @@ export function validateSessionSummary(raw: unknown): SessionSummary | null {
       ? raw.favoriteComboIds.filter((id) => typeof id === 'string')
       : [],
     usedCustomCombo: Boolean(raw.usedCustomCombo),
+    workoutConfig: isObject(raw.workoutConfig)
+      ? (raw.workoutConfig as unknown as SessionSummary['workoutConfig'])
+      : undefined,
+    comboSnapshots: Array.isArray(raw.comboSnapshots)
+      ? (raw.comboSnapshots as SessionSummary['comboSnapshots'])
+      : undefined,
+    customPaceMultiplier:
+      typeof raw.customPaceMultiplier === 'number' && Number.isFinite(raw.customPaceMultiplier)
+        ? raw.customPaceMultiplier
+        : undefined,
+    excludeFromStats: Boolean(raw.excludeFromStats) || mode === 'demo' || Boolean(raw.isDemo),
+    isDemo: Boolean(raw.isDemo) || mode === 'demo',
+    dailyPhase:
+      raw.dailyPhase === 'slowDone' || raw.dailyPhase === 'normalDone' || raw.dailyPhase === 'fightDone'
+        ? raw.dailyPhase
+        : undefined,
     migrated: migrated || Boolean(raw.migrated),
   }
 }
@@ -273,11 +292,18 @@ export function validateSessionSummary(raw: unknown): SessionSummary | null {
 export function loadHistory(): SessionSummary[] {
   const raw = readJSON(KEYS.history)
   if (!Array.isArray(raw)) return []
-  return raw.map(validateSessionSummary).filter((item): item is SessionSummary => item != null)
+  return raw
+    .map(validateSessionSummary)
+    .filter((item): item is SessionSummary => item != null)
+    .filter((item) => !item.excludeFromStats && !item.isDemo && item.mode !== 'demo')
 }
 
 export function saveHistory(history: SessionSummary[]): void {
-  writeJSON(KEYS.history, history.slice(0, 200))
+  // No session cap — preserve full valid history
+  writeJSON(
+    KEYS.history,
+    history.filter((h) => !h.excludeFromStats && !h.isDemo && h.mode !== 'demo'),
+  )
 }
 
 export function clearHistory(): void {
@@ -295,10 +321,15 @@ export function saveDailyDrill(state: DailyDrillState): void {
   writeJSON(KEYS.daily, state)
 }
 
+export const EXPORT_VERSION = 2
+export const MAX_IMPORT_BYTES = 2 * 1024 * 1024
+export const MAX_IMPORT_HISTORY = 5000
+export const MAX_IMPORT_CUSTOM_COMBOS = 500
+
 export function exportUserData(): string {
   return JSON.stringify(
     {
-      version: 1,
+      version: EXPORT_VERSION,
       exportedAt: new Date().toISOString(),
       preferences: loadPreferences(),
       favorites: loadFavorites(),
@@ -311,17 +342,104 @@ export function exportUserData(): string {
   )
 }
 
-export function importUserData(json: string): { ok: boolean; message: string } {
-  try {
-    const data = JSON.parse(json) as unknown
-    if (!isObject(data)) return { ok: false, message: 'Invalid JSON structure.' }
-    if (data.preferences) savePreferences(validatePreferences(data.preferences))
-    if (Array.isArray(data.favorites)) saveFavorites(data.favorites.filter((x) => typeof x === 'string'))
-    if (Array.isArray(data.customCombos)) {
-      saveCustomCombos(data.customCombos as CustomCombo[])
+function validateImportPayload(data: unknown): { ok: true; value: Record<string, unknown> } | { ok: false; message: string } {
+  if (!isObject(data)) return { ok: false, message: 'Invalid JSON structure.' }
+  const version = data.version
+  if (version !== 1 && version !== 2 && version !== undefined) {
+    return { ok: false, message: `Unsupported export version: ${String(version)}.` }
+  }
+
+  if (data.preferences != null && !isObject(data.preferences)) {
+    return { ok: false, message: 'preferences must be an object.' }
+  }
+  if (data.favorites != null) {
+    if (!Array.isArray(data.favorites) || data.favorites.length > 2000) {
+      return { ok: false, message: 'favorites array is invalid or too large.' }
     }
-    if (Array.isArray(data.history)) saveHistory(data.history as SessionSummary[])
-    if (data.dailyDrill && isObject(data.dailyDrill)) saveDailyDrill(data.dailyDrill as unknown as DailyDrillState)
+    if (!data.favorites.every((id) => typeof id === 'string')) {
+      return { ok: false, message: 'favorites must be string IDs.' }
+    }
+  }
+  if (data.customCombos != null) {
+    if (!Array.isArray(data.customCombos) || data.customCombos.length > MAX_IMPORT_CUSTOM_COMBOS) {
+      return { ok: false, message: 'customCombos array is invalid or too large.' }
+    }
+    for (const raw of data.customCombos) {
+      if (!isObject(raw) || !Array.isArray(raw.techniqueIds)) {
+        return { ok: false, message: 'One or more custom combos are invalid.' }
+      }
+      const rawIds = raw.techniqueIds.filter((id) => typeof id === 'string')
+      if (rawIds.length < 1 || rawIds.length > 8) {
+        return { ok: false, message: 'Custom combos must contain 1–8 techniques.' }
+      }
+      const combo = migrateCustomCombo(raw)
+      if (!combo) return { ok: false, message: 'One or more custom combos are invalid.' }
+      if (combo.repeatCount < 1 || combo.repeatCount > 20) {
+        return { ok: false, message: 'Custom combo repeatCount must be 1–20.' }
+      }
+    }
+  }
+  if (data.history != null) {
+    if (!Array.isArray(data.history) || data.history.length > MAX_IMPORT_HISTORY) {
+      return { ok: false, message: 'history array is invalid or too large.' }
+    }
+    for (const raw of data.history) {
+      const summary = validateSessionSummary(raw)
+      if (!summary) return { ok: false, message: 'One or more history records are invalid.' }
+      if (!Number.isFinite(summary.startedAt) || summary.startedAt < 0) {
+        return { ok: false, message: 'History timestamps must be finite and nonnegative.' }
+      }
+      if (!Number.isFinite(summary.totalTrainingMs) || summary.totalTrainingMs < 0) {
+        return { ok: false, message: 'History counters must be finite and nonnegative.' }
+      }
+      if (summary.martialArt !== 'muay-thai' && summary.martialArt !== 'boxing') {
+        return { ok: false, message: 'Unknown martial art in history.' }
+      }
+    }
+  }
+  if (data.dailyDrill != null) {
+    if (!isObject(data.dailyDrill)) return { ok: false, message: 'dailyDrill must be an object.' }
+    if (typeof data.dailyDrill.dateKey !== 'string' || typeof data.dailyDrill.comboId !== 'string') {
+      return { ok: false, message: 'dailyDrill is missing required fields.' }
+    }
+  }
+  return { ok: true, value: data }
+}
+
+export function importUserData(json: string): { ok: boolean; message: string } {
+  if (typeof json !== 'string') return { ok: false, message: 'Import payload must be text.' }
+  if (new TextEncoder().encode(json).length > MAX_IMPORT_BYTES) {
+    return { ok: false, message: 'Import file exceeds the 2 MB limit.' }
+  }
+  try {
+    const parsed = JSON.parse(json) as unknown
+    const validated = validateImportPayload(parsed)
+    if (!validated.ok) return validated
+
+    const data = validated.value
+    // Validate complete payload before writing anything
+    const prefs = data.preferences ? validatePreferences(data.preferences) : null
+    const favorites = Array.isArray(data.favorites)
+      ? data.favorites.filter((x): x is string => typeof x === 'string')
+      : null
+    const combos = Array.isArray(data.customCombos)
+      ? data.customCombos.map(migrateCustomCombo).filter((c): c is CustomCombo => c != null)
+      : null
+    const history = Array.isArray(data.history)
+      ? data.history
+          .map(validateSessionSummary)
+          .filter((h): h is SessionSummary => h != null)
+          .filter((h) => !h.excludeFromStats && !h.isDemo && h.mode !== 'demo')
+      : null
+    const daily =
+      data.dailyDrill && isObject(data.dailyDrill) ? (data.dailyDrill as unknown as DailyDrillState) : null
+
+    if (prefs) savePreferences(prefs)
+    if (favorites) saveFavorites(favorites)
+    if (combos) saveCustomCombos(combos)
+    if (history) saveHistory(history)
+    if (daily) saveDailyDrill(daily)
+
     return { ok: true, message: 'Import successful.' }
   } catch {
     return { ok: false, message: 'Could not parse JSON.' }
