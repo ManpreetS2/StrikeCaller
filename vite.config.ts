@@ -6,8 +6,10 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const rootDir = path.dirname(fileURLToPath(import.meta.url))
+const isPagesBuild = process.env.GITHUB_PAGES === 'true'
 
 export default defineConfig({
+  base: isPagesBuild ? '/strikecaller/' : '/',
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {

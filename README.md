@@ -4,6 +4,15 @@
 
 StrikeCaller is a browser-based Muay Thai training coach that speaks realistic combinations during shadowboxing, bag work, pad work, or solo drills. It adapts timing to each technique, supports orthodox and southpaw stance, and keeps the athlete in control of pace, call style, and round structure.
 
+## Live demo
+
+**[Launch StrikeCaller](https://manpreets2.github.io/strikecaller/)**
+
+Public site: [manpreets2.github.io/strikecaller](https://manpreets2.github.io/strikecaller/)  
+Repository: [github.com/ManpreetS2/strikecaller](https://github.com/ManpreetS2/strikecaller)
+
+No GitHub login is required to use the app.
+
 ## Problem
 
 Most combo timers treat every strike the same. A jab and a rear body kick do not deserve the same pause. Random technique strings also ignore stance, weight transfer, range, and safe exits. StrikeCaller is built so every call is trainable — not just noisy.
@@ -78,9 +87,9 @@ Dark, Light, and System themes with persistence. Dark is a fight-gym charcoal id
 
 ## Privacy
 
-Everything runs in the browser. Preferences, favorites, custom combos, and session history store locally. There is no backend, account system, analytics, or advertising in this MVP.
+Everything runs in the browser. Preferences, favorites, custom combos, and session history store locally on the device. There is no backend, account system, analytics, advertising, or remote sync in this MVP.
 
-## Local setup
+## Local development
 
 ```bash
 npm install
@@ -93,10 +102,43 @@ Other scripts:
 npm run typecheck
 npm test
 npm run build
+npm run build:pages
 npm run preview
 ```
 
-Requirements: Node.js 20+ and a modern browser. Speech uses the Web Speech API when available; captions and tones remain usable when speech is unsupported.
+- `npm run build` — production build with base `/` for local or root hosting
+- `npm run build:pages` — production build with base `/strikecaller/` for GitHub Pages
+
+Requirements: Node.js 20+ (22 LTS recommended) and a modern browser.
+
+## GitHub Pages deployment
+
+The public site is published to GitHub Pages at `/strikecaller/`.
+
+- **CI** (`.github/workflows/ci.yml`) — typecheck, test, and build on pushes and pull requests to `main`
+- **Deploy GitHub Pages** (`.github/workflows/deploy-pages.yml`) — builds with `npm run build:pages` and publishes the `dist` artifact via Actions
+
+Routing uses `HashRouter` so deep links and refresh work on GitHub Pages without server rewrites (for example `/strikecaller/#/train`).
+
+Local Pages build:
+
+```bash
+npm run build:pages
+```
+
+If the Actions deploy workflow is not yet connected, enable Pages under:
+
+Repository Settings → Pages → Build and deployment → Source → GitHub Actions
+
+Until Actions deployment is connected, the repository may also publish from the `gh-pages` branch.
+
+## Supported browsers and feature limits
+
+- Best on current Chrome, Edge, Firefox, and Safari
+- Spoken calls use the Web Speech API when available; captions and tones remain usable when speech is unsupported
+- Round bells and countdown tones use the Web Audio API after a user gesture starts a session
+- Vibration and screen wake lock are optional and device-dependent
+- Voice quality depends on voices installed in the browser/OS
 
 ## Testing
 

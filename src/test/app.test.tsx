@@ -33,11 +33,7 @@ describe('accessibility and UI', () => {
 
   it('theme switch has accessible pressed state', async () => {
     const user = userEvent.setup()
-    render(
-      <AppProvider>
-        <App />
-      </AppProvider>,
-    )
+    render(<App />)
     const light = screen.getByRole('button', { name: /light theme/i })
     await user.click(light)
     expect(light).toHaveAttribute('aria-pressed', 'true')

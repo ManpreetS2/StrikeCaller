@@ -1,4 +1,4 @@
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { HashRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AppProvider, useApp } from './context/AppContext'
 import { AppLayout } from './components/AppLayout'
 import { HomePage } from './pages/HomePage'
@@ -23,7 +23,7 @@ function OnboardingGate({ children }: { children: React.ReactNode }) {
 export default function App() {
   return (
     <AppProvider>
-      <BrowserRouter>
+      <HashRouter>
         <AppLayout>
           <Routes>
             <Route path="/" element={<HomePage />} />
@@ -46,7 +46,7 @@ export default function App() {
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </AppLayout>
-      </BrowserRouter>
+      </HashRouter>
     </AppProvider>
   )
 }
