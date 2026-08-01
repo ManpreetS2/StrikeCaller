@@ -78,22 +78,57 @@ export function validatePreferences(raw: unknown): UserPreferences {
     raw.resumeBehavior === 'restart-combo' || raw.resumeBehavior === 'next-combo'
       ? raw.resumeBehavior
       : DEFAULT_PREFERENCES.resumeBehavior
+  const martialArt = raw.martialArt === 'boxing' || raw.martialArt === 'muay-thai' ? raw.martialArt : 'muay-thai'
 
   const speechRaw = isObject(raw.speech) ? raw.speech : {}
   const musicCompatibility = validateMusicCompatibility(raw.musicCompatibility)
 
+  // Legacy voice/rate/pitch/volume fields are accepted but normalized to safe defaults for runtime.
+  void speechRaw.voiceURI
+  void speechRaw.rate
+  void speechRaw.pitch
+  void speechRaw.volume
+
   return {
     ...DEFAULT_PREFERENCES,
-    ...raw,
     theme,
     stance,
     experience,
     callStyle,
     resumeBehavior,
+    martialArt,
     musicCompatibility,
+    equipment:
+      raw.equipment === 'shadowboxing' ||
+      raw.equipment === 'heavy-bag' ||
+      raw.equipment === 'pads' ||
+      raw.equipment === 'partner' ||
+      raw.equipment === 'open-space' ||
+      raw.equipment === 'limited-space'
+        ? raw.equipment
+        : DEFAULT_PREFERENCES.equipment,
+    pace:
+      raw.pace === 'learn' ||
+      raw.pace === 'slow' ||
+      raw.pace === 'technical' ||
+      raw.pace === 'normal' ||
+      raw.pace === 'fast' ||
+      raw.pace === 'fight' ||
+      raw.pace === 'custom'
+        ? raw.pace
+        : DEFAULT_PREFERENCES.pace,
+    sideTerminology: raw.sideTerminology === 'left-right' ? 'left-right' : 'lead-rear',
+    largeText: Boolean(raw.largeText),
+    customPaceMultiplier:
+      typeof raw.customPaceMultiplier === 'number' ? raw.customPaceMultiplier : DEFAULT_PREFERENCES.customPaceMultiplier,
+    wakeLock: raw.wakeLock !== false,
+    customComboMigrationNoticeShown: Boolean(raw.customComboMigrationNoticeShown),
     speech: {
       ...DEFAULT_PREFERENCES.speech,
-      ...speechRaw,
+      voiceURI: null,
+      rate: 1,
+      pitch: 1,
+      volume: 1,
       callStyle:
         speechRaw.callStyle === 'names' ||
         speechRaw.callStyle === 'numbers' ||
@@ -104,6 +139,17 @@ export function validatePreferences(raw: unknown): UserPreferences {
         typeof speechRaw.musicFriendly === 'boolean'
           ? speechRaw.musicFriendly
           : DEFAULT_PREFERENCES.speech.musicFriendly,
+      captionsEnabled:
+        typeof speechRaw.captionsEnabled === 'boolean'
+          ? speechRaw.captionsEnabled
+          : DEFAULT_PREFERENCES.speech.captionsEnabled,
+      spokenCallsEnabled:
+        typeof speechRaw.spokenCallsEnabled === 'boolean'
+          ? speechRaw.spokenCallsEnabled
+          : DEFAULT_PREFERENCES.speech.spokenCallsEnabled,
+      coachingCuesEnabled: speechRaw.coachingCuesEnabled !== false,
+      countdownEnabled: speechRaw.countdownEnabled !== false,
+      roundCallsEnabled: speechRaw.roundCallsEnabled !== false,
     },
     sound: {
       ...DEFAULT_PREFERENCES.sound,
@@ -116,7 +162,7 @@ export function validatePreferences(raw: unknown): UserPreferences {
     onboardingComplete: Boolean(raw.onboardingComplete),
     includeDefense: raw.includeDefense !== false,
     includeMovement: raw.includeMovement !== false,
-  } as UserPreferences
+  }
 }
 
 export function validateMusicCompatibility(raw: unknown): MusicCompatibilityRecord | null {
@@ -159,29 +205,79 @@ export function saveFavorites(ids: string[]): void {
 export function loadCustomCombos(): CustomCombo[] {
   const raw = readJSON(KEYS.customCombos)
   if (!Array.isArray(raw)) return []
-  return raw.filter((item): item is CustomCombo => {
-    if (!isObject(item)) return false
-    return (
-      typeof item.id === 'string' &&
-      typeof item.title === 'string' &&
-      Array.isArray(item.techniqueIds) &&
-      item.techniqueIds.every((id) => typeof id === 'string')
-    )
-  })
+  return raw
+    .map((item) => migrateCustomCombo(item))
+    .filter((item): item is CustomCombo => item != null)
+}
+
+export function migrateCustomCombo(raw: unknown): CustomCombo | null {
+  if (!isObject(raw)) return null
+  if (typeof raw.id !== 'string' || typeof raw.title !== 'string' || !Array.isArray(raw.techniqueIds)) {
+    return null
+  }
+  const ids = raw.techniqueIds.filter((id): id is string => typeof id === 'string')
+  const migrated = ids.length > 8
+  return {
+    id: raw.id,
+    title: raw.title,
+    techniqueIds: ids.slice(0, 8),
+    createdAt: typeof raw.createdAt === 'number' ? raw.createdAt : Date.now(),
+    updatedAt: typeof raw.updatedAt === 'number' ? raw.updatedAt : Date.now(),
+    favorite: Boolean(raw.favorite),
+    repeatCount: typeof raw.repeatCount === 'number' ? raw.repeatCount : 1,
+    martialArt: raw.martialArt === 'boxing' ? 'boxing' : 'muay-thai',
+    migrated: migrated || Boolean(raw.migrated),
+  }
 }
 
 export function saveCustomCombos(combos: CustomCombo[]): void {
-  writeJSON(KEYS.customCombos, combos)
+  writeJSON(KEYS.customCombos, combos.map((c) => migrateCustomCombo(c)).filter(Boolean))
+}
+
+export function validateSessionSummary(raw: unknown): SessionSummary | null {
+  if (!isObject(raw) || typeof raw.id !== 'string') return null
+  if (typeof raw.startedAt !== 'number') return null
+  const mode = typeof raw.mode === 'string' ? raw.mode : 'coach'
+  const martialArt = raw.martialArt === 'boxing' ? 'boxing' : 'muay-thai'
+  const migrated = raw.martialArt == null
+  return {
+    id: raw.id,
+    startedAt: raw.startedAt,
+    endedAt: typeof raw.endedAt === 'number' ? raw.endedAt : raw.startedAt,
+    martialArt,
+    mode: mode as SessionSummary['mode'],
+    stance: raw.stance === 'southpaw' ? 'southpaw' : 'orthodox',
+    pace: (typeof raw.pace === 'string' ? raw.pace : 'technical') as SessionSummary['pace'],
+    totalTrainingMs: typeof raw.totalTrainingMs === 'number' ? raw.totalTrainingMs : 0,
+    roundsCompleted: typeof raw.roundsCompleted === 'number' ? raw.roundsCompleted : 0,
+    combinationsCompleted: typeof raw.combinationsCompleted === 'number' ? raw.combinationsCompleted : 0,
+    techniquesCalled: typeof raw.techniquesCalled === 'number' ? raw.techniquesCalled : 0,
+    techniqueCounts: isObject(raw.techniqueCounts) ? (raw.techniqueCounts as Record<string, number>) : {},
+    techniqueCategoryCounts: isObject(raw.techniqueCategoryCounts)
+      ? (raw.techniqueCategoryCounts as Record<string, number>)
+      : {},
+    comboIds: Array.isArray(raw.comboIds) ? raw.comboIds.filter((id) => typeof id === 'string') : [],
+    defenseActions: typeof raw.defenseActions === 'number' ? raw.defenseActions : 0,
+    movementActions: typeof raw.movementActions === 'number' ? raw.movementActions : 0,
+    averagePaceLabel: typeof raw.averagePaceLabel === 'string' ? raw.averagePaceLabel : 'technical',
+    dailyDrillCompleted: Boolean(raw.dailyDrillCompleted),
+    cancelled: Boolean(raw.cancelled),
+    favoriteComboIds: Array.isArray(raw.favoriteComboIds)
+      ? raw.favoriteComboIds.filter((id) => typeof id === 'string')
+      : [],
+    usedCustomCombo: Boolean(raw.usedCustomCombo),
+    migrated: migrated || Boolean(raw.migrated),
+  }
 }
 
 export function loadHistory(): SessionSummary[] {
   const raw = readJSON(KEYS.history)
   if (!Array.isArray(raw)) return []
-  return raw.filter((item): item is SessionSummary => isObject(item) && typeof item.id === 'string')
+  return raw.map(validateSessionSummary).filter((item): item is SessionSummary => item != null)
 }
 
 export function saveHistory(history: SessionSummary[]): void {
-  writeJSON(KEYS.history, history.slice(0, 50))
+  writeJSON(KEYS.history, history.slice(0, 200))
 }
 
 export function clearHistory(): void {

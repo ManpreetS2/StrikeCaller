@@ -31,6 +31,7 @@ export function SessionPage() {
     () =>
       state.config ??
       createDefaultWorkout({
+        martialArt: preferences.martialArt,
         stance: preferences.stance,
         callStyle: preferences.callStyle,
         pace: preferences.pace,
@@ -131,7 +132,7 @@ export function SessionPage() {
             preferences.largeText || config.largeText ? 'text-5xl sm:text-6xl' : 'text-4xl sm:text-5xl'
           }`}
         >
-          {snap.caption || '—'}
+          {config.speech.captionsEnabled !== false ? snap.caption || '—' : '·'}
         </p>
         {snap.nextTechniqueLabel && snap.phase === 'work' && (
           <p className="text-sm text-[var(--text-muted)]">Next: {snap.nextTechniqueLabel}</p>

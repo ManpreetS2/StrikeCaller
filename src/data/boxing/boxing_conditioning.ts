@@ -1,0 +1,55 @@
+import { combo } from '../combos/helpers'
+import type { Combo } from '../../types'
+
+export const BOXING_CONDITIONING: Combo[] = [
+  combo({
+    id: 'bx-c01',
+    title: 'One two rhythm',
+    difficulty: 'intermediate',
+    purpose: 'conditioning',
+    techniques: ["jab","cross","jab","cross","jab","cross"],
+    setup: 'Continuous one-twos',
+    tags: ['boxing'],
+    martialArt: 'boxing',
+  }),
+  combo({
+    id: 'bx-c02',
+    title: 'Hook ladder',
+    difficulty: 'intermediate',
+    purpose: 'conditioning',
+    techniques: ["jab","lead-hook","cross","lead-hook","cross"],
+    setup: 'Hook volume',
+    tags: ['boxing'],
+    martialArt: 'boxing',
+  }),
+  combo({
+    id: 'bx-c03',
+    title: 'Body head burst',
+    difficulty: 'intermediate',
+    purpose: 'conditioning',
+    techniques: ["body-jab","cross","body-hook","lead-hook","cross"],
+    setup: 'Level change burst',
+    tags: ['boxing'],
+    martialArt: 'boxing',
+  }),
+  combo({
+    id: 'bx-c04',
+    title: 'Pressure six',
+    difficulty: 'intermediate',
+    purpose: 'conditioning',
+    techniques: ["double-jab","cross","lead-hook","cross","jab","cross"],
+    setup: 'Pressure burst',
+    tags: ['boxing'],
+    martialArt: 'boxing',
+  }),
+  combo({
+    id: 'bx-c05',
+    title: 'Exit volume',
+    difficulty: 'intermediate',
+    purpose: 'conditioning',
+    techniques: ["jab","cross","lead-hook","cross","step-out","jab"],
+    setup: 'Work and reset',
+    tags: ['boxing'],
+    martialArt: 'boxing',
+  }),
+]

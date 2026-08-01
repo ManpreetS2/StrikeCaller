@@ -27,8 +27,8 @@ describe('accessibility and UI', () => {
   it('home screen exposes Quick Start controls', () => {
     renderApp()
     expect(screen.getByRole('heading', { name: /strikecaller/i })).toBeInTheDocument()
-    expect(screen.getAllByRole('button', { name: /quick train/i }).length).toBeGreaterThan(0)
-    expect(screen.getByText(/more martial arts coming soon/i)).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: /quick train|quick boxing/i }).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/coming soon/i).length).toBeGreaterThan(0)
   })
 
   it('theme switch has accessible pressed state', async () => {
@@ -41,7 +41,7 @@ describe('accessibility and UI', () => {
 
   it('spoken calls have visible text region on home caption philosophy', () => {
     renderApp()
-    expect(screen.getByText(/hear the combo/i)).toBeInTheDocument()
+    expect(screen.getByText(/225\+ realistic combinations/i)).toBeInTheDocument()
   })
 })
 
@@ -70,6 +70,8 @@ describe('session engine controls', () => {
           countdownEnabled: false,
           roundCallsEnabled: false,
           musicFriendly: false,
+          captionsEnabled: true,
+          spokenCallsEnabled: true,
         },
         sound: {
           bellsEnabled: false,
@@ -107,6 +109,8 @@ describe('session engine controls', () => {
           countdownEnabled: false,
           roundCallsEnabled: false,
           musicFriendly: false,
+          captionsEnabled: true,
+          spokenCallsEnabled: true,
         },
       }),
     )
@@ -143,6 +147,8 @@ describe('speech engine unsupported fallback', () => {
       countdownEnabled: true,
       roundCallsEnabled: true,
       musicFriendly: true,
+      captionsEnabled: true,
+      spokenCallsEnabled: true,
     }))
     expect(engine.supported).toBe(false)
     await expect(engine.speak('Jab')).resolves.toBeUndefined()

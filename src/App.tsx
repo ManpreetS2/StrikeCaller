@@ -11,6 +11,7 @@ import { BuilderPage } from './pages/BuilderPage'
 import { DailyPage } from './pages/DailyPage'
 import { DemoPage } from './pages/DemoPage'
 import { SettingsPage } from './pages/SettingsPage'
+import { StatsPage } from './pages/StatsPage'
 
 function OnboardingGate({ children }: { children: React.ReactNode }) {
   const { preferences } = useApp()
@@ -42,6 +43,7 @@ export default function App() {
             <Route path="/demo" element={<DemoPage />} />
             <Route path="/session" element={<SessionPage />} />
             <Route path="/summary" element={<SummaryPage />} />
+            <Route path="/stats" element={<StatsPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

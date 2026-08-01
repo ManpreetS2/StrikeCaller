@@ -1,7 +1,7 @@
 import { getTechnique } from '../data/techniques'
 import type { Stance, Technique, ValidationIssue, ValidationResult } from '../types'
 
-const MAX_COMBO_LENGTH = 8
+export const MAX_COMBO_LENGTH = 8
 const MAX_HEAVY_IN_A_ROW = 2
 
 const RANGE_ORDER: Record<Technique['range'], number> = {
@@ -34,6 +34,14 @@ export function mirrorMovementId(techniqueId: string, stance: Stance): string {
     'pivot-right': 'pivot-left',
     'angle-out-left': 'angle-out-right',
     'angle-out-right': 'angle-out-left',
+    'circle-left': 'circle-right',
+    'circle-right': 'circle-left',
+    'roll-left': 'roll-right',
+    'roll-right': 'roll-left',
+    'pivot-lead': 'pivot-rear',
+    'pivot-rear': 'pivot-lead',
+    'slip-outside': 'slip-inside',
+    'slip-inside': 'slip-outside',
   }
   return map[techniqueId] ?? techniqueId
 }

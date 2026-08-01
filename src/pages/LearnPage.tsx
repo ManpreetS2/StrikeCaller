@@ -13,12 +13,14 @@ export function LearnPage() {
   const combos = useMemo(
     () =>
       filterCombos({
+        martialArt: preferences.martialArt,
         difficulty: preferences.experience,
         includeDefense: preferences.includeDefense,
         includeMovement: preferences.includeMovement,
         includeClinch: false,
         includeElbows: false,
         includeHeadKicks: false,
+        includeKnees: preferences.martialArt === 'muay-thai',
       }),
     [preferences],
   )
@@ -35,6 +37,7 @@ export function LearnPage() {
 
   const practice = () => {
     const config = createDefaultWorkout({
+      martialArt: preferences.martialArt,
       mode: 'learn',
       stance: preferences.stance,
       difficulty: preferences.experience,

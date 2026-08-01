@@ -91,6 +91,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
   )
 
   useEffect(() => {
+    // Persist migrated history / custom combos so legacy records keep repaired shape.
+    saveHistory(history)
+    saveCustomCombos(customCombos)
+    // intentionally once after initial load
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
     const theme = resolveTheme(preferences.theme)
     setResolvedTheme(theme)
     document.documentElement.dataset.theme = theme

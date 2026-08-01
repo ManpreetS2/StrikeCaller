@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import { SessionEngine } from '../engines/sessionEngine'
 import { createDefaultWorkout, DEFAULT_PREFERENCES, DEFAULT_SPEECH } from '../data/defaults'
-import { getQuickStartPreset, QUICK_START_PRESETS } from '../data/quickStart'
+import { getQuickStartPreset, getQuickStartPresets, QUICK_START_PRESETS } from '../data/quickStart'
 import {
   isAudioSessionSupported,
   prepareCoachingAudioSession,
@@ -20,6 +20,8 @@ function silentSpeech(overrides: Partial<typeof DEFAULT_SPEECH> = {}) {
     countdownEnabled: false,
     roundCallsEnabled: false,
     musicFriendly: false,
+    captionsEnabled: true,
+    spokenCallsEnabled: true,
     ...overrides,
   }
 }
@@ -61,6 +63,7 @@ function jabCrossCombo(id = 'test-jab-cross'): Combo {
     coachingNotes: 'Test',
     tags: [],
     equipment: ['shadowboxing', 'heavy-bag'],
+    martialArt: 'muay-thai',
   }
 }
 
@@ -181,7 +184,8 @@ describe('Quick Start presets', () => {
     expect(config.difficulty).toBe('advanced')
     expect(config.callStyle).toBe('numbers')
     expect(config.pace).toBe('fight')
-    expect(config.speech.voiceURI).toBe('test-voice')
+    // Legacy voiceURI may exist on prefs; runtime speech uses fixed defaults.
+    expect(config.speech.callStyle).toBe('numbers')
     expect(config.resumeBehavior).toBe('next-combo')
     expect(config.sessionDurationSec).toBe(300)
   })
@@ -202,6 +206,14 @@ describe('Quick Start presets', () => {
       'Shadowboxing',
       'Conditioning',
       'Daily Drill',
+    ])
+    expect(getQuickStartPresets('boxing').map((p) => p.title)).toEqual([
+      'Quick Boxing',
+      'Boxing Bag',
+      'Shadowboxing',
+      'Defense & Counters',
+      'Boxing Conditioning',
+      'Daily Boxing Drill',
     ])
   })
 })

@@ -34,9 +34,10 @@ describe('workout surfaces', () => {
 
   it('renders Train Mode choices including Coach and Round and Reaction', () => {
     wrap(<TrainPage />)
-    expect(screen.getByText(/coach mode/i)).toBeInTheDocument()
-    expect(screen.getByText(/round mode/i)).toBeInTheDocument()
-    expect(screen.getByText(/reaction mode/i)).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /customize workout/i })).toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: /coach mode/i })).toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: /round mode/i })).toBeInTheDocument()
+    expect(screen.getByRole('radio', { name: /reaction mode/i })).toBeInTheDocument()
   })
 
   it('renders Daily Drill', () => {

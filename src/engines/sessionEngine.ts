@@ -7,6 +7,7 @@ import { audioEngine } from './audioEngine'
 import type {
   ActiveTechniqueState,
   Combo,
+  MartialArt,
   ResumeBehavior,
   SessionPhase,
   SessionSummary,
@@ -68,6 +69,8 @@ export class SessionEngine {
   /** Invalidates in-flight async playback loops on pause/stop/skip. */
   private runToken = 0
   private resumeInFlight = false
+  private completedComboIds: string[] = []
+  private techniqueCategoryCounts: Record<string, number> = {}
 
   constructor(config: WorkoutConfig) {
     this.config = config
@@ -139,8 +142,12 @@ export class SessionEngine {
     this.movementActions = 0
     this.events = []
     this.recentComboIds = []
+    this.completedComboIds = []
+    this.techniqueCategoryCounts = {}
     this.round = 1
-    this.comboQueue = options?.comboQueue ?? (this.demoMode ? getDemoCombos(this.config.stance) : [])
+    this.comboQueue =
+      options?.comboQueue ??
+      (this.demoMode ? getDemoCombos(this.config.stance, this.config.martialArt ?? 'muay-thai') : [])
     await this.requestWakeLock()
     const token = this.runToken
     await this.runCountdown(token)
@@ -311,6 +318,7 @@ export class SessionEngine {
     const step = this.combo.techniques[this.stepIndex]
     if (!step) {
       this.combinationsCompleted += 1
+      if (this.combo) this.completedComboIds.push(this.combo.id)
       const pause = this.config.timingMultipliers.pauseBetweenCombosMs
       await this.wait(pause)
       if (this.cancelled || token !== this.runToken || this.phase !== 'work') return
@@ -342,6 +350,8 @@ export class SessionEngine {
     this.setCaption(spoken)
     this.techniquesCalled += 1
     this.techniqueCounts[technique.id] = (this.techniqueCounts[technique.id] ?? 0) + 1
+    this.techniqueCategoryCounts[technique.category] =
+      (this.techniqueCategoryCounts[technique.category] ?? 0) + 1
     if (technique.category === 'defense' || technique.category === 'counter') this.defenseActions += 1
     if (technique.category === 'movement') this.movementActions += 1
     this.events.push({ techniqueId: technique.id, calledAt: Date.now(), spokenAs: spoken })
@@ -499,6 +509,7 @@ export class SessionEngine {
       id: `session-${this.startedAt}`,
       startedAt: this.startedAt,
       endedAt,
+      martialArt: (this.config.martialArt ?? 'muay-thai') as MartialArt,
       mode: this.config.mode,
       stance: this.config.stance,
       pace: this.config.pace,
@@ -507,12 +518,15 @@ export class SessionEngine {
       combinationsCompleted: this.combinationsCompleted,
       techniquesCalled: this.techniquesCalled,
       techniqueCounts: { ...this.techniqueCounts },
+      techniqueCategoryCounts: { ...this.techniqueCategoryCounts },
+      comboIds: [...this.completedComboIds],
       defenseActions: this.defenseActions,
       movementActions: this.movementActions,
       averagePaceLabel: this.config.pace,
       dailyDrillCompleted: this.config.mode === 'daily',
-      cancelled: this.phase === 'summary' && this.caption === '',
+      cancelled: false,
       favoriteComboIds: [],
+      usedCustomCombo: Boolean(this.config.customComboId),
     }
   }
 

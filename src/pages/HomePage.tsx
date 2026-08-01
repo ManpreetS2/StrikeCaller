@@ -11,47 +11,56 @@ import {
   Wind,
   Flame,
   SlidersHorizontal,
+  Shield,
 } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { SafetyNotice } from '../components/SafetyNotice'
 import { getComboStats, CURATED_COMBOS, COMBO_MAP } from '../data/combos'
-import { QUICK_START_PRESETS, type QuickStartId } from '../data/quickStart'
+import { getQuickStartPresets, type QuickStartId } from '../data/quickStart'
+import { computeStatsPreview } from '../engines/statsEngine'
+import { APP_VERSION } from '../data/defaults'
+import type { MartialArt } from '../types'
 
-const COMING_SOON = [
-  'Boxing',
-  'Kickboxing',
-  'MMA striking',
-  'Karate',
-  'Taekwondo',
-] as const
+const COMING_SOON = ['Kickboxing', 'MMA Striking', 'Karate', 'Taekwondo'] as const
 
-const PRESET_ICONS: Record<QuickStartId, typeof Play> = {
+const PRESET_ICONS: Record<string, typeof Play> = {
   'quick-train': Timer,
   'heavy-bag': Dumbbell,
   shadowboxing: Wind,
   conditioning: Flame,
   'daily-drill': CalendarDays,
+  'quick-boxing': Timer,
+  'boxing-bag': Dumbbell,
+  'boxing-shadow': Wind,
+  'boxing-defense': Shield,
+  'boxing-conditioning': Flame,
+  'boxing-daily': CalendarDays,
 }
 
 export function HomePage() {
   const navigate = useNavigate()
-  const { preferences, history, favorites } = useApp()
+  const { preferences, updatePreferences, history, favorites } = useApp()
   const stats = getComboStats()
+  const preview = computeStatsPreview(history)
   const recent = history[0]
   const favoriteCombo = favorites[0] ? COMBO_MAP[favorites[0]] : CURATED_COMBOS[5]
+  const presets = getQuickStartPresets(preferences.martialArt)
+
+  const setSport = (art: MartialArt) => {
+    updatePreferences({ martialArt: art })
+  }
 
   const startQuick = (id: QuickStartId) => {
     if (!preferences.onboardingComplete) {
       navigate('/onboarding', { state: { after: 'quick', quickId: id } })
       return
     }
-    const preset = QUICK_START_PRESETS.find((p) => p.id === id)!
+    const preset = presets.find((p) => p.id === id) ?? getQuickStartPresets('muay-thai')[0]!
     if (preset.routeToDaily) {
       navigate('/daily')
       return
     }
-    const config = preset.build(preferences)
-    navigate('/session', { state: { config } })
+    navigate('/session', { state: { config: preset.build(preferences) } })
   }
 
   return (
@@ -67,19 +76,26 @@ export function HomePage() {
         />
         <div className="relative max-w-2xl">
           <p className="mb-3 text-sm font-semibold uppercase tracking-[0.22em] text-[var(--accent-text)]">
-            Muay Thai available now
+            v{APP_VERSION} · Muay Thai & Boxing
           </p>
           <h1 className="display text-6xl sm:text-7xl md:text-8xl">StrikeCaller</h1>
           <p className="mt-4 max-w-xl text-lg text-[var(--text-muted)] sm:text-xl">
-            Hear the combo. Set the pace. Build the reaction.
+            225+ realistic combinations across Muay Thai and Boxing.
           </p>
           <p className="mt-3 max-w-xl text-sm text-[var(--text-dim)]">
-            One press to train. Your stance, call style, and pace come with you.
+            Spoken combinations, adaptive pacing, timed rounds, and local training stats. Free. No account. No
+            download.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
-            <button type="button" className="btn btn-primary" onClick={() => startQuick('quick-train')}>
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() =>
+                startQuick(preferences.martialArt === 'boxing' ? 'quick-boxing' : 'quick-train')
+              }
+            >
               <Play size={18} aria-hidden />
-              Quick Train
+              {preferences.martialArt === 'boxing' ? 'Quick Boxing' : 'Quick Train'}
             </button>
             <Link to="/demo" className="btn">
               <Sparkles size={18} aria-hidden />
@@ -93,18 +109,70 @@ export function HomePage() {
         </div>
       </section>
 
-      <section aria-labelledby="quick-start-heading">
-        <div className="mb-4 flex flex-wrap items-end justify-between gap-2">
-          <div>
-            <h2 id="quick-start-heading" className="display text-4xl">
-              Quick Start
-            </h2>
-            <p className="muted text-sm">One press. Uses your saved stance, experience, calls, voice, and pace.</p>
-          </div>
+      <section className="grid gap-3 sm:grid-cols-3" aria-label="Stats preview">
+        <PreviewStat label="Sessions this week" value={String(preview.sessionsThisWeek)} />
+        <PreviewStat label="Minutes trained" value={String(preview.minutesThisWeek)} />
+        <PreviewStat label="Current streak" value={`${preview.currentStreak}d`} />
+      </section>
+
+      <section aria-labelledby="sports-heading">
+        <h2 id="sports-heading" className="display text-4xl">
+          Martial arts
+        </h2>
+        <p className="muted mt-1 text-sm">Select a sport to load matching Quick Starts.</p>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <button
+            type="button"
+            className={`panel p-4 text-left ${preferences.martialArt === 'muay-thai' ? 'border-[var(--accent)]' : ''}`}
+            aria-pressed={preferences.martialArt === 'muay-thai'}
+            onClick={() => setSport('muay-thai')}
+          >
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--accent-text)]">Available</p>
+            <h3 className="mt-2 text-2xl font-semibold">Muay Thai</h3>
+            <p className="mt-1 text-sm text-[var(--text-muted)]">125 curated combos</p>
+            {preferences.martialArt === 'muay-thai' && (
+              <p className="mt-2 text-xs font-semibold text-[var(--accent-text)]">Selected</p>
+            )}
+          </button>
+          <button
+            type="button"
+            className={`panel p-4 text-left ${preferences.martialArt === 'boxing' ? 'border-[var(--accent)]' : ''}`}
+            aria-pressed={preferences.martialArt === 'boxing'}
+            onClick={() => setSport('boxing')}
+          >
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--accent-text)]">New in v1.1</p>
+            <h3 className="mt-2 text-2xl font-semibold">Boxing</h3>
+            <p className="mt-1 text-sm text-[var(--text-muted)]">100+ curated combos</p>
+            {preferences.martialArt === 'boxing' && (
+              <p className="mt-2 text-xs font-semibold text-[var(--accent-text)]">Selected</p>
+            )}
+          </button>
+          {COMING_SOON.map((name) => (
+            <div key={name} className="panel flex items-start justify-between gap-3 p-4 opacity-70" aria-disabled="true">
+              <div>
+                <h3 className="text-xl font-semibold">{name}</h3>
+                <p className="mt-1 text-sm text-[var(--text-dim)]">Coming soon</p>
+              </div>
+              <Lock size={16} className="mt-1 text-[var(--text-dim)]" aria-label="Coming soon" />
+            </div>
+          ))}
         </div>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {QUICK_START_PRESETS.map((preset) => {
-            const Icon = PRESET_ICONS[preset.id]
+        <p className="mt-3 text-sm text-[var(--text-dim)]">
+          {stats.total} built-in combinations · StrikeCaller tracks training activity, not technique quality or
+          accuracy.
+        </p>
+      </section>
+
+      <section aria-labelledby="quick-start-heading">
+        <h2 id="quick-start-heading" className="display text-4xl">
+          Quick Start
+        </h2>
+        <p className="muted text-sm">
+          One press. Uses your saved sport, stance, experience, calls, and pace.
+        </p>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {presets.map((preset) => {
+            const Icon = PRESET_ICONS[preset.id] ?? Play
             return (
               <button
                 key={preset.id}
@@ -125,29 +193,26 @@ export function HomePage() {
               <SlidersHorizontal size={20} aria-hidden />
             </div>
             <h3 className="text-xl font-semibold">Customize Workout</h3>
-            <p className="mt-1 text-sm text-[var(--text-muted)]">
-              Full mode, rounds, pace, and technique filters.
-            </p>
+            <p className="mt-1 text-sm text-[var(--text-muted)]">Full mode, rounds, pace, and technique filters.</p>
           </Link>
         </div>
       </section>
 
-      <section aria-labelledby="actions-heading" className="grid gap-4 md:grid-cols-2">
-        <h2 id="actions-heading" className="sr-only">
-          More actions
-        </h2>
-        <ActionCard
-          to="/builder"
-          title="Build Custom Combo"
-          body="Tap techniques into a validated sequence and save it locally."
-          icon={<Wrench size={18} aria-hidden />}
-        />
-        <ActionCard
-          to="/demo"
-          title="Guided Demo"
-          body="A 60-second recruiter-friendly round using the real engines."
-          icon={<Sparkles size={18} aria-hidden />}
-        />
+      <section className="grid gap-4 md:grid-cols-2">
+        <Link to="/builder" className="panel block p-5 transition hover:border-[var(--accent)]">
+          <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-[var(--accent-soft)] text-[var(--accent-text)]">
+            <Wrench size={18} aria-hidden />
+          </div>
+          <h3 className="text-lg font-semibold">Build Custom Combo</h3>
+          <p className="mt-1 text-sm text-[var(--text-muted)]">Up to eight validated techniques.</p>
+        </Link>
+        <Link to="/stats" className="panel block p-5 transition hover:border-[var(--accent)]">
+          <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-[var(--accent-soft)] text-[var(--accent-text)]">
+            <Sparkles size={18} aria-hidden />
+          </div>
+          <h3 className="text-lg font-semibold">Training Stats</h3>
+          <p className="mt-1 text-sm text-[var(--text-muted)]">Local streaks, records, and milestones.</p>
+        </Link>
       </section>
 
       <section className="grid gap-4 lg:grid-cols-2">
@@ -156,16 +221,15 @@ export function HomePage() {
           {recent ? (
             <div className="space-y-1 text-sm text-[var(--text-muted)]">
               <p>
-                <span className="capitalize text-[var(--text)]">{recent.mode}</span> · {recent.stance} ·{' '}
+                <span className="capitalize text-[var(--text)]">{recent.martialArt}</span> · {recent.mode} ·{' '}
                 {Math.round(recent.totalTrainingMs / 1000)}s work
-              </p>
-              <p>
-                {recent.combinationsCompleted} combos · {recent.techniquesCalled} techniques called
               </p>
               <button
                 type="button"
                 className="inline-flex items-center gap-1 text-[var(--accent-text)]"
-                onClick={() => startQuick('quick-train')}
+                onClick={() =>
+                  startQuick(preferences.martialArt === 'boxing' ? 'quick-boxing' : 'quick-train')
+                }
               >
                 Train again <ArrowRight size={14} aria-hidden />
               </button>
@@ -177,47 +241,10 @@ export function HomePage() {
         <div className="panel p-5">
           <h2 className="mb-2 text-xl font-semibold">Favorite combo</h2>
           {favoriteCombo ? (
-            <div className="space-y-1 text-sm text-[var(--text-muted)]">
-              <p className="text-[var(--text)]">{favoriteCombo.title}</p>
-              <p>{favoriteCombo.techniques.map((t) => t.techniqueId.replace(/-/g, ' ')).join(' → ')}</p>
-            </div>
+            <p className="text-sm text-[var(--text)]">{favoriteCombo.title}</p>
           ) : (
             <p className="text-sm text-[var(--text-muted)]">Star combos during training to pin them here.</p>
           )}
-        </div>
-      </section>
-
-      <section aria-labelledby="arts-heading">
-        <div className="mb-4 flex flex-wrap items-end justify-between gap-2">
-          <div>
-            <h2 id="arts-heading" className="display text-4xl">
-              Martial arts
-            </h2>
-            <p className="muted text-sm">Muay Thai is live. More martial arts coming soon.</p>
-          </div>
-          <span className="chip">{stats.total} curated combos</span>
-        </div>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <div className="panel border-[var(--accent)] p-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--accent-text)]">Available now</p>
-            <h3 className="mt-2 text-2xl font-semibold">Muay Thai</h3>
-            <p className="mt-1 text-sm text-[var(--text-muted)]">
-              Punches, kicks, teeps, knees, elbows, defense, counters, movement, and clinch options.
-            </p>
-          </div>
-          {COMING_SOON.map((name) => (
-            <div
-              key={name}
-              className="panel flex items-start justify-between gap-3 p-4 opacity-70"
-              aria-disabled="true"
-            >
-              <div>
-                <h3 className="text-xl font-semibold">{name}</h3>
-                <p className="mt-1 text-sm text-[var(--text-dim)]">Coming soon</p>
-              </div>
-              <Lock size={16} className="mt-1 text-[var(--text-dim)]" aria-label="Coming soon" />
-            </div>
-          ))}
         </div>
       </section>
 
@@ -226,24 +253,11 @@ export function HomePage() {
   )
 }
 
-function ActionCard({
-  to,
-  title,
-  body,
-  icon,
-}: {
-  to: string
-  title: string
-  body: string
-  icon: React.ReactNode
-}) {
+function PreviewStat({ label, value }: { label: string; value: string }) {
   return (
-    <Link to={to} className="panel block p-5 transition hover:border-[var(--accent)]">
-      <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-[var(--accent-soft)] text-[var(--accent-text)]">
-        {icon}
-      </div>
-      <h3 className="text-lg font-semibold">{title}</h3>
-      <p className="mt-1 text-sm text-[var(--text-muted)]">{body}</p>
-    </Link>
+    <div className="panel px-4 py-3">
+      <p className="text-xs uppercase tracking-[0.14em] text-[var(--text-dim)]">{label}</p>
+      <p className="mt-1 text-xl font-semibold">{value}</p>
+    </div>
   )
 }

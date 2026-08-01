@@ -16,6 +16,7 @@ export function DemoPage() {
     })
 
     const config = createDefaultWorkout({
+      martialArt: preferences.martialArt,
       mode: 'demo',
       stance: 'orthodox',
       difficulty: 'beginner',

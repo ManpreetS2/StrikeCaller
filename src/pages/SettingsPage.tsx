@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useApp } from '../context/AppContext'
 import { SafetyNotice } from '../components/SafetyNotice'
 import { createSpeechEngine } from '../engines/speechEngine'
 import { isAudioSessionSupported, prepareCoachingAudioSession } from '../engines/audioSession'
 import { DEFAULT_TIMING_MULTIPLIERS } from '../engines/timingEngine'
-import type { CallStyle, MusicCompatibilityResult, SideTerminology, Stance } from '../types'
+import type { CallStyle, MartialArt, MusicCompatibilityResult, SideTerminology, Stance } from '../types'
 
 const COMPAT_OPTIONS: { id: MusicCompatibilityResult; label: string }[] = [
   { id: 'music-lowered', label: 'Music lowered' },
@@ -24,18 +24,7 @@ export function SettingsPage() {
     importData,
     history,
   } = useApp()
-  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([])
   const [importMessage, setImportMessage] = useState('')
-  const speech = createSpeechEngine(() => preferences.speech)
-
-  useEffect(() => {
-    const load = () => setVoices(speech.getVoices())
-    load()
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-      window.speechSynthesis.addEventListener('voiceschanged', load)
-      return () => window.speechSynthesis.removeEventListener('voiceschanged', load)
-    }
-  }, [speech])
 
   return (
     <div className="space-y-6">
@@ -47,6 +36,16 @@ export function SettingsPage() {
       </header>
 
       <section className="panel grid gap-4 p-5 md:grid-cols-2" aria-label="Training preferences">
+        <Field label="Martial art">
+          <select
+            value={preferences.martialArt}
+            aria-label="Default martial art"
+            onChange={(e) => updatePreferences({ martialArt: e.target.value as MartialArt })}
+          >
+            <option value="muay-thai">Muay Thai</option>
+            <option value="boxing">Boxing</option>
+          </select>
+        </Field>
         <Field label="Stance">
           <select
             value={preferences.stance}
@@ -112,6 +111,70 @@ export function SettingsPage() {
         </Field>
       </section>
 
+      <section className="panel space-y-4 p-5" aria-label="Audio and feedback">
+        <h2 className="text-xl font-semibold">Audio & feedback</h2>
+        <p className="text-sm text-[var(--text-muted)]">
+          Spoken combo calls use the browser’s default English voice with a fixed clear rate. Calling style
+          (Names / Numbers / Hybrid) still applies.
+        </p>
+        <label className="flex items-center gap-3">
+          <input
+            type="checkbox"
+            checked={preferences.speech.spokenCallsEnabled !== false}
+            onChange={(e) =>
+              updatePreferences({
+                speech: { ...preferences.speech, spokenCallsEnabled: e.target.checked },
+              })
+            }
+          />
+          Spoken calls enabled
+        </label>
+        <label className="flex items-center gap-3">
+          <input
+            type="checkbox"
+            checked={preferences.speech.captionsEnabled !== false}
+            onChange={(e) =>
+              updatePreferences({
+                speech: { ...preferences.speech, captionsEnabled: e.target.checked },
+              })
+            }
+          />
+          Captions enabled
+        </label>
+        <label className="flex items-center gap-3">
+          <input
+            type="checkbox"
+            checked={preferences.sound.bellsEnabled}
+            onChange={(e) =>
+              updatePreferences({ sound: { ...preferences.sound, bellsEnabled: e.target.checked } })
+            }
+          />
+          Round bells
+        </label>
+        <label className="flex items-center gap-3">
+          <input
+            type="checkbox"
+            checked={preferences.sound.tonesEnabled}
+            onChange={(e) =>
+              updatePreferences({ sound: { ...preferences.sound, tonesEnabled: e.target.checked } })
+            }
+          />
+          Countdown tones
+        </label>
+        <label className="flex items-center gap-3">
+          <input
+            type="checkbox"
+            checked={preferences.sound.vibrationEnabled}
+            onChange={(e) =>
+              updatePreferences({
+                sound: { ...preferences.sound, vibrationEnabled: e.target.checked },
+              })
+            }
+          />
+          Vibration (supported devices)
+        </label>
+      </section>
+
       <section className="panel space-y-4 p-5" aria-label="Music-friendly audio">
         <h2 className="text-xl font-semibold">Music-friendly voice calls</h2>
         <p className="text-sm text-[var(--text-muted)]">
@@ -138,83 +201,6 @@ export function SettingsPage() {
             : 'not available — captions and normal speech still work'}
         </p>
         <MusicCompatibilityTest />
-      </section>
-
-      <section className="panel grid gap-4 p-5 md:grid-cols-2" aria-label="Voice settings">
-        <h2 className="md:col-span-2 text-xl font-semibold">Voice</h2>
-        {!speech.supported && (
-          <p className="md:col-span-2 text-sm text-[var(--warning)]" role="status">
-            Web Speech API is not supported here. Captions and tones remain available.
-          </p>
-        )}
-        <Field label="Voice">
-          <select
-            value={preferences.speech.voiceURI ?? ''}
-            aria-label="Speech voice"
-            onChange={(e) =>
-              updatePreferences({
-                speech: { ...preferences.speech, voiceURI: e.target.value || null },
-              })
-            }
-          >
-            <option value="">Browser default</option>
-            {voices.map((v) => (
-              <option key={v.voiceURI} value={v.voiceURI}>
-                {v.name} ({v.lang})
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label={`Speech rate (${preferences.speech.rate.toFixed(2)})`}>
-          <input
-            type="range"
-            min={0.7}
-            max={1.4}
-            step={0.05}
-            value={preferences.speech.rate}
-            aria-label="Speech rate"
-            onChange={(e) =>
-              updatePreferences({
-                speech: { ...preferences.speech, rate: Number(e.target.value) },
-              })
-            }
-          />
-        </Field>
-        <Field label={`Pitch (${preferences.speech.pitch.toFixed(2)})`}>
-          <input
-            type="range"
-            min={0.7}
-            max={1.4}
-            step={0.05}
-            value={preferences.speech.pitch}
-            aria-label="Speech pitch"
-            onChange={(e) =>
-              updatePreferences({
-                speech: { ...preferences.speech, pitch: Number(e.target.value) },
-              })
-            }
-          />
-        </Field>
-        <Field label={`Volume (${preferences.speech.volume.toFixed(2)})`}>
-          <input
-            type="range"
-            min={0}
-            max={1}
-            step={0.05}
-            value={preferences.speech.volume}
-            aria-label="Speech volume"
-            onChange={(e) =>
-              updatePreferences({
-                speech: { ...preferences.speech, volume: Number(e.target.value) },
-              })
-            }
-          />
-        </Field>
-        <div className="md:col-span-2">
-          <button type="button" className="btn" onClick={() => void speech.preview()}>
-            Preview voice
-          </button>
-        </div>
       </section>
 
       <section className="panel grid gap-4 p-5 md:grid-cols-2" aria-label="Timing multipliers">
@@ -256,42 +242,6 @@ export function SettingsPage() {
         >
           Reset timing multipliers
         </button>
-      </section>
-
-      <section className="panel space-y-3 p-5" aria-label="Sound">
-        <h2 className="text-xl font-semibold">Sound</h2>
-        <label className="flex items-center gap-3">
-          <input
-            type="checkbox"
-            checked={preferences.sound.bellsEnabled}
-            onChange={(e) =>
-              updatePreferences({ sound: { ...preferences.sound, bellsEnabled: e.target.checked } })
-            }
-          />
-          Round bells
-        </label>
-        <label className="flex items-center gap-3">
-          <input
-            type="checkbox"
-            checked={preferences.sound.tonesEnabled}
-            onChange={(e) =>
-              updatePreferences({ sound: { ...preferences.sound, tonesEnabled: e.target.checked } })
-            }
-          />
-          Countdown tones
-        </label>
-        <label className="flex items-center gap-3">
-          <input
-            type="checkbox"
-            checked={preferences.sound.vibrationEnabled}
-            onChange={(e) =>
-              updatePreferences({
-                sound: { ...preferences.sound, vibrationEnabled: e.target.checked },
-              })
-            }
-          />
-          Vibration (supported devices)
-        </label>
       </section>
 
       <section className="panel space-y-3 p-5" aria-label="Data">

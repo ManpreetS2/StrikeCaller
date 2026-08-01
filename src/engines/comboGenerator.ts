@@ -13,6 +13,7 @@ import type {
 import { combo as buildCombo } from '../data/combos/helpers'
 
 export interface GeneratorOptions {
+  martialArt?: import('../types').MartialArt
   difficulty: Difficulty
   stance: Stance
   mode: TrainingMode
@@ -47,6 +48,7 @@ function pick<T>(list: T[], rand: () => number): T | undefined {
 
 export function selectCuratedCombos(options: GeneratorOptions): Combo[] {
   const pool = filterCombos({
+    martialArt: options.martialArt,
     difficulty: options.difficulty,
     mode: options.mode,
     equipment: options.equipment,
@@ -62,6 +64,7 @@ export function selectCuratedCombos(options: GeneratorOptions): Combo[] {
   // Also allow adjacent difficulties for variety
   if (pool.length < 5) {
     return filterCombos({
+      martialArt: options.martialArt,
       mode: options.mode,
       equipment: options.equipment,
       includeHeadKicks: options.includeHeadKicks,
@@ -80,6 +83,7 @@ export function generateRuleBasedCombo(options: GeneratorOptions, rand = Math.ra
     Math.floor(rand() * Math.max(1, options.comboLength.max - options.comboLength.min + 1))
 
   const allowed = TECHNIQUES.filter((t) => {
+    if (options.martialArt && !t.martialArts.includes(options.martialArt)) return false
     const categoryAllowed =
       options.categories.includes(t.category) ||
       t.category === 'punch' ||
@@ -222,6 +226,7 @@ export function nextCombo(
 
 export function optionsFromWorkout(config: WorkoutConfig): GeneratorOptions {
   return {
+    martialArt: config.martialArt,
     difficulty: config.difficulty,
     stance: config.stance,
     mode: config.mode,
@@ -240,9 +245,14 @@ export function optionsFromWorkout(config: WorkoutConfig): GeneratorOptions {
 }
 
 export const DEMO_COMBO_IDS = ['beg-02', 'beg-06', 'int-04', 'mov-01', 'int-03'] as const
+export const BOXING_DEMO_COMBO_IDS = ['bx-b01', 'bx-b03', 'bx-d03', 'bx-m02', 'bx-i06'] as const
 
-export function getDemoCombos(stance: Stance = 'orthodox'): Combo[] {
-  return DEMO_COMBO_IDS.map((id) => {
+export function getDemoCombos(
+  stance: Stance = 'orthodox',
+  martialArt: import('../types').MartialArt = 'muay-thai',
+): Combo[] {
+  const ids = martialArt === 'boxing' ? BOXING_DEMO_COMBO_IDS : DEMO_COMBO_IDS
+  return ids.map((id) => {
     const base = CURATED_COMBOS.find((c) => c.id === id)!
     return {
       ...base,

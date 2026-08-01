@@ -1,12 +1,12 @@
 import { getTechnique } from '../data/techniques'
 import type { CallStyle, SideTerminology, SpeechSettings, Stance, Technique } from '../types'
 import { prepareCoachingAudioSession, resetAudioSession } from './audioSession'
+import { pickEnglishVoice, RUNTIME_SPEECH } from './speechDefaults'
 
 export interface SpeechEngine {
   supported: boolean
   speak: (text: string) => Promise<void>
   cancel: () => void
-  /** Always cancels — never leave speechSynthesis in a paused state. */
   hardReset: () => void
   getVoices: () => SpeechSynthesisVoice[]
   preview: (voiceURI?: string | null) => Promise<void>
@@ -22,32 +22,43 @@ function leftRightLabel(technique: Technique, stance: Stance): string {
   return technique.shortCall.replace(/Rear/i, leadIsLeft ? 'Right' : 'Left')
 }
 
+function isNumberablePunch(technique: Technique): boolean {
+  if (technique.category !== 'punch' || technique.numberCall == null) return false
+  if (technique.id.startsWith('body')) return false
+  if (technique.id.includes('overhand')) return false
+  if (technique.id === 'shovel-hook') return false
+  return true
+}
+
+const NUMBER_WORDS = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six']
+
 export function formatTechniqueCall(
   technique: Technique,
   callStyle: CallStyle,
-  options: { stance?: Stance; terminology?: SideTerminology; hybridPreferNumber?: boolean } = {},
+  options: { stance?: Stance; terminology?: SideTerminology } = {},
 ): string {
   const stance = options.stance ?? 'orthodox'
   const terminology = options.terminology ?? 'lead-rear'
-
   const name =
     terminology === 'left-right' ? leftRightLabel(technique, stance) : technique.shortCall
 
   if (callStyle === 'names') return name
 
+  if (technique.id === 'double-jab') {
+    return callStyle === 'numbers' ? 'One, one' : 'One, one'
+  }
+  if (technique.id === 'triple-jab') {
+    return 'One, one, one'
+  }
+
   if (callStyle === 'numbers') {
-    if (technique.numberCall != null && technique.category === 'punch' && !technique.id.startsWith('body') && technique.id !== 'overhand' && technique.id !== 'double-jab') {
-      return String(technique.numberCall)
-    }
-    if (technique.id === 'double-jab') return 'One, one'
+    if (isNumberablePunch(technique)) return String(technique.numberCall)
     return name
   }
 
   // hybrid
-  if (technique.numberCall != null && technique.category === 'punch' && !technique.id.startsWith('body') && technique.id !== 'overhand') {
-    if (technique.id === 'double-jab') return 'One, one'
-    const numberWords = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six']
-    return numberWords[technique.numberCall] ?? name
+  if (isNumberablePunch(technique)) {
+    return NUMBER_WORDS[technique.numberCall!] ?? name
   }
   return name
 }
@@ -75,7 +86,6 @@ export function createSpeechEngine(getSettings: () => SpeechSettings): SpeechEng
     if (!supported) return
     generation += 1
     try {
-      // If synthesis was left paused, resume then cancel clears the stuck state.
       if (window.speechSynthesis.paused) {
         window.speechSynthesis.resume()
       }
@@ -98,23 +108,22 @@ export function createSpeechEngine(getSettings: () => SpeechSettings): SpeechEng
 
   const speak = (text: string) =>
     new Promise<void>((resolve, reject) => {
-      if (!supported) {
+      const settings = getSettings()
+      if (!supported || settings.spokenCallsEnabled === false) {
         resolve()
         return
       }
       hardReset()
       const speakGeneration = generation
-      const settings = getSettings()
       prepareCoachingAudioSession(Boolean(settings.musicFriendly))
 
       const utterance = new SpeechSynthesisUtterance(text)
-      utterance.rate = settings.rate
-      utterance.pitch = settings.pitch
-      utterance.volume = settings.volume
-      if (settings.voiceURI) {
-        const voice = getVoices().find((v) => v.voiceURI === settings.voiceURI)
-        if (voice) utterance.voice = voice
-      }
+      utterance.rate = RUNTIME_SPEECH.rate
+      utterance.pitch = RUNTIME_SPEECH.pitch
+      utterance.volume = RUNTIME_SPEECH.volume
+      const voice = pickEnglishVoice(getVoices())
+      if (voice) utterance.voice = voice
+
       speaking = true
       utterance.onend = () => {
         if (speakGeneration !== generation) {
@@ -145,21 +154,8 @@ export function createSpeechEngine(getSettings: () => SpeechSettings): SpeechEng
     cancel,
     hardReset,
     getVoices,
-    preview: async (voiceURI) => {
-      if (!supported) return
-      hardReset()
-      const settings = getSettings()
-      prepareCoachingAudioSession(Boolean(settings.musicFriendly))
-      const utterance = new SpeechSynthesisUtterance('Jab, cross, rear low kick')
-      utterance.rate = settings.rate
-      utterance.pitch = settings.pitch
-      utterance.volume = settings.volume
-      const uri = voiceURI === undefined ? settings.voiceURI : voiceURI
-      if (uri) {
-        const voice = getVoices().find((v) => v.voiceURI === uri)
-        if (voice) utterance.voice = voice
-      }
-      window.speechSynthesis.speak(utterance)
+    preview: async () => {
+      await speak('Jab, cross, rear low kick')
     },
     isSpeaking: () => {
       if (!supported) return false

@@ -1,3 +1,5 @@
+export type MartialArt = 'muay-thai' | 'boxing'
+
 export type Stance = 'orthodox' | 'southpaw'
 
 export type Difficulty = 'beginner' | 'intermediate' | 'advanced'
@@ -74,6 +76,8 @@ export type ComboPurpose =
   | 'clinch-entry'
   | 'conditioning'
 
+export type ComingSoonArt = 'kickboxing' | 'mma-striking' | 'karate' | 'taekwondo'
+
 export interface Technique {
   id: string
   name: string
@@ -96,6 +100,7 @@ export interface Technique {
   safetyNote?: string
   weightCommit: 'light' | 'medium' | 'heavy'
   leavesGuardOpen: boolean
+  martialArts: MartialArt[]
 }
 
 export interface ComboStep {
@@ -118,6 +123,7 @@ export interface Combo {
   coachingNotes: string
   tags: string[]
   equipment: Equipment[]
+  martialArt: MartialArt
 }
 
 export interface TimingMultipliers {
@@ -135,6 +141,7 @@ export interface TimingMultipliers {
 }
 
 export interface SpeechSettings {
+  /** Legacy field — ignored at runtime; browser default English voice is used. */
   voiceURI: string | null
   rate: number
   pitch: number
@@ -144,6 +151,8 @@ export interface SpeechSettings {
   countdownEnabled: boolean
   roundCallsEnabled: boolean
   musicFriendly: boolean
+  captionsEnabled: boolean
+  spokenCallsEnabled: boolean
 }
 
 export interface MusicCompatibilityRecord {
@@ -161,6 +170,7 @@ export interface SoundSettings {
 }
 
 export interface WorkoutConfig {
+  martialArt: MartialArt
   mode: TrainingMode
   stance: Stance
   difficulty: Difficulty
@@ -197,6 +207,7 @@ export interface WorkoutConfig {
 
 export interface UserPreferences {
   theme: ThemePreference
+  martialArt: MartialArt
   stance: Stance
   experience: Difficulty
   callStyle: CallStyle
@@ -214,6 +225,7 @@ export interface UserPreferences {
   wakeLock: boolean
   resumeBehavior: ResumeBehavior
   musicCompatibility: MusicCompatibilityRecord | null
+  customComboMigrationNoticeShown: boolean
 }
 
 export interface SessionTechniqueEvent {
@@ -226,6 +238,7 @@ export interface SessionSummary {
   id: string
   startedAt: number
   endedAt: number
+  martialArt: MartialArt
   mode: TrainingMode
   stance: Stance
   pace: PacePreset
@@ -234,12 +247,17 @@ export interface SessionSummary {
   combinationsCompleted: number
   techniquesCalled: number
   techniqueCounts: Record<string, number>
+  techniqueCategoryCounts: Record<string, number>
+  comboIds: string[]
   defenseActions: number
   movementActions: number
   averagePaceLabel: string
   dailyDrillCompleted: boolean
   cancelled: boolean
   favoriteComboIds: string[]
+  usedCustomCombo: boolean
+  /** Internal: older records assigned defaults */
+  migrated?: boolean
 }
 
 export interface CustomCombo {
@@ -250,11 +268,14 @@ export interface CustomCombo {
   updatedAt: number
   favorite: boolean
   repeatCount: number
+  martialArt?: MartialArt
+  migrated?: boolean
 }
 
 export interface DailyDrillState {
   dateKey: string
   comboId: string
+  martialArt?: MartialArt
   slowDone: boolean
   normalDone: boolean
   fightDone: boolean
@@ -289,4 +310,17 @@ export interface ActiveTechniqueState {
   spokenLabel: string
   durationMs: number
   startedAt: number
+}
+
+export type StatsRange = '7d' | '30d' | 'all'
+
+export interface MilestoneDefinition {
+  id: string
+  title: string
+  description: string
+}
+
+export interface UnlockedMilestone {
+  id: string
+  unlockedAt: number
 }

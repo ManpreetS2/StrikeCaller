@@ -1,17 +1,21 @@
 import { useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { BEGINNER_COMBOS, INTERMEDIATE_COMBOS } from '../data/combos'
+import { BEGINNER_COMBOS, INTERMEDIATE_COMBOS, BOXING_COMBOS, getCombo } from '../data/combos'
+import { BOXING_BEGINNER, BOXING_INTERMEDIATE } from '../data/boxing'
 import { ComboDisplay } from '../components/ComboDisplay'
 import { useApp } from '../context/AppContext'
 import { createDefaultWorkout } from '../data/defaults'
-import type { PacePreset } from '../types'
+import type { MartialArt, PacePreset } from '../types'
 
 function dateKey(d = new Date()) {
   return d.toISOString().slice(0, 10)
 }
 
-function pickDailyComboId(key: string): string {
-  const pool = [...BEGINNER_COMBOS, ...INTERMEDIATE_COMBOS]
+function pickDailyComboId(key: string, martialArt: MartialArt): string {
+  const pool =
+    martialArt === 'boxing'
+      ? [...BOXING_BEGINNER, ...BOXING_INTERMEDIATE]
+      : [...BEGINNER_COMBOS, ...INTERMEDIATE_COMBOS]
   let hash = 0
   for (let i = 0; i < key.length; i++) hash = (hash + key.charCodeAt(i) * (i + 1)) % pool.length
   return pool[hash]!.id
@@ -20,17 +24,22 @@ function pickDailyComboId(key: string): string {
 export function DailyPage() {
   const navigate = useNavigate()
   const { preferences, dailyDrill, setDailyDrill } = useApp()
-  const key = dateKey()
+  const key = `${dateKey()}:${preferences.martialArt}`
 
   const comboId = useMemo(() => {
-    if (dailyDrill?.dateKey === key) return dailyDrill.comboId
-    return pickDailyComboId(key)
-  }, [dailyDrill, key])
+    if (dailyDrill?.dateKey === key && dailyDrill.martialArt === preferences.martialArt) {
+      return dailyDrill.comboId
+    }
+    return pickDailyComboId(key, preferences.martialArt)
+  }, [dailyDrill, key, preferences.martialArt])
 
-  const combo = useMemo(
-    () => [...BEGINNER_COMBOS, ...INTERMEDIATE_COMBOS].find((c) => c.id === comboId) ?? BEGINNER_COMBOS[0]!,
-    [comboId],
-  )
+  const combo = useMemo(() => {
+    try {
+      return getCombo(comboId)
+    } catch {
+      return preferences.martialArt === 'boxing' ? BOXING_COMBOS[0]! : BEGINNER_COMBOS[0]!
+    }
+  }, [comboId, preferences.martialArt])
 
   const state =
     dailyDrill?.dateKey === key
@@ -38,6 +47,7 @@ export function DailyPage() {
       : {
           dateKey: key,
           comboId,
+          martialArt: preferences.martialArt,
           slowDone: false,
           normalDone: false,
           fightDone: false,
@@ -48,6 +58,7 @@ export function DailyPage() {
     const next = {
       ...state,
       comboId: combo.id,
+      martialArt: preferences.martialArt,
       dateKey: key,
       [field]: true,
     }
@@ -55,6 +66,7 @@ export function DailyPage() {
     setDailyDrill({ ...next, completed })
 
     const config = createDefaultWorkout({
+      martialArt: preferences.martialArt,
       mode: 'daily',
       stance: preferences.stance,
       difficulty: preferences.experience,

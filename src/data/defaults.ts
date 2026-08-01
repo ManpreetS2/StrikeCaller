@@ -1,6 +1,7 @@
 import { DEFAULT_TIMING_MULTIPLIERS } from '../engines/timingEngine'
 import type { SpeechSettings, SoundSettings, UserPreferences, WorkoutConfig } from '../types'
 
+/** Fixed speech profile — browser default English voice; no user voice UI. */
 export const DEFAULT_SPEECH: SpeechSettings = {
   voiceURI: null,
   rate: 1,
@@ -11,6 +12,8 @@ export const DEFAULT_SPEECH: SpeechSettings = {
   countdownEnabled: true,
   roundCallsEnabled: true,
   musicFriendly: true,
+  captionsEnabled: true,
+  spokenCallsEnabled: true,
 }
 
 export const DEFAULT_SOUND: SoundSettings = {
@@ -22,6 +25,7 @@ export const DEFAULT_SOUND: SoundSettings = {
 
 export const DEFAULT_PREFERENCES: UserPreferences = {
   theme: 'dark',
+  martialArt: 'muay-thai',
   stance: 'orthodox',
   experience: 'beginner',
   callStyle: 'hybrid',
@@ -39,10 +43,17 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   wakeLock: true,
   resumeBehavior: 'restart-combo',
   musicCompatibility: null,
+  customComboMigrationNoticeShown: false,
 }
 
+export const APP_VERSION = '1.1.0'
+export const APP_RELEASE_TITLE = 'StrikeCaller v1.1 — Boxing & Training Stats'
+
 export function createDefaultWorkout(partial?: Partial<WorkoutConfig>): WorkoutConfig {
-  return {
+  const martialArt = partial?.martialArt ?? 'muay-thai'
+  const boxing = martialArt === 'boxing'
+  const base: WorkoutConfig = {
+    martialArt,
     mode: 'round',
     stance: 'orthodox',
     difficulty: 'beginner',
@@ -56,7 +67,9 @@ export function createDefaultWorkout(partial?: Partial<WorkoutConfig>): WorkoutC
     customPaceMultiplier: 1,
     timingMultipliers: { ...DEFAULT_TIMING_MULTIPLIERS },
     callStyle: 'hybrid',
-    categories: ['punch', 'kick', 'teep', 'defense', 'movement'],
+    categories: boxing
+      ? ['punch', 'defense', 'movement', 'counter']
+      : ['punch', 'kick', 'teep', 'defense', 'movement'],
     defenseFrequency: 0.35,
     movementFrequency: 0.4,
     repetitionFrequency: 0.25,
@@ -65,13 +78,13 @@ export function createDefaultWorkout(partial?: Partial<WorkoutConfig>): WorkoutC
     speech: { ...DEFAULT_SPEECH },
     includeHeadKicks: false,
     includeElbows: false,
-    includeKnees: true,
+    includeKnees: !boxing,
     includeClinch: false,
     showNextTechnique: true,
     minimalMode: false,
     largeText: false,
     sideTerminology: 'lead-rear',
     resumeBehavior: 'restart-combo',
-    ...partial,
   }
+  return { ...base, ...partial, martialArt: partial?.martialArt ?? martialArt }
 }

@@ -1,8 +1,9 @@
 import { Link, NavLink } from 'react-router-dom'
-import { Moon, Sun, Monitor, Settings, Home, Dumbbell, Shield } from 'lucide-react'
+import { Moon, Sun, Monitor, Settings, Home, Dumbbell, Shield, BarChart3 } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import type { ThemePreference } from '../types'
 import type { ReactNode } from 'react'
+import { APP_VERSION } from '../data/defaults'
 
 const themes: { id: ThemePreference; label: string; icon: typeof Moon }[] = [
   { id: 'dark', label: 'Dark', icon: Moon },
@@ -26,7 +27,9 @@ export function AppLayout({ children }: { children: ReactNode }) {
             </span>
             <span>
               <span className="display block text-2xl leading-none tracking-[0.08em]">StrikeCaller</span>
-              <span className="hidden text-xs text-[var(--text-dim)] sm:block">Muay Thai training coach</span>
+              <span className="hidden text-xs text-[var(--text-dim)] sm:block">
+                Boxing & Muay Thai · v{APP_VERSION}
+              </span>
             </span>
           </Link>
 
@@ -34,6 +37,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
             <NavItem to="/" label="Home" icon={Home} />
             <NavItem to="/train" label="Train" icon={Dumbbell} />
             <NavItem to="/builder" label="Builder" icon={Shield} />
+            <NavItem to="/stats" label="Stats" icon={BarChart3} />
             <NavItem to="/settings" label="Settings" icon={Settings} />
           </nav>
 
@@ -69,10 +73,11 @@ export function AppLayout({ children }: { children: ReactNode }) {
         aria-label="Mobile"
         className="fixed inset-x-0 bottom-0 z-40 border-t border-[var(--border)] bg-[color-mix(in_srgb,var(--bg)_92%,transparent)] backdrop-blur-md md:hidden"
       >
-        <div className="mx-auto grid max-w-6xl grid-cols-4 gap-1 px-2 py-2">
+        <div className="mx-auto grid max-w-6xl grid-cols-5 gap-1 px-2 py-2">
           <MobileNav to="/" label="Home" icon={Home} />
           <MobileNav to="/train" label="Train" icon={Dumbbell} />
           <MobileNav to="/builder" label="Builder" icon={Shield} />
+          <MobileNav to="/stats" label="Stats" icon={BarChart3} />
           <MobileNav to="/settings" label="Settings" icon={Settings} />
         </div>
       </nav>

@@ -1,4 +1,13 @@
-import type { Combo, ComboPurpose, Difficulty, Equipment, PacePreset, Stance, TrainingMode } from '../../types'
+import type {
+  Combo,
+  ComboPurpose,
+  Difficulty,
+  Equipment,
+  MartialArt,
+  PacePreset,
+  Stance,
+  TrainingMode,
+} from '../../types'
 
 const ALL_MODES: TrainingMode[] = ['learn', 'coach', 'round', 'reaction', 'custom', 'daily', 'demo']
 
@@ -17,6 +26,7 @@ export function combo(opts: {
   pace?: PacePreset
   modes?: TrainingMode[]
   equipment?: Equipment[]
+  martialArt?: MartialArt
 }): Combo {
   return {
     id: opts.id,
@@ -26,12 +36,15 @@ export function combo(opts: {
     trainingModes: opts.modes ?? ALL_MODES,
     purpose: opts.purpose,
     techniques: opts.techniques.map((techniqueId) => ({ techniqueId })),
-    recommendedPace: opts.pace ?? (opts.difficulty === 'beginner' ? 'technical' : opts.difficulty === 'advanced' ? 'normal' : 'technical'),
+    recommendedPace:
+      opts.pace ??
+      (opts.difficulty === 'beginner' ? 'technical' : opts.difficulty === 'advanced' ? 'normal' : 'technical'),
     setupExplanation: opts.setup,
     endingPosition: opts.ending ?? 'Orthodox/southpaw base with hands high',
     safeExit: opts.exit ?? 'Reset stance and re-establish the jab',
     coachingNotes: opts.notes ?? 'Prioritize balance and guard over speed.',
     tags: opts.tags ?? [],
     equipment: opts.equipment ?? ['shadowboxing', 'heavy-bag', 'pads', 'open-space'],
+    martialArt: opts.martialArt ?? 'muay-thai',
   }
 }

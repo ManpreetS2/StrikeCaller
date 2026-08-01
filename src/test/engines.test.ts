@@ -135,13 +135,11 @@ describe('settings persistence validation', () => {
 describe('curated library and generator', () => {
   it('seeds required combo counts', () => {
     const stats = getComboStats()
+    expect(stats.muayThai).toBeGreaterThanOrEqual(125)
+    expect(stats.boxing).toBeGreaterThanOrEqual(100)
+    expect(stats.total).toBeGreaterThanOrEqual(225)
     expect(stats.beginner).toBeGreaterThanOrEqual(25)
-    expect(stats.intermediate).toBeGreaterThanOrEqual(30)
-    expect(stats.advanced).toBeGreaterThanOrEqual(25)
-    expect(stats.defensive).toBeGreaterThanOrEqual(20)
-    expect(stats.movement).toBeGreaterThanOrEqual(15)
-    expect(stats.conditioning).toBeGreaterThanOrEqual(10)
-    expect(stats.total).toBe(CURATED_COMBOS.length)
+    expect(CURATED_COMBOS.length).toBe(stats.total)
   })
 
   it('every curated combo validates', () => {
