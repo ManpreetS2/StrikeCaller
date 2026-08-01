@@ -49,6 +49,15 @@ export type ThemePreference = 'dark' | 'light' | 'system'
 
 export type SideTerminology = 'lead-rear' | 'left-right'
 
+export type ResumeBehavior = 'restart-combo' | 'next-combo'
+
+export type MusicCompatibilityResult =
+  | 'music-lowered'
+  | 'music-continued'
+  | 'music-paused'
+  | 'music-stopped'
+  | 'voice-not-heard'
+
 export type ComboPurpose =
   | 'establish-jab'
   | 'enter-range'
@@ -134,6 +143,14 @@ export interface SpeechSettings {
   coachingCuesEnabled: boolean
   countdownEnabled: boolean
   roundCallsEnabled: boolean
+  musicFriendly: boolean
+}
+
+export interface MusicCompatibilityRecord {
+  result: MusicCompatibilityResult
+  testedAt: number
+  userAgent: string
+  audioSessionSupported: boolean
 }
 
 export interface SoundSettings {
@@ -172,6 +189,7 @@ export interface WorkoutConfig {
   minimalMode: boolean
   largeText: boolean
   sideTerminology: SideTerminology
+  resumeBehavior: ResumeBehavior
   selectedComboIds?: string[]
   customComboId?: string
   repeatCount?: number
@@ -194,6 +212,8 @@ export interface UserPreferences {
   timingMultipliers: TimingMultipliers
   customPaceMultiplier: number
   wakeLock: boolean
+  resumeBehavior: ResumeBehavior
+  musicCompatibility: MusicCompatibilityRecord | null
 }
 
 export interface SessionTechniqueEvent {

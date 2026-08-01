@@ -1,5 +1,12 @@
 import { DEFAULT_PREFERENCES } from '../data/defaults'
-import type { CustomCombo, DailyDrillState, SessionSummary, UserPreferences } from '../types'
+import type {
+  CustomCombo,
+  DailyDrillState,
+  MusicCompatibilityRecord,
+  MusicCompatibilityResult,
+  SessionSummary,
+  UserPreferences,
+} from '../types'
 
 const KEYS = {
   preferences: 'strikecaller:preferences',
@@ -7,7 +14,16 @@ const KEYS = {
   customCombos: 'strikecaller:custom-combos',
   history: 'strikecaller:history',
   daily: 'strikecaller:daily-drill',
+  musicCompatibility: 'strikecaller:music-compatibility',
 } as const
+
+const MUSIC_RESULTS: MusicCompatibilityResult[] = [
+  'music-lowered',
+  'music-continued',
+  'music-paused',
+  'music-stopped',
+  'voice-not-heard',
+]
 
 function storageAvailable(): boolean {
   try {
@@ -58,6 +74,13 @@ export function validatePreferences(raw: unknown): UserPreferences {
     raw.callStyle === 'names' || raw.callStyle === 'numbers' || raw.callStyle === 'hybrid'
       ? raw.callStyle
       : DEFAULT_PREFERENCES.callStyle
+  const resumeBehavior =
+    raw.resumeBehavior === 'restart-combo' || raw.resumeBehavior === 'next-combo'
+      ? raw.resumeBehavior
+      : DEFAULT_PREFERENCES.resumeBehavior
+
+  const speechRaw = isObject(raw.speech) ? raw.speech : {}
+  const musicCompatibility = validateMusicCompatibility(raw.musicCompatibility)
 
   return {
     ...DEFAULT_PREFERENCES,
@@ -66,16 +89,21 @@ export function validatePreferences(raw: unknown): UserPreferences {
     stance,
     experience,
     callStyle,
+    resumeBehavior,
+    musicCompatibility,
     speech: {
       ...DEFAULT_PREFERENCES.speech,
-      ...(isObject(raw.speech) ? raw.speech : {}),
+      ...speechRaw,
       callStyle:
-        isObject(raw.speech) &&
-        (raw.speech.callStyle === 'names' ||
-          raw.speech.callStyle === 'numbers' ||
-          raw.speech.callStyle === 'hybrid')
-          ? raw.speech.callStyle
+        speechRaw.callStyle === 'names' ||
+        speechRaw.callStyle === 'numbers' ||
+        speechRaw.callStyle === 'hybrid'
+          ? speechRaw.callStyle
           : callStyle,
+      musicFriendly:
+        typeof speechRaw.musicFriendly === 'boolean'
+          ? speechRaw.musicFriendly
+          : DEFAULT_PREFERENCES.speech.musicFriendly,
     },
     sound: {
       ...DEFAULT_PREFERENCES.sound,
@@ -89,6 +117,20 @@ export function validatePreferences(raw: unknown): UserPreferences {
     includeDefense: raw.includeDefense !== false,
     includeMovement: raw.includeMovement !== false,
   } as UserPreferences
+}
+
+export function validateMusicCompatibility(raw: unknown): MusicCompatibilityRecord | null {
+  if (!isObject(raw)) return null
+  if (typeof raw.result !== 'string' || !MUSIC_RESULTS.includes(raw.result as MusicCompatibilityResult)) {
+    return null
+  }
+  if (typeof raw.testedAt !== 'number' || typeof raw.userAgent !== 'string') return null
+  return {
+    result: raw.result as MusicCompatibilityResult,
+    testedAt: raw.testedAt,
+    userAgent: raw.userAgent,
+    audioSessionSupported: Boolean(raw.audioSessionSupported),
+  }
 }
 
 export function loadPreferences(): UserPreferences {

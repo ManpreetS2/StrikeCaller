@@ -94,6 +94,7 @@ export function TrainPage() {
       timingMultipliers: preferences.timingMultipliers,
       sideTerminology: preferences.sideTerminology,
       largeText: preferences.largeText,
+      resumeBehavior: preferences.resumeBehavior,
       comboLength:
         mode === 'reaction'
           ? { min: 2, max: difficulty === 'advanced' ? 5 : 4 }
@@ -106,9 +107,9 @@ export function TrainPage() {
   return (
     <div className="space-y-6">
       <header>
-        <h1 className="display text-5xl">Train</h1>
+        <h1 className="display text-5xl">Customize Workout</h1>
         <p className="mt-2 max-w-2xl text-[var(--text-muted)]">
-          Configure your session. During rounds, StrikeCaller keeps calls short and clear.
+          Full session controls. During rounds, StrikeCaller keeps calls short and clear.
         </p>
       </header>
 

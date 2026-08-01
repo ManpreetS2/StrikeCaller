@@ -1,12 +1,13 @@
 import { getTechnique } from '../data/techniques'
 import type { CallStyle, SideTerminology, SpeechSettings, Stance, Technique } from '../types'
+import { prepareCoachingAudioSession, resetAudioSession } from './audioSession'
 
 export interface SpeechEngine {
   supported: boolean
   speak: (text: string) => Promise<void>
   cancel: () => void
-  pause: () => void
-  resume: () => void
+  /** Always cancels — never leave speechSynthesis in a paused state. */
+  hardReset: () => void
   getVoices: () => SpeechSynthesisVoice[]
   preview: (voiceURI?: string | null) => Promise<void>
   isSpeaking: () => boolean
@@ -68,13 +69,26 @@ export function createSpeechEngine(getSettings: () => SpeechSettings): SpeechEng
     typeof window.speechSynthesis?.speak === 'function'
 
   let speaking = false
-  let paused = false
+  let generation = 0
 
-  const cancel = () => {
+  const hardReset = () => {
     if (!supported) return
+    generation += 1
+    try {
+      // If synthesis was left paused, resume then cancel clears the stuck state.
+      if (window.speechSynthesis.paused) {
+        window.speechSynthesis.resume()
+      }
+    } catch {
+      // ignore
+    }
     window.speechSynthesis.cancel()
     speaking = false
-    paused = false
+    resetAudioSession()
+  }
+
+  const cancel = () => {
+    hardReset()
   }
 
   const getVoices = () => {
@@ -88,9 +102,11 @@ export function createSpeechEngine(getSettings: () => SpeechSettings): SpeechEng
         resolve()
         return
       }
-      // Avoid overlapping commands
-      window.speechSynthesis.cancel()
+      hardReset()
+      const speakGeneration = generation
       const settings = getSettings()
+      prepareCoachingAudioSession(Boolean(settings.musicFriendly))
+
       const utterance = new SpeechSynthesisUtterance(text)
       utterance.rate = settings.rate
       utterance.pitch = settings.pitch
@@ -101,10 +117,18 @@ export function createSpeechEngine(getSettings: () => SpeechSettings): SpeechEng
       }
       speaking = true
       utterance.onend = () => {
+        if (speakGeneration !== generation) {
+          resolve()
+          return
+        }
         speaking = false
         resolve()
       }
       utterance.onerror = (event) => {
+        if (speakGeneration !== generation) {
+          resolve()
+          return
+        }
         speaking = false
         if (event.error === 'canceled' || event.error === 'interrupted') {
           resolve()
@@ -119,26 +143,13 @@ export function createSpeechEngine(getSettings: () => SpeechSettings): SpeechEng
     supported,
     speak,
     cancel,
-    pause: () => {
-      if (!supported) return
-      window.speechSynthesis.pause()
-      paused = true
-    },
-    resume: () => {
-      if (!supported) return
-      window.speechSynthesis.resume()
-      paused = false
-    },
+    hardReset,
     getVoices,
     preview: async (voiceURI) => {
-      const settings = getSettings()
-      const previous = settings.voiceURI
-      if (voiceURI !== undefined) {
-        // temporary override via mutating is avoided; speak with one-off
-      }
-      void previous
       if (!supported) return
-      window.speechSynthesis.cancel()
+      hardReset()
+      const settings = getSettings()
+      prepareCoachingAudioSession(Boolean(settings.musicFriendly))
       const utterance = new SpeechSynthesisUtterance('Jab, cross, rear low kick')
       utterance.rate = settings.rate
       utterance.pitch = settings.pitch
@@ -152,7 +163,7 @@ export function createSpeechEngine(getSettings: () => SpeechSettings): SpeechEng
     },
     isSpeaking: () => {
       if (!supported) return false
-      return speaking && window.speechSynthesis.speaking && !paused
+      return speaking && window.speechSynthesis.speaking && !window.speechSynthesis.paused
     },
   }
 }

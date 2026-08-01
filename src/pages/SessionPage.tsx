@@ -36,6 +36,7 @@ export function SessionPage() {
         pace: preferences.pace,
         speech: preferences.speech,
         sound: preferences.sound,
+        resumeBehavior: preferences.resumeBehavior,
         mode: state.demo ? 'demo' : 'round',
         roundDurationSec: state.demo ? 60 : 180,
         rounds: 1,
@@ -158,7 +159,7 @@ export function SessionPage() {
           <button
             type="button"
             className="btn btn-primary"
-            onClick={() => engineRef.current?.resume()}
+            onClick={() => void engineRef.current?.resume()}
             aria-label="Resume session"
           >
             <Play size={18} aria-hidden /> Resume

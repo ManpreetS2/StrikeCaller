@@ -67,6 +67,7 @@ export function DailyPage() {
       speech: { ...preferences.speech, callStyle: preferences.callStyle },
       sound: preferences.sound,
       sideTerminology: preferences.sideTerminology,
+      resumeBehavior: preferences.resumeBehavior,
     })
     navigate('/session', { state: { config } })
   }

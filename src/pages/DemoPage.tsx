@@ -34,6 +34,7 @@ export function DemoPage() {
       speech: { ...preferences.speech, callStyle: 'hybrid' },
       sound: preferences.sound,
       sideTerminology: 'lead-rear',
+      resumeBehavior: preferences.resumeBehavior,
     })
 
     navigate('/session', { state: { config, demo: true } })

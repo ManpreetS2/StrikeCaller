@@ -1,8 +1,21 @@
-import { Link } from 'react-router-dom'
-import { ArrowRight, Play, Sparkles, Wrench, CalendarDays, Lock } from 'lucide-react'
+import { Link, useNavigate } from 'react-router-dom'
+import {
+  ArrowRight,
+  Play,
+  Sparkles,
+  Wrench,
+  CalendarDays,
+  Lock,
+  Timer,
+  Dumbbell,
+  Wind,
+  Flame,
+  SlidersHorizontal,
+} from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { SafetyNotice } from '../components/SafetyNotice'
 import { getComboStats, CURATED_COMBOS, COMBO_MAP } from '../data/combos'
+import { QUICK_START_PRESETS, type QuickStartId } from '../data/quickStart'
 
 const COMING_SOON = [
   'Boxing',
@@ -12,11 +25,34 @@ const COMING_SOON = [
   'Taekwondo',
 ] as const
 
+const PRESET_ICONS: Record<QuickStartId, typeof Play> = {
+  'quick-train': Timer,
+  'heavy-bag': Dumbbell,
+  shadowboxing: Wind,
+  conditioning: Flame,
+  'daily-drill': CalendarDays,
+}
+
 export function HomePage() {
+  const navigate = useNavigate()
   const { preferences, history, favorites } = useApp()
   const stats = getComboStats()
   const recent = history[0]
   const favoriteCombo = favorites[0] ? COMBO_MAP[favorites[0]] : CURATED_COMBOS[5]
+
+  const startQuick = (id: QuickStartId) => {
+    if (!preferences.onboardingComplete) {
+      navigate('/onboarding', { state: { after: 'quick', quickId: id } })
+      return
+    }
+    const preset = QUICK_START_PRESETS.find((p) => p.id === id)!
+    if (preset.routeToDaily) {
+      navigate('/daily')
+      return
+    }
+    const config = preset.build(preferences)
+    navigate('/session', { state: { config } })
+  }
 
   return (
     <div className="space-y-10">
@@ -38,47 +74,79 @@ export function HomePage() {
             Hear the combo. Set the pace. Build the reaction.
           </p>
           <p className="mt-3 max-w-xl text-sm text-[var(--text-dim)]">
-            A browser-based Muay Thai coach that speaks realistic combinations with adaptive timing for
-            shadowboxing, bag work, pads, and solo drills.
+            One press to train. Your stance, call style, and pace come with you.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
-            <Link to={preferences.onboardingComplete ? '/train' : '/onboarding'} className="btn btn-primary">
+            <button type="button" className="btn btn-primary" onClick={() => startQuick('quick-train')}>
               <Play size={18} aria-hidden />
-              Start Training
-            </Link>
+              Quick Train
+            </button>
             <Link to="/demo" className="btn">
               <Sparkles size={18} aria-hidden />
               Guided Demo
             </Link>
-            <Link to="/daily" className="btn btn-ghost">
-              <CalendarDays size={18} aria-hidden />
-              Daily Drill
+            <Link to="/train" className="btn btn-ghost">
+              <SlidersHorizontal size={18} aria-hidden />
+              Customize Workout
             </Link>
           </div>
         </div>
       </section>
 
-      <section aria-labelledby="actions-heading" className="grid gap-4 md:grid-cols-3">
+      <section aria-labelledby="quick-start-heading">
+        <div className="mb-4 flex flex-wrap items-end justify-between gap-2">
+          <div>
+            <h2 id="quick-start-heading" className="display text-4xl">
+              Quick Start
+            </h2>
+            <p className="muted text-sm">One press. Uses your saved stance, experience, calls, voice, and pace.</p>
+          </div>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {QUICK_START_PRESETS.map((preset) => {
+            const Icon = PRESET_ICONS[preset.id]
+            return (
+              <button
+                key={preset.id}
+                type="button"
+                className="panel block p-5 text-left transition hover:border-[var(--accent)]"
+                onClick={() => startQuick(preset.id)}
+              >
+                <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-[var(--accent-soft)] text-[var(--accent-text)]">
+                  <Icon size={20} aria-hidden />
+                </div>
+                <h3 className="text-xl font-semibold">{preset.title}</h3>
+                <p className="mt-1 text-sm text-[var(--text-muted)]">{preset.body}</p>
+              </button>
+            )
+          })}
+          <Link to="/train" className="panel block p-5 transition hover:border-[var(--accent)]">
+            <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-[var(--bg-elevated)] text-[var(--text-muted)]">
+              <SlidersHorizontal size={20} aria-hidden />
+            </div>
+            <h3 className="text-xl font-semibold">Customize Workout</h3>
+            <p className="mt-1 text-sm text-[var(--text-muted)]">
+              Full mode, rounds, pace, and technique filters.
+            </p>
+          </Link>
+        </div>
+      </section>
+
+      <section aria-labelledby="actions-heading" className="grid gap-4 md:grid-cols-2">
         <h2 id="actions-heading" className="sr-only">
-          Quick actions
+          More actions
         </h2>
-        <ActionCard
-          to="/train"
-          title="Start Training"
-          body="Choose Learn, Coach, Round, or Reaction mode with your stance and pace."
-          icon={<Play size={18} aria-hidden />}
-        />
-        <ActionCard
-          to="/daily"
-          title="Daily Drill"
-          body="One focused combination: slow, normal, then fight-pace attempt."
-          icon={<CalendarDays size={18} aria-hidden />}
-        />
         <ActionCard
           to="/builder"
           title="Build Custom Combo"
           body="Tap techniques into a validated sequence and save it locally."
           icon={<Wrench size={18} aria-hidden />}
+        />
+        <ActionCard
+          to="/demo"
+          title="Guided Demo"
+          body="A 60-second recruiter-friendly round using the real engines."
+          icon={<Sparkles size={18} aria-hidden />}
         />
       </section>
 
@@ -94,12 +162,16 @@ export function HomePage() {
               <p>
                 {recent.combinationsCompleted} combos · {recent.techniquesCalled} techniques called
               </p>
-              <Link to="/train" className="inline-flex items-center gap-1 text-[var(--accent-text)]">
+              <button
+                type="button"
+                className="inline-flex items-center gap-1 text-[var(--accent-text)]"
+                onClick={() => startQuick('quick-train')}
+              >
                 Train again <ArrowRight size={14} aria-hidden />
-              </Link>
+              </button>
             </div>
           ) : (
-            <p className="text-sm text-[var(--text-muted)]">No sessions yet. Start with a short technical round.</p>
+            <p className="text-sm text-[var(--text-muted)]">No sessions yet. Tap Quick Train to begin.</p>
           )}
         </div>
         <div className="panel p-5">

@@ -1,60 +1,65 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { flushSync } from 'react-dom'
 import { useApp } from '../context/AppContext'
 import { SafetyNotice } from '../components/SafetyNotice'
-import type { CallStyle, Difficulty, Equipment, PacePreset, Stance, ThemePreference } from '../types'
+import { getQuickStartPreset, type QuickStartId } from '../data/quickStart'
+import type { CallStyle, Difficulty, Stance } from '../types'
 
-const STEPS = [
-  'Stance',
-  'Experience',
-  'Call style',
-  'Equipment',
-  'Pace',
-  'Theme',
-  'Defense & movement',
-] as const
+const STEPS = ['Stance', 'Experience', 'Calling style'] as const
+
+interface OnboardingLocationState {
+  after?: 'quick' | 'train'
+  quickId?: QuickStartId
+}
 
 export function OnboardingPage() {
   const navigate = useNavigate()
+  const location = useLocation()
+  const navState = (location.state as OnboardingLocationState | null) ?? {}
   const { preferences, updatePreferences } = useApp()
   const [step, setStep] = useState(0)
   const [stance, setStance] = useState<Stance>(preferences.stance)
   const [experience, setExperience] = useState<Difficulty>(preferences.experience)
   const [callStyle, setCallStyle] = useState<CallStyle>(preferences.callStyle)
-  const [equipment, setEquipment] = useState<Equipment>(preferences.equipment)
-  const [pace, setPace] = useState<PacePreset>(preferences.pace)
-  const [theme, setTheme] = useState<ThemePreference>(preferences.theme)
-  const [includeDefense, setIncludeDefense] = useState(preferences.includeDefense)
-  const [includeMovement, setIncludeMovement] = useState(preferences.includeMovement)
 
   const finish = (skipped = false) => {
+    const nextPrefs = {
+      stance: skipped ? preferences.stance : stance,
+      experience: skipped ? preferences.experience : experience,
+      callStyle: skipped ? preferences.callStyle : callStyle,
+      onboardingComplete: true,
+      speech: {
+        ...preferences.speech,
+        callStyle: skipped ? preferences.callStyle : callStyle,
+      },
+    }
+
     flushSync(() => {
-      updatePreferences({
-        stance,
-        experience,
-        callStyle,
-        equipment,
-        pace,
-        theme,
-        includeDefense,
-        includeMovement,
-        onboardingComplete: true,
-        speech: { ...preferences.speech, callStyle },
-      })
+      updatePreferences(nextPrefs)
     })
-    void skipped
-    navigate('/train')
+
+    if (navState.after === 'quick' && navState.quickId) {
+      const preset = getQuickStartPreset(navState.quickId)
+      if (preset.routeToDaily) {
+        navigate('/daily')
+        return
+      }
+      const merged = { ...preferences, ...nextPrefs, speech: nextPrefs.speech }
+      navigate('/session', { state: { config: preset.build(merged) } })
+      return
+    }
+
+    navigate(navState.after === 'train' ? '/train' : '/')
   }
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       <header>
         <p className="text-sm uppercase tracking-[0.2em] text-[var(--accent-text)]">First run</p>
-        <h1 className="display mt-2 text-5xl">Quick setup</h1>
+        <h1 className="display mt-2 text-5xl">Three quick choices</h1>
         <p className="mt-2 text-[var(--text-muted)]">
-          Skippable preferences so StrikeCaller can call combos your way. Technique quality matters more than
-          speed.
+          Stance, experience, and how calls sound. Everything else can wait — change it anytime in Settings.
         </p>
       </header>
 
@@ -92,7 +97,7 @@ export function OnboardingPage() {
         )}
         {step === 2 && (
           <Choice
-            title="Preferred call style"
+            title="Calling style"
             options={[
               { id: 'names', label: 'Technique names' },
               { id: 'numbers', label: 'Numbers' },
@@ -101,70 +106,6 @@ export function OnboardingPage() {
             value={callStyle}
             onChange={(v) => setCallStyle(v as CallStyle)}
           />
-        )}
-        {step === 3 && (
-          <Choice
-            title="Training equipment"
-            options={[
-              { id: 'shadowboxing', label: 'Shadowboxing' },
-              { id: 'heavy-bag', label: 'Heavy bag' },
-              { id: 'pads', label: 'Pads' },
-              { id: 'partner', label: 'Partner drill' },
-              { id: 'open-space', label: 'Open space' },
-              { id: 'limited-space', label: 'Limited space' },
-            ]}
-            value={equipment}
-            onChange={(v) => setEquipment(v as Equipment)}
-          />
-        )}
-        {step === 4 && (
-          <Choice
-            title="Default pace"
-            options={[
-              { id: 'learn', label: 'Learn' },
-              { id: 'slow', label: 'Slow' },
-              { id: 'technical', label: 'Technical' },
-              { id: 'normal', label: 'Normal' },
-              { id: 'fast', label: 'Fast' },
-              { id: 'fight', label: 'Fight pace' },
-            ]}
-            value={pace}
-            onChange={(v) => setPace(v as PacePreset)}
-          />
-        )}
-        {step === 5 && (
-          <Choice
-            title="Theme"
-            options={[
-              { id: 'dark', label: 'Dark' },
-              { id: 'light', label: 'Light' },
-              { id: 'system', label: 'System' },
-            ]}
-            value={theme}
-            onChange={(v) => setTheme(v as ThemePreference)}
-          />
-        )}
-        {step === 6 && (
-          <div className="space-y-4">
-            <h2 className="text-xl font-semibold">Include defense and movement?</h2>
-            <p className="text-sm text-[var(--text-muted)]">Defaults to enabled — recommended for realistic drills.</p>
-            <label className="flex items-center gap-3">
-              <input
-                type="checkbox"
-                checked={includeDefense}
-                onChange={(e) => setIncludeDefense(e.target.checked)}
-              />
-              Include defense and counters
-            </label>
-            <label className="flex items-center gap-3">
-              <input
-                type="checkbox"
-                checked={includeMovement}
-                onChange={(e) => setIncludeMovement(e.target.checked)}
-              />
-              Include movement and exits
-            </label>
-          </div>
         )}
 
         <div className="flex flex-wrap gap-3 pt-2">
@@ -179,16 +120,20 @@ export function OnboardingPage() {
             </button>
           ) : (
             <button type="button" className="btn btn-primary" onClick={() => finish(false)}>
-              Start training
+              Save and continue
             </button>
           )}
           <button type="button" className="btn" onClick={() => finish(true)}>
-            Skip setup
+            Skip and use recommended settings
           </button>
         </div>
       </section>
 
-      <SafetyNotice />
+      <p className="text-sm text-[var(--text-dim)]">
+        Equipment, pace, defense, movement, and theme stay optional. Open Settings anytime to refine them.
+      </p>
+
+      <SafetyNotice compact />
     </div>
   )
 }

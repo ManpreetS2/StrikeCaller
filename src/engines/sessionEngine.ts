@@ -7,6 +7,7 @@ import { audioEngine } from './audioEngine'
 import type {
   ActiveTechniqueState,
   Combo,
+  ResumeBehavior,
   SessionPhase,
   SessionSummary,
   SessionTechniqueEvent,
@@ -52,16 +53,21 @@ export class SessionEngine {
   private listeners = new Set<Listener>()
   private timerId: number | null = null
   private stepTimerId: number | null = null
+  private waitResolve: (() => void) | null = null
   private startedAt = 0
   private workElapsedMs = 0
   private lastTick = 0
   private paused = false
+  private pausedFrom: SessionPhase = 'work'
   private finalWarningPlayed = false
   private speech = createSpeechEngine(() => this.config.speech)
   private cancelled = false
   private events: SessionTechniqueEvent[] = []
   private wakeLock: WakeLockSentinel | null = null
   private demoMode = false
+  /** Invalidates in-flight async playback loops on pause/stop/skip. */
+  private runToken = 0
+  private resumeInFlight = false
 
   constructor(config: WorkoutConfig) {
     this.config = config
@@ -114,9 +120,16 @@ export class SessionEngine {
     this.emit()
   }
 
+  private getResumeBehavior(): ResumeBehavior {
+    return this.config.resumeBehavior ?? 'restart-combo'
+  }
+
   async start(options?: { demo?: boolean; comboQueue?: Combo[] }) {
     this.demoMode = Boolean(options?.demo)
     this.cancelled = false
+    this.paused = false
+    this.resumeInFlight = false
+    this.runToken += 1
     this.startedAt = Date.now()
     this.workElapsedMs = 0
     this.combinationsCompleted = 0
@@ -126,51 +139,59 @@ export class SessionEngine {
     this.movementActions = 0
     this.events = []
     this.recentComboIds = []
-    this.round = this.config.mode === 'round' || this.config.mode === 'demo' ? 1 : 1
+    this.round = 1
     this.comboQueue = options?.comboQueue ?? (this.demoMode ? getDemoCombos(this.config.stance) : [])
     await this.requestWakeLock()
-    await this.runCountdown()
-    if (this.cancelled) return
-    await this.startWorkPeriod()
+    const token = this.runToken
+    await this.runCountdown(token)
+    if (this.cancelled || token !== this.runToken) return
+    await this.startWorkPeriod(token, true)
   }
 
-  private async runCountdown() {
+  private async runCountdown(token: number) {
     this.phase = 'countdown'
     this.paused = false
+    this.emit()
     for (let n = 3; n >= 1; n--) {
-      if (this.cancelled) return
+      if (this.cancelled || token !== this.runToken) return
       this.setCaption(String(n))
       if (this.config.speech.countdownEnabled) {
         void this.speech.speak(String(n))
       }
-      if (this.config.sound.tonesEnabled) await audioEngine.playCountdownTick()
+      if (this.config.sound.tonesEnabled) {
+        // Tone first briefly, then wait — avoid overlapping with voice when possible
+        void audioEngine.playCountdownTick()
+      }
       await this.wait(900)
-      if (this.paused) await this.waitWhilePaused()
+      if (this.cancelled || token !== this.runToken) return
     }
     this.setCaption('Fight')
     if (this.config.speech.roundCallsEnabled) void this.speech.speak('Fight')
-    if (this.config.sound.bellsEnabled) await audioEngine.playBell()
+    if (this.config.sound.bellsEnabled) void audioEngine.playBell()
     if (this.config.sound.vibrationEnabled) void audioEngine.vibrate([40, 40, 40])
     await this.wait(400)
   }
 
-  private async startWorkPeriod() {
+  private async startWorkPeriod(token: number, resetClock: boolean) {
+    if (this.cancelled || token !== this.runToken) return
     this.phase = 'work'
     this.finalWarningPlayed = false
-    this.timeRemainingMs =
-      this.config.mode === 'round' || this.config.mode === 'demo'
-        ? this.config.roundDurationSec * 1000
-        : this.config.sessionDurationSec * 1000
-
+    if (resetClock) {
+      this.timeRemainingMs =
+        this.config.mode === 'round' || this.config.mode === 'demo'
+          ? this.config.roundDurationSec * 1000
+          : this.config.sessionDurationSec * 1000
+    }
     this.lastTick = Date.now()
     this.startClock()
-    await this.playNextCombo()
+    this.emit()
+    await this.playNextCombo(token)
   }
 
   private startClock() {
     this.clearClock()
     this.timerId = window.setInterval(() => {
-      if (this.paused || this.phase === 'paused') return
+      if (this.paused || this.phase === 'paused' || this.phase === 'countdown') return
       const now = Date.now()
       const delta = now - this.lastTick
       this.lastTick = now
@@ -207,16 +228,23 @@ export class SessionEngine {
     }
   }
 
-  private clearStepTimer() {
+  private abortWait() {
     if (this.stepTimerId != null) {
       window.clearTimeout(this.stepTimerId)
       this.stepTimerId = null
     }
+    if (this.waitResolve) {
+      const resolve = this.waitResolve
+      this.waitResolve = null
+      resolve()
+    }
   }
 
   private async onWorkComplete() {
-    this.clearStepTimer()
+    const token = this.runToken
+    this.abortWait()
     this.speech.cancel()
+    audioEngine.stopAll()
     if (this.config.sound.bellsEnabled) void audioEngine.playBell()
 
     const totalRounds =
@@ -232,12 +260,16 @@ export class SessionEngine {
     } else {
       this.finish(false)
     }
+    void token
   }
 
   private async onRestComplete() {
+    const token = ++this.runToken
     this.round += 1
-    await this.runCountdown()
-    if (!this.cancelled) await this.startWorkPeriod()
+    await this.runCountdown(token)
+    if (!this.cancelled && token === this.runToken) {
+      await this.startWorkPeriod(token, true)
+    }
   }
 
   private pickCombo(): Combo {
@@ -245,7 +277,6 @@ export class SessionEngine {
       return this.comboQueue.shift()!
     }
     if (this.demoMode) {
-      // Loop the real demo sequence rather than falling into free generation
       this.comboQueue = getDemoCombos(this.config.stance)
       return this.comboQueue.shift()!
     }
@@ -256,29 +287,34 @@ export class SessionEngine {
     return nextCombo(optionsFromWorkout(this.config), this.recentComboIds)
   }
 
-  private async playNextCombo() {
-    if (this.cancelled || this.phase !== 'work') return
+  private async playNextCombo(token: number) {
+    if (this.cancelled || token !== this.runToken || this.phase !== 'work') return
     const combo = this.pickCombo()
     this.combo = combo
     this.recentComboIds = [...this.recentComboIds.slice(-8), combo.id]
     this.stepIndex = 0
     this.emit()
-    await this.playStep()
+    await this.playStep(token)
   }
 
-  private async playStep() {
-    if (!this.combo || this.cancelled || this.phase !== 'work') return
-    if (this.paused) {
-      await this.waitWhilePaused()
-      if (this.cancelled || this.phase !== 'work') return
-    }
+  private async restartCurrentCombo(token: number) {
+    if (!this.combo || this.cancelled || token !== this.runToken) return
+    this.stepIndex = 0
+    this.phase = 'work'
+    this.emit()
+    await this.playStep(token)
+  }
+
+  private async playStep(token: number) {
+    if (!this.combo || this.cancelled || token !== this.runToken || this.phase !== 'work') return
 
     const step = this.combo.techniques[this.stepIndex]
     if (!step) {
       this.combinationsCompleted += 1
       const pause = this.config.timingMultipliers.pauseBetweenCombosMs
       await this.wait(pause)
-      if (!this.cancelled && this.phase === 'work') await this.playNextCombo()
+      if (this.cancelled || token !== this.runToken || this.phase !== 'work') return
+      await this.playNextCombo(token)
       return
     }
 
@@ -313,85 +349,143 @@ export class SessionEngine {
     try {
       void this.speech.speak(spoken)
     } catch {
-      // fall back to caption only
+      // caption fallback
     }
 
     if (this.config.sound.vibrationEnabled) void audioEngine.vibrate(20)
 
     await this.wait(duration)
-    if (this.cancelled || this.phase !== 'work') return
+    if (this.cancelled || token !== this.runToken || this.phase !== 'work') return
 
     this.stepIndex += 1
-    await this.playStep()
+    await this.playStep(token)
   }
 
   pause() {
+    if (this.paused || this.phase === 'summary' || this.phase === 'idle') return
     if (this.phase !== 'work' && this.phase !== 'rest' && this.phase !== 'countdown') return
+
+    this.pausedFrom = this.phase
     this.paused = true
     this.phase = 'paused'
-    this.speech.pause()
-    this.emit()
+    this.runToken += 1
+    this.resumeInFlight = false
+    this.abortWait()
+    this.clearClock()
+    this.speech.cancel()
+    audioEngine.stopAll()
+    this.setCaption('Paused')
   }
 
-  resume() {
-    if (!this.paused) return
+  async resume() {
+    if (!this.paused || this.resumeInFlight || this.cancelled) return
+    this.resumeInFlight = true
+    this.speech.hardReset()
+    audioEngine.stopAll()
+
+    const token = ++this.runToken
     this.paused = false
-    this.phase = this.timeRemainingMs > 0 ? 'work' : 'work'
-    // Rest resume: if we were resting, caption tells us
-    if (this.caption === 'Rest') this.phase = 'rest'
-    this.lastTick = Date.now()
-    this.speech.resume()
-    this.emit()
+
+    try {
+      await this.runCountdown(token)
+      if (this.cancelled || token !== this.runToken) return
+
+      if (this.pausedFrom === 'rest') {
+        this.phase = 'rest'
+        this.lastTick = Date.now()
+        this.startClock()
+        this.setCaption('Rest')
+        return
+      }
+
+      // Pause during countdown may leave the work clock unset — restore duration first.
+      if (this.pausedFrom === 'countdown' && this.timeRemainingMs <= 0) {
+        await this.startWorkPeriod(token, true)
+        return
+      }
+
+      // work (or countdown with remaining time) → resume work from saved clock
+      this.phase = 'work'
+      this.lastTick = Date.now()
+      this.startClock()
+
+      if (this.getResumeBehavior() === 'next-combo' || !this.combo) {
+        await this.playNextCombo(token)
+      } else {
+        await this.restartCurrentCombo(token)
+      }
+    } finally {
+      if (token === this.runToken) {
+        this.resumeInFlight = false
+      }
+    }
   }
 
   async skipCombo() {
-    this.clearStepTimer()
     this.speech.cancel()
+    audioEngine.stopAll()
+    this.abortWait()
     if (this.combo) this.combinationsCompleted += 1
     this.stepIndex = 0
-    if (this.phase === 'work' || this.phase === 'paused') {
-      this.phase = 'work'
-      this.paused = false
-      await this.playNextCombo()
-    }
+    const token = ++this.runToken
+    this.paused = false
+    this.resumeInFlight = false
+    this.phase = 'work'
+    this.lastTick = Date.now()
+    if (!this.timerId) this.startClock()
+    await this.playNextCombo(token)
   }
 
   async repeatCombo() {
     if (!this.combo) return
-    this.clearStepTimer()
     this.speech.cancel()
+    audioEngine.stopAll()
+    this.abortWait()
     const repeat = { ...this.combo }
     this.comboQueue.unshift(repeat)
     this.stepIndex = 0
-    this.phase = 'work'
+    const token = ++this.runToken
     this.paused = false
+    this.resumeInFlight = false
+    this.phase = 'work'
+    this.lastTick = Date.now()
+    if (!this.timerId) this.startClock()
     await this.wait(this.config.timingMultipliers.pauseBeforeRepeatMs)
-    await this.playNextCombo()
+    if (token !== this.runToken) return
+    await this.playNextCombo(token)
   }
 
   stop() {
     this.cancelled = true
+    this.paused = false
+    this.resumeInFlight = false
+    this.runToken += 1
     this.speech.cancel()
+    audioEngine.stopAll()
+    this.abortWait()
     this.clearClock()
-    this.clearStepTimer()
     this.releaseWakeLock()
     this.finish(true)
   }
 
-  /** Tear down timers/speech without entering summary (Strict Mode remounts). */
   dispose() {
     this.cancelled = true
+    this.paused = false
+    this.resumeInFlight = false
+    this.runToken += 1
     this.speech.cancel()
+    audioEngine.stopAll()
+    this.abortWait()
     this.clearClock()
-    this.clearStepTimer()
     this.releaseWakeLock()
   }
 
   private finish(cancelled: boolean) {
     this.cancelled = true
     this.speech.cancel()
+    audioEngine.stopAll()
+    this.abortWait()
     this.clearClock()
-    this.clearStepTimer()
     this.releaseWakeLock()
     this.phase = 'summary'
     this.paused = false
@@ -422,7 +516,6 @@ export class SessionEngine {
     }
   }
 
-  /** Expose cancel speech for tests */
   clearSpeechQueue() {
     this.speech.cancel()
   }
@@ -433,18 +526,18 @@ export class SessionEngine {
 
   private wait(ms: number) {
     return new Promise<void>((resolve) => {
-      this.stepTimerId = window.setTimeout(() => resolve(), ms)
+      this.abortWait()
+      this.waitResolve = resolve
+      this.stepTimerId = window.setTimeout(() => {
+        this.stepTimerId = null
+        this.waitResolve = null
+        resolve()
+      }, ms)
     })
   }
 
-  private async waitWhilePaused() {
-    while (this.paused && !this.cancelled) {
-      await this.wait(100)
-    }
-  }
-
   private async requestWakeLock() {
-    if (!this.config || typeof navigator === 'undefined') return
+    if (typeof navigator === 'undefined') return
     try {
       if ('wakeLock' in navigator) {
         this.wakeLock = await navigator.wakeLock.request('screen')

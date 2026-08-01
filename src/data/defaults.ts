@@ -10,6 +10,7 @@ export const DEFAULT_SPEECH: SpeechSettings = {
   coachingCuesEnabled: true,
   countdownEnabled: true,
   roundCallsEnabled: true,
+  musicFriendly: true,
 }
 
 export const DEFAULT_SOUND: SoundSettings = {
@@ -36,6 +37,8 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   timingMultipliers: DEFAULT_TIMING_MULTIPLIERS,
   customPaceMultiplier: 1,
   wakeLock: true,
+  resumeBehavior: 'restart-combo',
+  musicCompatibility: null,
 }
 
 export function createDefaultWorkout(partial?: Partial<WorkoutConfig>): WorkoutConfig {
@@ -68,6 +71,7 @@ export function createDefaultWorkout(partial?: Partial<WorkoutConfig>): WorkoutC
     minimalMode: false,
     largeText: false,
     sideTerminology: 'lead-rear',
+    resumeBehavior: 'restart-combo',
     ...partial,
   }
 }

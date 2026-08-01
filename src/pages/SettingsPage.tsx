@@ -2,8 +2,17 @@ import { useEffect, useState } from 'react'
 import { useApp } from '../context/AppContext'
 import { SafetyNotice } from '../components/SafetyNotice'
 import { createSpeechEngine } from '../engines/speechEngine'
+import { isAudioSessionSupported, prepareCoachingAudioSession } from '../engines/audioSession'
 import { DEFAULT_TIMING_MULTIPLIERS } from '../engines/timingEngine'
-import type { CallStyle, SideTerminology, Stance } from '../types'
+import type { CallStyle, MusicCompatibilityResult, SideTerminology, Stance } from '../types'
+
+const COMPAT_OPTIONS: { id: MusicCompatibilityResult; label: string }[] = [
+  { id: 'music-lowered', label: 'Music lowered' },
+  { id: 'music-continued', label: 'Music continued at the same volume' },
+  { id: 'music-paused', label: 'Music paused' },
+  { id: 'music-stopped', label: 'Music stopped' },
+  { id: 'voice-not-heard', label: 'Coaching voice was not heard' },
+]
 
 export function SettingsPage() {
   const {
@@ -87,6 +96,48 @@ export function SettingsPage() {
             Enable large text
           </label>
         </Field>
+        <Field label="Resume behavior">
+          <select
+            value={preferences.resumeBehavior}
+            aria-label="Resume behavior"
+            onChange={(e) =>
+              updatePreferences({
+                resumeBehavior: e.target.value as 'restart-combo' | 'next-combo',
+              })
+            }
+          >
+            <option value="restart-combo">Restart current combo</option>
+            <option value="next-combo">Skip to next combo</option>
+          </select>
+        </Field>
+      </section>
+
+      <section className="panel space-y-4 p-5" aria-label="Music-friendly audio">
+        <h2 className="text-xl font-semibold">Music-friendly voice calls</h2>
+        <p className="text-sm text-[var(--text-muted)]">
+          StrikeCaller will try to play short coaching calls over your music. Music behavior depends on your
+          phone, browser, and music application. This site cannot directly control Spotify, Apple Music,
+          YouTube Music, or another app’s volume.
+        </p>
+        <label className="flex items-center gap-3">
+          <input
+            type="checkbox"
+            checked={preferences.speech.musicFriendly}
+            onChange={(e) =>
+              updatePreferences({
+                speech: { ...preferences.speech, musicFriendly: e.target.checked },
+              })
+            }
+          />
+          Enable music-friendly voice calls
+        </label>
+        <p className="text-sm text-[var(--text-dim)]">
+          Audio Session API:{' '}
+          {typeof navigator !== 'undefined' && 'audioSession' in navigator
+            ? 'available in this browser'
+            : 'not available — captions and normal speech still work'}
+        </p>
+        <MusicCompatibilityTest />
       </section>
 
       <section className="panel grid gap-4 p-5 md:grid-cols-2" aria-label="Voice settings">
@@ -301,6 +352,83 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     <div className="field">
       <label>{label}</label>
       {children}
+    </div>
+  )
+}
+
+function MusicCompatibilityTest() {
+  const { preferences, updatePreferences } = useApp()
+  const [phase, setPhase] = useState<'idle' | 'playing' | 'ask'>('idle')
+  const [status, setStatus] = useState('')
+  const speech = createSpeechEngine(() => preferences.speech)
+
+  const runTest = async () => {
+    setPhase('playing')
+    setStatus('Playing sample calls…')
+    prepareCoachingAudioSession(true)
+    const samples = ['Jab', 'Cross', 'Rear low kick']
+    for (const sample of samples) {
+      setStatus(`Playing: ${sample}`)
+      try {
+        await speech.speak(sample)
+      } catch {
+        // continue samples
+      }
+      await new Promise((r) => setTimeout(r, 350))
+    }
+    setPhase('ask')
+    setStatus('What happened to your music?')
+  }
+
+  const saveResult = (result: MusicCompatibilityResult) => {
+    updatePreferences({
+      musicCompatibility: {
+        result,
+        testedAt: Date.now(),
+        userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown',
+        audioSessionSupported: isAudioSessionSupported(),
+      },
+    })
+    setPhase('idle')
+    setStatus('Compatibility result saved on this device.')
+  }
+
+  const saved = preferences.musicCompatibility
+  const savedLabel = saved
+    ? COMPAT_OPTIONS.find((o) => o.id === saved.result)?.label ?? saved.result
+    : null
+
+  return (
+    <div className="space-y-3 rounded-lg border border-[var(--border)] p-4">
+      <h3 className="font-semibold">Music Compatibility Test</h3>
+      <ol className="list-decimal space-y-1 pl-5 text-sm text-[var(--text-muted)]">
+        <li>Start music in another application.</li>
+        <li>Play three sample calls: Jab, Cross, Rear low kick.</li>
+        <li>Tell StrikeCaller what happened.</li>
+      </ol>
+      <button type="button" className="btn" disabled={phase === 'playing'} onClick={() => void runTest()}>
+        {phase === 'playing' ? 'Playing samples…' : 'Run compatibility test'}
+      </button>
+      {status && (
+        <p className="text-sm" role="status">
+          {status}
+        </p>
+      )}
+      {phase === 'ask' && (
+        <div className="grid gap-2 sm:grid-cols-2" role="group" aria-label="Music compatibility result">
+          {COMPAT_OPTIONS.map((opt) => (
+            <button key={opt.id} type="button" className="btn justify-start" onClick={() => saveResult(opt.id)}>
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      )}
+      {savedLabel && phase === 'idle' && (
+        <p className="text-sm text-[var(--text-muted)]">
+          Last result: <span className="text-[var(--text)]">{savedLabel}</span>
+          {saved?.audioSessionSupported ? ' · Audio Session API was available' : ' · Audio Session API was not available'}
+        </p>
+      )}
     </div>
   )
 }

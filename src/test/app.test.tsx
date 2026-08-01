@@ -24,10 +24,10 @@ describe('accessibility and UI', () => {
     window.localStorage.clear()
   })
 
-  it('home screen exposes major branded controls', () => {
+  it('home screen exposes Quick Start controls', () => {
     renderApp()
     expect(screen.getByRole('heading', { name: /strikecaller/i })).toBeInTheDocument()
-    expect(screen.getAllByRole('link', { name: /start training/i }).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('button', { name: /quick train/i }).length).toBeGreaterThan(0)
     expect(screen.getByText(/more martial arts coming soon/i)).toBeInTheDocument()
   })
 
@@ -59,6 +59,7 @@ describe('session engine controls', () => {
         mode: 'coach',
         sessionDurationSec: 30,
         roundDurationSec: 30,
+        resumeBehavior: 'restart-combo',
         speech: {
           voiceURI: null,
           rate: 1,
@@ -68,6 +69,7 @@ describe('session engine controls', () => {
           coachingCuesEnabled: false,
           countdownEnabled: false,
           roundCallsEnabled: false,
+          musicFriendly: false,
         },
         sound: {
           bellsEnabled: false,
@@ -81,7 +83,8 @@ describe('session engine controls', () => {
     await vi.advanceTimersByTimeAsync(4000)
     engine.pause()
     expect(engine.snapshot().phase).toBe('paused')
-    engine.resume()
+    void engine.resume()
+    await vi.advanceTimersByTimeAsync(4000)
     expect(engine.snapshot().paused).toBe(false)
     engine.clearSpeechQueue()
     engine.stop()
@@ -103,6 +106,7 @@ describe('session engine controls', () => {
           coachingCuesEnabled: false,
           countdownEnabled: false,
           roundCallsEnabled: false,
+          musicFriendly: false,
         },
       }),
     )
@@ -138,6 +142,7 @@ describe('speech engine unsupported fallback', () => {
       coachingCuesEnabled: true,
       countdownEnabled: true,
       roundCallsEnabled: true,
+      musicFriendly: true,
     }))
     expect(engine.supported).toBe(false)
     await expect(engine.speak('Jab')).resolves.toBeUndefined()
