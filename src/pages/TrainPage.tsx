@@ -5,6 +5,13 @@ import { useApp } from '../context/AppContext'
 import { createDefaultWorkout } from '../data/defaults'
 import { isPaceTooFast } from '../engines/timingEngine'
 import { SafetyNotice } from '../components/SafetyNotice'
+import {
+  clampNumber,
+  parseIntegerInput,
+  parseNumberInput,
+  validateWorkoutFields,
+  WORKOUT_LIMITS,
+} from '../utils/workoutValidation'
 import type {
   CallStyle,
   Difficulty,
@@ -35,11 +42,11 @@ export function TrainPage() {
   const [equipment, setEquipment] = useState<Equipment>(preferences.equipment)
   const [pace, setPace] = useState<PacePreset>(preferences.pace)
   const [callStyle, setCallStyle] = useState<CallStyle>(preferences.callStyle)
-  const [rounds, setRounds] = useState(3)
-  const [roundDurationSec, setRoundDurationSec] = useState(180)
-  const [restDurationSec, setRestDurationSec] = useState(60)
-  const [sessionDurationSec, setSessionDurationSec] = useState(180)
-  const [customPaceMultiplier, setCustomPaceMultiplier] = useState(preferences.customPaceMultiplier)
+  const [roundsInput, setRoundsInput] = useState('3')
+  const [roundDurationInput, setRoundDurationInput] = useState('180')
+  const [restDurationInput, setRestDurationInput] = useState('60')
+  const [sessionDurationInput, setSessionDurationInput] = useState('180')
+  const [customPaceInput, setCustomPaceInput] = useState(String(preferences.customPaceMultiplier))
   const [comboMin, setComboMin] = useState(2)
   const [comboMax, setComboMax] = useState(5)
   const [defenseFrequency, setDefenseFrequency] = useState(preferences.includeDefense ? 0.35 : 0)
@@ -64,7 +71,40 @@ export function TrainPage() {
   const [openDisplay, setOpenDisplay] = useState(false)
 
   const boxing = martialArt === 'boxing'
-  const tooFast = isPaceTooFast(pace, customPaceMultiplier)
+  const rounds = parseIntegerInput(roundsInput)
+  const roundDurationSec = parseIntegerInput(roundDurationInput)
+  const restDurationSec = parseIntegerInput(restDurationInput)
+  const sessionDurationSec = parseIntegerInput(sessionDurationInput)
+  const customPaceMultiplier = parseNumberInput(customPaceInput)
+  const validationErrors = useMemo(
+    () =>
+      validateWorkoutFields({
+        rounds: rounds ?? Number.NaN,
+        roundDurationSec: roundDurationSec ?? Number.NaN,
+        restDurationSec: restDurationSec ?? Number.NaN,
+        sessionDurationSec: sessionDurationSec ?? Number.NaN,
+        comboMin,
+        comboMax,
+        customPaceMultiplier: customPaceMultiplier ?? Number.NaN,
+        defenseFrequency,
+        movementFrequency,
+        repetitionFrequency,
+      }),
+    [
+      rounds,
+      roundDurationSec,
+      restDurationSec,
+      sessionDurationSec,
+      comboMin,
+      comboMax,
+      customPaceMultiplier,
+      defenseFrequency,
+      movementFrequency,
+      repetitionFrequency,
+    ],
+  )
+  const configValid = validationErrors.length === 0
+  const tooFast = isPaceTooFast(pace, customPaceMultiplier ?? 1)
   const showSessionConfig = mode !== 'daily' && mode !== 'learn'
   const showRoundControls = mode === 'round'
   const showSessionDuration = mode === 'coach' || mode === 'reaction'
@@ -100,6 +140,27 @@ export function TrainPage() {
   const buildConfig = (overrideMode?: typeof mode): WorkoutConfig => {
     const resolvedMode = overrideMode ?? mode
     const roundish = resolvedMode === 'round'
+    const safeRounds = clampNumber(rounds ?? 3, WORKOUT_LIMITS.rounds.min, WORKOUT_LIMITS.rounds.max)
+    const safeRoundDur = clampNumber(
+      roundDurationSec ?? 180,
+      WORKOUT_LIMITS.roundDurationSec.min,
+      WORKOUT_LIMITS.roundDurationSec.max,
+    )
+    const safeRest = clampNumber(
+      restDurationSec ?? 60,
+      WORKOUT_LIMITS.restDurationSec.min,
+      WORKOUT_LIMITS.restDurationSec.max,
+    )
+    const safeSession = clampNumber(
+      sessionDurationSec ?? 180,
+      WORKOUT_LIMITS.sessionDurationSec.min,
+      WORKOUT_LIMITS.sessionDurationSec.max,
+    )
+    const safePace = clampNumber(
+      customPaceMultiplier ?? 1,
+      WORKOUT_LIMITS.customPaceMultiplier.min,
+      WORKOUT_LIMITS.customPaceMultiplier.max,
+    )
     return createDefaultWorkout({
       martialArt,
       mode: resolvedMode === 'daily' ? 'daily' : resolvedMode === 'learn' ? 'learn' : resolvedMode,
@@ -108,11 +169,11 @@ export function TrainPage() {
       equipment,
       pace,
       callStyle,
-      rounds: roundish ? rounds : 1,
-      roundDurationSec: roundish ? roundDurationSec : sessionDurationSec,
-      restDurationSec,
-      sessionDurationSec,
-      customPaceMultiplier,
+      rounds: roundish ? Math.round(safeRounds) : 1,
+      roundDurationSec: roundish ? Math.round(safeRoundDur) : Math.round(safeSession),
+      restDurationSec: Math.round(safeRest),
+      sessionDurationSec: Math.round(safeSession),
+      customPaceMultiplier: safePace,
       comboLength: { min: comboMin, max: Math.max(comboMin, comboMax) },
       defenseFrequency,
       movementFrequency,
@@ -148,6 +209,7 @@ export function TrainPage() {
   }
 
   const start = () => {
+    if (!configValid) return
     updatePreferences({
       martialArt,
       stance,
@@ -157,6 +219,7 @@ export function TrainPage() {
       equipment,
       largeText,
       sideTerminology,
+      customPaceMultiplier: customPaceMultiplier ?? preferences.customPaceMultiplier,
       speech: {
         ...preferences.speech,
         callStyle,
@@ -254,7 +317,7 @@ export function TrainPage() {
           <p className="text-[var(--text-muted)]">
             Daily Drill uses a separate focused flow with slow → normal → fight-pace practice of one combo.
           </p>
-          <button type="button" className="btn btn-primary" onClick={start}>
+          <button type="button" className="btn btn-primary" onClick={start} disabled={!configValid}>
             Open Daily Drill
           </button>
         </section>
@@ -306,31 +369,31 @@ export function TrainPage() {
                 <Field label="Rounds">
                   <input
                     type="number"
-                    min={1}
-                    max={12}
-                    value={rounds}
+                    min={WORKOUT_LIMITS.rounds.min}
+                    max={WORKOUT_LIMITS.rounds.max}
+                    value={roundsInput}
                     aria-label="Number of rounds"
-                    onChange={(e) => setRounds(Number(e.target.value))}
+                    onChange={(e) => setRoundsInput(e.target.value)}
                   />
                 </Field>
                 <Field label="Round duration (seconds)">
                   <input
                     type="number"
-                    min={30}
-                    max={300}
-                    value={roundDurationSec}
+                    min={WORKOUT_LIMITS.roundDurationSec.min}
+                    max={WORKOUT_LIMITS.roundDurationSec.max}
+                    value={roundDurationInput}
                     aria-label="Round duration in seconds"
-                    onChange={(e) => setRoundDurationSec(Number(e.target.value))}
+                    onChange={(e) => setRoundDurationInput(e.target.value)}
                   />
                 </Field>
                 <Field label="Rest duration (seconds)">
                   <input
                     type="number"
-                    min={15}
-                    max={180}
-                    value={restDurationSec}
+                    min={WORKOUT_LIMITS.restDurationSec.min}
+                    max={WORKOUT_LIMITS.restDurationSec.max}
+                    value={restDurationInput}
                     aria-label="Rest duration in seconds"
-                    onChange={(e) => setRestDurationSec(Number(e.target.value))}
+                    onChange={(e) => setRestDurationInput(e.target.value)}
                   />
                 </Field>
               </>
@@ -340,11 +403,11 @@ export function TrainPage() {
               <Field label="Session duration (seconds)">
                 <input
                   type="number"
-                  min={30}
-                  max={900}
-                  value={sessionDurationSec}
+                  min={WORKOUT_LIMITS.sessionDurationSec.min}
+                  max={WORKOUT_LIMITS.sessionDurationSec.max}
+                  value={sessionDurationInput}
                   aria-label="Session duration in seconds"
-                  onChange={(e) => setSessionDurationSec(Number(e.target.value))}
+                  onChange={(e) => setSessionDurationInput(e.target.value)}
                 />
               </Field>
             )}
@@ -433,16 +496,16 @@ export function TrainPage() {
                       <option value="limited-space">Limited space</option>
                     </select>
                   </Field>
-                  <Field label={`Custom pace (${customPaceMultiplier.toFixed(2)}x)`}>
+                  <Field label={`Custom pace (${(customPaceMultiplier ?? 1).toFixed(2)}x)`}>
                     <input
-                      type="range"
-                      min={0.55}
-                      max={2.5}
+                      type="number"
+                      min={WORKOUT_LIMITS.customPaceMultiplier.min}
+                      max={WORKOUT_LIMITS.customPaceMultiplier.max}
                       step={0.05}
-                      value={customPaceMultiplier}
+                      value={customPaceInput}
                       aria-label="Custom pace multiplier"
                       onChange={(e) => {
-                        setCustomPaceMultiplier(Number(e.target.value))
+                        setCustomPaceInput(e.target.value)
                         setPace('custom')
                       }}
                     />
@@ -575,7 +638,15 @@ export function TrainPage() {
             </p>
           )}
 
-          <button type="button" className="btn btn-primary" onClick={start}>
+          {validationErrors.length > 0 && (
+            <ul className="space-y-1 rounded-lg border border-[var(--accent)] p-3 text-sm text-[var(--accent-text)]" role="alert">
+              {validationErrors.map((err) => (
+                <li key={err}>{err}</li>
+              ))}
+            </ul>
+          )}
+
+          <button type="button" className="btn btn-primary" onClick={start} disabled={!configValid}>
             {mode === 'learn' ? 'Open Learn Mode' : 'Start Workout'}
           </button>
         </>

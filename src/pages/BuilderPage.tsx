@@ -12,7 +12,7 @@ import {
   MAX_REPEAT_COUNT,
   MIN_REPEAT_COUNT,
 } from '../utils/customCombo'
-import type { CustomCombo, TechniqueCategory } from '../types'
+import type { CustomCombo, MartialArt, TechniqueCategory } from '../types'
 
 const MT_CATEGORIES: TechniqueCategory[] = [
   'punch',
@@ -28,6 +28,18 @@ const MT_CATEGORIES: TechniqueCategory[] = [
 
 const BX_CATEGORIES: TechniqueCategory[] = ['punch', 'defense', 'movement', 'counter']
 
+function categoriesFor(art: MartialArt): TechniqueCategory[] {
+  return art === 'boxing' ? BX_CATEGORIES : MT_CATEGORIES
+}
+
+function techniqueSupportsArt(techniqueId: string, art: MartialArt): boolean {
+  try {
+    return getTechnique(techniqueId).martialArts.includes(art)
+  } catch {
+    return false
+  }
+}
+
 export function BuilderPage() {
   const {
     customCombos,
@@ -37,15 +49,21 @@ export function BuilderPage() {
     updatePreferences,
   } = useApp()
   const navigate = useNavigate()
-  const art = preferences.martialArt
-  const categories = art === 'boxing' ? BX_CATEGORIES : MT_CATEGORIES
+  const [builderArt, setBuilderArt] = useState<MartialArt>(preferences.martialArt)
+  const [sportFilter, setSportFilter] = useState<MartialArt | 'all'>('all')
+  const categories = categoriesFor(builderArt)
   const [title, setTitle] = useState('My combo')
   const [sequence, setSequence] = useState<string[]>(['jab', 'cross'])
   const [category, setCategory] = useState<TechniqueCategory>('punch')
   const [editingId, setEditingId] = useState<string | null>(null)
+  /** Locked martial art while editing an existing combo */
+  const [editingArt, setEditingArt] = useState<MartialArt | null>(null)
   const [repeatCount, setRepeatCount] = useState(3)
   const [notice, setNotice] = useState<string | null>(null)
   const [deleteId, setDeleteId] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
+
+  const activeArt = editingArt ?? builderArt
 
   useEffect(() => {
     const migrated = customCombos.filter((c) => c.migrated)
@@ -57,11 +75,29 @@ export function BuilderPage() {
     }
   }, [customCombos, preferences.customComboMigrationNoticeShown, updatePreferences])
 
+  useEffect(() => {
+    if (!categories.includes(category)) {
+      setCategory('punch')
+    }
+  }, [activeArt, categories, category])
+
   const validation = useMemo(() => validateTechniqueSequence(sequence), [sequence])
-  const palette = getTechniquesByCategory(category, art).filter((t) => t.martialArts.includes(art))
+  const palette = getTechniquesByCategory(category, activeArt).filter((t) =>
+    t.martialArts.includes(activeArt),
+  )
   const atMax = sequence.length >= MAX_COMBO_LENGTH
 
+  const filteredSaved = customCombos.filter((c) => {
+    if (sportFilter === 'all') return true
+    return (c.martialArt ?? 'muay-thai') === sportFilter
+  })
+
   const addTechnique = (id: string) => {
+    if (!techniqueSupportsArt(id, activeArt)) {
+      setSaveError(`That technique is not available for ${activeArt === 'boxing' ? 'Boxing' : 'Muay Thai'}.`)
+      return
+    }
+    setSaveError(null)
     setSequence((prev) => {
       if (prev.length >= MAX_COMBO_LENGTH) return prev
       return [...prev, id]
@@ -70,7 +106,18 @@ export function BuilderPage() {
 
   const save = () => {
     if (!validation.valid || sequence.length === 0 || sequence.length > MAX_COMBO_LENGTH) return
+    const incompatible = sequence.filter((id) => !techniqueSupportsArt(id, activeArt))
+    if (incompatible.length) {
+      setSaveError(
+        `Cannot save: ${incompatible.length} technique(s) are incompatible with ${
+          activeArt === 'boxing' ? 'Boxing' : 'Muay Thai'
+        }.`,
+      )
+      return
+    }
+    setSaveError(null)
     const now = Date.now()
+    const martialArt: MartialArt = editingArt ?? activeArt
     const combo: CustomCombo = {
       id: editingId ?? `custom-${now}`,
       title: title.trim() || 'Custom combo',
@@ -81,10 +128,11 @@ export function BuilderPage() {
       updatedAt: now,
       favorite: false,
       repeatCount: clampRepeatCount(repeatCount),
-      martialArt: art,
+      martialArt,
     }
     upsertCustomCombo(combo)
     setEditingId(combo.id)
+    setEditingArt(martialArt)
   }
 
   const trainCombo = (combo: CustomCombo) => {
@@ -106,6 +154,7 @@ export function BuilderPage() {
       rounds: 1,
       customComboId: combo.id,
       repeatCount: repeats,
+      finishWhenQueueEmpty: true,
       speech: { ...preferences.speech, callStyle: preferences.callStyle },
       sound: preferences.sound,
       sideTerminology: preferences.sideTerminology,
@@ -122,19 +171,72 @@ export function BuilderPage() {
     navigate('/session', { state: { config, comboQueue: queue } })
   }
 
+  const startEdit = (combo: CustomCombo) => {
+    const art: MartialArt = combo.martialArt === 'boxing' ? 'boxing' : 'muay-thai'
+    setEditingId(combo.id)
+    setEditingArt(art)
+    setBuilderArt(art)
+    setTitle(combo.title)
+    setSequence(clampTechniqueIds(combo.techniqueIds))
+    setRepeatCount(clampRepeatCount(combo.repeatCount))
+    setSaveError(null)
+    setCategory('punch')
+  }
+
+  const resetBuilder = () => {
+    setSequence(['jab', 'cross'])
+    setTitle('My combo')
+    setEditingId(null)
+    setEditingArt(null)
+    setRepeatCount(3)
+    setBuilderArt(preferences.martialArt)
+    setSaveError(null)
+  }
+
   return (
     <div className="space-y-6">
       <header>
         <h1 className="display text-5xl">Custom Combo Builder</h1>
         <p className="mt-2 max-w-2xl text-[var(--text-muted)]">
           Tap techniques into a sequence (max {MAX_COMBO_LENGTH}). Invalid transitions are explained before you can
-          save. Building for {art === 'boxing' ? 'Boxing' : 'Muay Thai'}.
+          save. Building for {activeArt === 'boxing' ? 'Boxing' : 'Muay Thai'}.
         </p>
       </header>
 
       {notice && (
         <p className="rounded-lg border border-[var(--warning)] p-3 text-sm" role="status">
           {notice}
+        </p>
+      )}
+
+      {!editingArt && (
+        <div className="flex flex-wrap gap-2" role="group" aria-label="Builder martial art">
+          {(
+            [
+              ['muay-thai', 'Muay Thai'],
+              ['boxing', 'Boxing'],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              className={`chip ${builderArt === id ? 'chip-active' : ''}`}
+              aria-pressed={builderArt === id}
+              onClick={() => {
+                setBuilderArt(id)
+                updatePreferences({ martialArt: id })
+                setSequence((prev) => prev.filter((tid) => techniqueSupportsArt(tid, id)))
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {editingArt && (
+        <p className="text-sm text-[var(--text-muted)]" role="status">
+          Editing a {editingArt === 'boxing' ? 'Boxing' : 'Muay Thai'} combo — martial art is locked on save.
         </p>
       )}
 
@@ -186,6 +288,11 @@ export function BuilderPage() {
                 <li key={`${issue.code}-${issue.index}-${issue.message}`}>{issue.message}</li>
               ))}
           </ul>
+        )}
+        {saveError && (
+          <p className="mt-3 text-sm text-[var(--accent-text)]" role="alert">
+            {saveError}
+          </p>
         )}
       </section>
 
@@ -240,32 +347,47 @@ export function BuilderPage() {
         >
           Save combo
         </button>
-        <button
-          type="button"
-          className="btn"
-          onClick={() => {
-            setSequence(['jab', 'cross'])
-            setTitle('My combo')
-            setEditingId(null)
-            setRepeatCount(3)
-          }}
-        >
+        <button type="button" className="btn" onClick={resetBuilder}>
           Reset builder
         </button>
       </div>
 
       <section>
-        <h2 className="mb-3 text-xl font-semibold">Saved custom combos</h2>
-        {customCombos.length === 0 ? (
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-xl font-semibold">Saved custom combos</h2>
+          <div className="flex flex-wrap gap-2" role="group" aria-label="Filter saved combos by sport">
+            {(
+              [
+                ['all', 'All'],
+                ['muay-thai', 'Muay Thai'],
+                ['boxing', 'Boxing'],
+              ] as const
+            ).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                className={`chip ${sportFilter === id ? 'chip-active' : ''}`}
+                aria-pressed={sportFilter === id}
+                onClick={() => setSportFilter(id)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+        {filteredSaved.length === 0 ? (
           <p className="text-sm text-[var(--text-muted)]">No custom combos yet.</p>
         ) : (
           <ul className="space-y-3">
-            {customCombos.map((combo) => (
+            {filteredSaved.map((combo) => (
               <li key={combo.id} className="panel flex flex-wrap items-center justify-between gap-3 p-4">
                 <div>
                   <p className="font-semibold">
                     {combo.title}
                     {combo.migrated ? ' · migrated' : ''}
+                    <span className="ml-2 text-xs font-normal text-[var(--text-dim)]">
+                      {combo.martialArt === 'boxing' ? 'Boxing' : 'Muay Thai'}
+                    </span>
                   </p>
                   <p className="text-sm text-[var(--text-muted)]">
                     {combo.techniqueIds
@@ -285,16 +407,7 @@ export function BuilderPage() {
                   <button type="button" className="btn btn-primary" onClick={() => trainCombo(combo)}>
                     Train Combo
                   </button>
-                  <button
-                    type="button"
-                    className="btn"
-                    onClick={() => {
-                      setEditingId(combo.id)
-                      setTitle(combo.title)
-                      setSequence(clampTechniqueIds(combo.techniqueIds))
-                      setRepeatCount(clampRepeatCount(combo.repeatCount))
-                    }}
-                  >
+                  <button type="button" className="btn" onClick={() => startEdit(combo)}>
                     Edit
                   </button>
                   <button type="button" className="btn btn-danger" onClick={() => setDeleteId(combo.id)}>

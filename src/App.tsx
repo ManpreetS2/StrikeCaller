@@ -13,11 +13,17 @@ import { DemoPage } from './pages/DemoPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { StatsPage } from './pages/StatsPage'
 
-function OnboardingGate({ children }: { children: React.ReactNode }) {
+function OnboardingGate({
+  children,
+  after,
+}: {
+  children: React.ReactNode
+  after: 'train' | 'session' | 'daily' | 'learn' | 'builder'
+}) {
   const { preferences } = useApp()
   const location = useLocation()
   if (!preferences.onboardingComplete) {
-    return <Navigate to="/onboarding" replace state={{ after: 'train', from: location.pathname }} />
+    return <Navigate to="/onboarding" replace state={{ after, from: location.pathname }} />
   }
   return children
 }
@@ -33,16 +39,44 @@ export default function App() {
             <Route
               path="/train"
               element={
-                <OnboardingGate>
+                <OnboardingGate after="train">
                   <TrainPage />
                 </OnboardingGate>
               }
             />
-            <Route path="/learn" element={<LearnPage />} />
-            <Route path="/builder" element={<BuilderPage />} />
-            <Route path="/daily" element={<DailyPage />} />
+            <Route
+              path="/learn"
+              element={
+                <OnboardingGate after="learn">
+                  <LearnPage />
+                </OnboardingGate>
+              }
+            />
+            <Route
+              path="/builder"
+              element={
+                <OnboardingGate after="builder">
+                  <BuilderPage />
+                </OnboardingGate>
+              }
+            />
+            <Route
+              path="/daily"
+              element={
+                <OnboardingGate after="daily">
+                  <DailyPage />
+                </OnboardingGate>
+              }
+            />
             <Route path="/demo" element={<DemoPage />} />
-            <Route path="/session" element={<SessionPage />} />
+            <Route
+              path="/session"
+              element={
+                <OnboardingGate after="session">
+                  <SessionPage />
+                </OnboardingGate>
+              }
+            />
             <Route path="/summary" element={<SummaryPage />} />
             <Route path="/stats" element={<StatsPage />} />
             <Route path="/settings" element={<SettingsPage />} />

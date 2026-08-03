@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 
 interface ConfirmDialogProps {
   title: string
@@ -19,17 +20,29 @@ export function ConfirmDialog({
   danger = false,
   onConfirm,
   onCancel,
-  initialFocus = 'confirm',
+  initialFocus,
 }: ConfirmDialogProps) {
   const titleId = useId()
   const panelRef = useRef<HTMLDivElement>(null)
   const confirmRef = useRef<HTMLButtonElement>(null)
   const cancelRef = useRef<HTMLButtonElement>(null)
+  const focusTarget = initialFocus ?? (danger ? 'cancel' : 'confirm')
 
   useEffect(() => {
-    const target = initialFocus === 'cancel' ? cancelRef.current : confirmRef.current
+    const previouslyFocused = document.activeElement as HTMLElement | null
+    const main = document.getElementById('main')
+    main?.setAttribute('inert', '')
+    main?.setAttribute('aria-hidden', 'true')
+
+    const target = focusTarget === 'cancel' ? cancelRef.current : confirmRef.current
     target?.focus()
-  }, [initialFocus])
+
+    return () => {
+      main?.removeAttribute('inert')
+      main?.removeAttribute('aria-hidden')
+      previouslyFocused?.focus?.()
+    }
+  }, [focusTarget])
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -57,7 +70,7 @@ export function ConfirmDialog({
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [onCancel])
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4"
       role="dialog"
@@ -83,6 +96,7 @@ export function ConfirmDialog({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }

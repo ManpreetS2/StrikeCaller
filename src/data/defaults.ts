@@ -46,11 +46,25 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   customComboMigrationNoticeShown: false,
 }
 
-export const APP_VERSION = '1.1.1'
-export const APP_RELEASE_TITLE = 'StrikeCaller v1.1.1 — Correctness Patch'
+export const APP_VERSION = '1.1.2'
+export const APP_RELEASE_TITLE = 'StrikeCaller v1.1.2 — Behavior & Onboarding'
+
+/** Keep only own properties whose values are not undefined. */
+export function definedPartial<T extends object>(partial?: Partial<T>): Partial<T> {
+  if (!partial) return {}
+  const out: Partial<T> = {}
+  for (const key of Object.keys(partial) as (keyof T)[]) {
+    const value = partial[key]
+    if (value !== undefined) {
+      out[key] = value
+    }
+  }
+  return out
+}
 
 export function createDefaultWorkout(partial?: Partial<WorkoutConfig>): WorkoutConfig {
-  const martialArt = partial?.martialArt ?? 'muay-thai'
+  const clean = definedPartial(partial)
+  const martialArt = clean.martialArt ?? 'muay-thai'
   const boxing = martialArt === 'boxing'
   const base: WorkoutConfig = {
     martialArt,
@@ -86,5 +100,29 @@ export function createDefaultWorkout(partial?: Partial<WorkoutConfig>): WorkoutC
     sideTerminology: 'lead-rear',
     resumeBehavior: 'restart-combo',
   }
-  return { ...base, ...partial, martialArt: partial?.martialArt ?? martialArt }
+
+  const merged: WorkoutConfig = {
+    ...base,
+    ...clean,
+    martialArt,
+    timingMultipliers: {
+      ...base.timingMultipliers,
+      ...(clean.timingMultipliers ?? {}),
+    },
+    speech: {
+      ...base.speech,
+      ...(clean.speech ?? {}),
+    },
+    sound: {
+      ...base.sound,
+      ...(clean.sound ?? {}),
+    },
+    comboLength: {
+      ...base.comboLength,
+      ...(clean.comboLength ?? {}),
+    },
+    categories: clean.categories ?? base.categories,
+  }
+
+  return merged
 }

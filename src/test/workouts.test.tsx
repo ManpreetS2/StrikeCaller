@@ -58,13 +58,14 @@ describe('workout surfaces', () => {
     expect(screen.getByRole('button', { name: /start guided demo/i })).toBeInTheDocument()
   })
 
-  it('onboarding requires only three selections and can be skipped', async () => {
+  it('onboarding starts with martial art and can skip remaining defaults', async () => {
     const user = userEvent.setup()
     wrap(<OnboardingPage />)
-    expect(screen.getByRole('heading', { name: /three quick choices/i })).toBeInTheDocument()
-    expect(screen.getByText(/1\. Stance/i)).toBeInTheDocument()
-    expect(screen.getByText(/2\. Experience/i)).toBeInTheDocument()
-    expect(screen.getByText(/3\. Calling style/i)).toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: /skip and use recommended settings/i }))
+    expect(screen.getByRole('heading', { name: /four quick choices/i })).toBeInTheDocument()
+    expect(screen.getByText(/1\. Martial art/i)).toBeInTheDocument()
+    expect(screen.getByText(/2\. Stance/i)).toBeInTheDocument()
+    expect(screen.getByText(/3\. Experience/i)).toBeInTheDocument()
+    expect(screen.getByText(/4\. Calling style/i)).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /skip remaining/i }))
   })
 })

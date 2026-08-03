@@ -1,16 +1,24 @@
 import { useState } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { flushSync } from 'react-dom'
 import { useApp } from '../context/AppContext'
 import { SafetyNotice } from '../components/SafetyNotice'
 import { getQuickStartPreset, type QuickStartId } from '../data/quickStart'
-import type { CallStyle, Difficulty, Stance } from '../types'
+import type { CallStyle, Difficulty, MartialArt, Stance } from '../types'
 
-const STEPS = ['Stance', 'Experience', 'Calling style'] as const
+const STEPS = ['Martial art', 'Stance', 'Experience', 'Calling style'] as const
+
+const RECOMMENDED = {
+  martialArt: 'muay-thai' as MartialArt,
+  stance: 'orthodox' as Stance,
+  experience: 'beginner' as Difficulty,
+  callStyle: 'hybrid' as CallStyle,
+}
 
 interface OnboardingLocationState {
-  after?: 'quick' | 'train'
+  after?: 'quick' | 'train' | 'session' | 'daily' | 'learn' | 'builder' | string
   quickId?: QuickStartId
+  from?: string
 }
 
 export function OnboardingPage() {
@@ -18,20 +26,50 @@ export function OnboardingPage() {
   const location = useLocation()
   const navState = (location.state as OnboardingLocationState | null) ?? {}
   const { preferences, updatePreferences } = useApp()
+  const updating = preferences.onboardingComplete
+  const redirectToSettings =
+    preferences.onboardingComplete && !navState.after && !navState.from
+
   const [step, setStep] = useState(0)
+  const [martialArt, setMartialArt] = useState<MartialArt>(preferences.martialArt)
   const [stance, setStance] = useState<Stance>(preferences.stance)
   const [experience, setExperience] = useState<Difficulty>(preferences.experience)
   const [callStyle, setCallStyle] = useState<CallStyle>(preferences.callStyle)
+  const [touched, setTouched] = useState({
+    martialArt: false,
+    stance: false,
+    experience: false,
+    callStyle: false,
+  })
 
-  const finish = (skipped = false) => {
+  // Completed setup opened directly → Settings (not a fake “first run”)
+  if (redirectToSettings) {
+    return <Navigate to="/settings" replace />
+  }
+
+  const markTouched = (key: keyof typeof touched) => {
+    setTouched((prev) => ({ ...prev, [key]: true }))
+  }
+
+  const finish = (skipped: boolean) => {
+    const resolvedMartialArt =
+      !skipped || touched.martialArt || step > 0 ? martialArt : RECOMMENDED.martialArt
+    const resolvedStance =
+      !skipped || touched.stance || step > 1 ? stance : RECOMMENDED.stance
+    const resolvedExperience =
+      !skipped || touched.experience || step > 2 ? experience : RECOMMENDED.experience
+    const resolvedCallStyle =
+      !skipped || touched.callStyle || step > 3 ? callStyle : RECOMMENDED.callStyle
+
     const nextPrefs = {
-      stance: skipped ? preferences.stance : stance,
-      experience: skipped ? preferences.experience : experience,
-      callStyle: skipped ? preferences.callStyle : callStyle,
+      martialArt: resolvedMartialArt,
+      stance: resolvedStance,
+      experience: resolvedExperience,
+      callStyle: resolvedCallStyle,
       onboardingComplete: true,
       speech: {
         ...preferences.speech,
-        callStyle: skipped ? preferences.callStyle : callStyle,
+        callStyle: resolvedCallStyle,
       },
     }
 
@@ -50,22 +88,54 @@ export function OnboardingPage() {
       return
     }
 
-    navigate(navState.after === 'train' ? '/train' : '/')
+    const dest =
+      navState.after === 'train'
+        ? '/train'
+        : navState.after === 'daily'
+          ? '/daily'
+          : navState.after === 'learn'
+            ? '/learn'
+            : navState.after === 'builder'
+              ? '/builder'
+              : navState.after === 'session'
+                ? '/train'
+                : navState.from && navState.from !== '/onboarding'
+                  ? navState.from
+                  : '/'
+    navigate(dest)
+  }
+
+  const continueStep = () => {
+    if (step === 0) markTouched('martialArt')
+    if (step === 1) markTouched('stance')
+    if (step === 2) markTouched('experience')
+    if (step === 3) markTouched('callStyle')
+    if (step < STEPS.length - 1) setStep((s) => s + 1)
+    else finish(false)
   }
 
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       <header>
-        <p className="text-sm uppercase tracking-[0.2em] text-[var(--accent-text)]">First run</p>
-        <h1 className="display mt-2 text-5xl">Three quick choices</h1>
+        <p className="text-sm uppercase tracking-[0.2em] text-[var(--accent-text)]">
+          {updating ? 'Update training setup' : 'First run'}
+        </p>
+        <h1 className="display mt-2 text-5xl">
+          {updating ? 'Update your setup' : 'Four quick choices'}
+        </h1>
         <p className="mt-2 text-[var(--text-muted)]">
-          Stance, experience, and how calls sound. Everything else can wait — change it anytime in Settings.
+          Martial art, stance, experience, and how calls sound. Everything else can wait — change it anytime in
+          Settings.
         </p>
       </header>
 
       <div className="flex flex-wrap gap-2" aria-label="Onboarding progress">
         {STEPS.map((label, index) => (
-          <span key={label} className={`chip ${index === step ? 'chip-active' : ''}`}>
+          <span
+            key={label}
+            className={`chip ${index === step ? 'chip-active' : ''}`}
+            aria-current={index === step ? 'step' : undefined}
+          >
             {index + 1}. {label}
           </span>
         ))}
@@ -74,16 +144,33 @@ export function OnboardingPage() {
       <section className="panel space-y-4 p-5" aria-live="polite">
         {step === 0 && (
           <Choice
+            title="Martial art"
+            options={[
+              { id: 'muay-thai', label: 'Muay Thai' },
+              { id: 'boxing', label: 'Boxing' },
+            ]}
+            value={martialArt}
+            onChange={(v) => {
+              setMartialArt(v as MartialArt)
+              markTouched('martialArt')
+            }}
+          />
+        )}
+        {step === 1 && (
+          <Choice
             title="Your stance"
             options={[
               { id: 'orthodox', label: 'Orthodox' },
               { id: 'southpaw', label: 'Southpaw' },
             ]}
             value={stance}
-            onChange={(v) => setStance(v as Stance)}
+            onChange={(v) => {
+              setStance(v as Stance)
+              markTouched('stance')
+            }}
           />
         )}
-        {step === 1 && (
+        {step === 2 && (
           <Choice
             title="Experience level"
             options={[
@@ -92,10 +179,13 @@ export function OnboardingPage() {
               { id: 'advanced', label: 'Advanced' },
             ]}
             value={experience}
-            onChange={(v) => setExperience(v as Difficulty)}
+            onChange={(v) => {
+              setExperience(v as Difficulty)
+              markTouched('experience')
+            }}
           />
         )}
-        {step === 2 && (
+        {step === 3 && (
           <Choice
             title="Calling style"
             options={[
@@ -104,7 +194,10 @@ export function OnboardingPage() {
               { id: 'hybrid', label: 'Hybrid' },
             ]}
             value={callStyle}
-            onChange={(v) => setCallStyle(v as CallStyle)}
+            onChange={(v) => {
+              setCallStyle(v as CallStyle)
+              markTouched('callStyle')
+            }}
           />
         )}
 
@@ -115,7 +208,7 @@ export function OnboardingPage() {
             </button>
           )}
           {step < STEPS.length - 1 ? (
-            <button type="button" className="btn btn-primary" onClick={() => setStep((s) => s + 1)}>
+            <button type="button" className="btn btn-primary" onClick={continueStep}>
               Continue
             </button>
           ) : (
@@ -124,13 +217,13 @@ export function OnboardingPage() {
             </button>
           )}
           <button type="button" className="btn" onClick={() => finish(true)}>
-            Skip and use recommended settings
+            Skip remaining — use recommended defaults
           </button>
         </div>
       </section>
 
       <p className="text-sm text-[var(--text-dim)]">
-        Equipment, pace, defense, movement, and theme stay optional. Open Settings anytime to refine them.
+        Choices you already made stay. Skip only fills unanswered remaining steps with recommended defaults.
       </p>
 
       <SafetyNotice compact />

@@ -1,4 +1,5 @@
 import { resolveCombo } from '../utils/resolveCombo'
+import { buildTrainAgainPayload } from '../utils/trainAgain'
 import { Link, useNavigate } from 'react-router-dom'
 import {
   ArrowRight,
@@ -43,7 +44,9 @@ export function HomePage() {
   const { preferences, updatePreferences, history, favorites, customCombos } = useApp()
   const stats = getComboStats()
   const preview = computeStatsPreview(history)
-  const recent = history.find((h) => !h.excludeFromStats && !h.isDemo && h.mode !== 'demo')
+  const recent = history.find(
+    (h) => !h.excludeFromStats && !h.isDemo && h.mode !== 'demo' && !h.cancelled,
+  )
   const favoriteCombo = favorites[0]
     ? resolveCombo(favorites[0], { customCombos, history })
     : null
@@ -67,8 +70,9 @@ export function HomePage() {
   }
 
   const trainAgain = () => {
-    if (recent?.workoutConfig) {
-      navigate('/session', { state: { config: recent.workoutConfig } })
+    if (recent) {
+      const payload = buildTrainAgainPayload(recent, customCombos)
+      navigate('/session', { state: { config: payload.config, comboQueue: payload.comboQueue } })
       return
     }
     startQuick(preferences.martialArt === 'boxing' ? 'quick-boxing' : 'quick-train')

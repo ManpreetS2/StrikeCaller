@@ -80,10 +80,14 @@ export class SessionEngine {
   private sessionFavoriteIds = new Set<string>()
   private visibilityHandler: (() => void) | null = null
   private wakeLockEnabled = true
+  /** Original queue template for Train Again / finite sessions */
+  private initialQueue: Combo[] = []
+  private finishWhenQueueEmpty = false
 
   constructor(config: WorkoutConfig, options?: { wakeLock?: boolean }) {
     this.config = config
     this.wakeLockEnabled = options?.wakeLock !== false
+    this.finishWhenQueueEmpty = Boolean(config.finishWhenQueueEmpty)
     audioEngine.setVolume(config.sound.masterVolume)
     audioEngine.setEnabled(config.sound.tonesEnabled || config.sound.bellsEnabled)
   }
@@ -171,9 +175,20 @@ export class SessionEngine {
     this.sessionFavoriteIds.clear()
     this.roundsFullyCompleted = 0
     this.round = 1
-    this.comboQueue =
+    const seeded =
       options?.comboQueue ??
       (this.demoMode ? getDemoCombos(this.config.stance, this.config.martialArt ?? 'muay-thai') : [])
+    this.initialQueue = seeded.map((c) => ({
+      ...c,
+      techniques: c.techniques.map((t) => ({ ...t })),
+    }))
+    this.comboQueue = this.initialQueue.map((c) => ({
+      ...c,
+      techniques: c.techniques.map((t) => ({ ...t })),
+    }))
+    if (this.initialQueue.length > 0 && this.config.finishWhenQueueEmpty) {
+      this.finishWhenQueueEmpty = true
+    }
     this.bindVisibility()
     await this.requestWakeLock()
     const token = this.runToken
@@ -329,11 +344,14 @@ export class SessionEngine {
     this.comboSnapshots.set(combo.id, combo)
   }
 
-  private pickCombo(): Combo {
+  private pickCombo(): Combo | null {
     if (this.comboQueue.length) {
       const next = this.comboQueue.shift()!
       this.rememberCombo(next)
       return next
+    }
+    if (this.finishWhenQueueEmpty) {
+      return null
     }
     if (this.demoMode) {
       this.comboQueue = getDemoCombos(this.config.stance, this.config.martialArt ?? 'muay-thai')
@@ -359,6 +377,11 @@ export class SessionEngine {
   private async playNextCombo(token: number) {
     if (this.cancelled || token !== this.runToken || this.phase !== 'work') return
     const combo = this.pickCombo()
+    if (!combo) {
+      this.clearClock()
+      this.finish(false)
+      return
+    }
     this.combo = combo
     this.recentComboIds = [...this.recentComboIds.slice(-8), combo.id]
     this.stepIndex = 0
@@ -460,9 +483,7 @@ export class SessionEngine {
     this.paused = false
 
     try {
-      await this.runCountdown(token)
-      if (this.cancelled || token !== this.runToken) return
-
+      // Rest resumes remaining rest without Fight countdown/bell
       if (this.pausedFrom === 'rest') {
         this.phase = 'rest'
         this.lastTick = Date.now()
@@ -470,6 +491,9 @@ export class SessionEngine {
         this.setCaption('Rest')
         return
       }
+
+      await this.runCountdown(token)
+      if (this.cancelled || token !== this.runToken) return
 
       if (this.pausedFrom === 'countdown' && this.timeRemainingMs <= 0) {
         await this.startWorkPeriod(token, true)
@@ -512,8 +536,11 @@ export class SessionEngine {
     this.speech.cancel()
     audioEngine.stopAll()
     this.abortWait()
-    const repeat = { ...this.combo, techniques: [...this.combo.techniques] }
-    this.comboQueue.unshift(repeat)
+    // Finite-queue sessions: restart current combo without increasing the target count
+    if (!this.finishWhenQueueEmpty) {
+      const repeat = { ...this.combo, techniques: [...this.combo.techniques] }
+      this.comboQueue.unshift(repeat)
+    }
     this.stepIndex = 0
     const token = ++this.runToken
     this.resumeInFlight = false
@@ -521,7 +548,11 @@ export class SessionEngine {
     if (!this.timerId) this.startClock()
     await this.wait(this.config.timingMultipliers.pauseBeforeRepeatMs)
     if (token !== this.runToken) return
-    await this.playNextCombo(token)
+    if (this.finishWhenQueueEmpty) {
+      await this.restartCurrentCombo(token)
+    } else {
+      await this.playNextCombo(token)
+    }
   }
 
   stop() {
@@ -596,8 +627,12 @@ export class SessionEngine {
       favoriteComboIds: [...this.sessionFavoriteIds].filter((id) =>
         this.completedComboIds.includes(id),
       ),
-      usedCustomCombo: Boolean(this.config.customComboId),
-      workoutConfig: { ...this.config },
+      usedCustomCombo: Boolean(this.config.customComboId) || this.finishWhenQueueEmpty,
+      workoutConfig: { ...this.config, finishWhenQueueEmpty: this.finishWhenQueueEmpty },
+      queuedCombos: this.initialQueue.map((c) => ({
+        ...c,
+        techniques: c.techniques.map((t) => ({ ...t })),
+      })),
       excludeFromStats: isDemo,
       isDemo,
     }

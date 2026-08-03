@@ -5,7 +5,6 @@ import {
   formatDuration,
   MILESTONES,
 } from '../engines/statsEngine'
-import { COMBO_MAP } from '../data/combos'
 import type { MartialArt, StatsRange } from '../types'
 
 export function StatsPage() {
@@ -83,8 +82,14 @@ export function StatsPage() {
             <StatCard label="Combinations" value={String(stats.combinationsCompleted)} />
             <StatCard label="Techniques called" value={String(stats.techniquesCalled)} />
             <StatCard label="Unique combos" value={String(stats.uniqueCombinations)} />
-            <StatCard label="Current streak" value={`${stats.currentStreak} day${stats.currentStreak === 1 ? '' : 's'}`} />
-            <StatCard label="Longest streak" value={`${stats.longestStreak} day${stats.longestStreak === 1 ? '' : 's'}`} />
+            <StatCard
+              label="Current streak (filtered)"
+              value={`${stats.currentStreak} day${stats.currentStreak === 1 ? '' : 's'}`}
+            />
+            <StatCard
+              label="Longest streak (filtered)"
+              value={`${stats.longestStreak} day${stats.longestStreak === 1 ? '' : 's'}`}
+            />
             <StatCard label="Avg session" value={formatDuration(stats.averageSessionMs)} />
           </section>
 
@@ -138,7 +143,7 @@ export function StatsPage() {
               <h2 className="text-xl font-semibold">Technique activity</h2>
               <p className="mt-1 text-sm text-[var(--text-dim)]">Activity tracking only — not quality scoring.</p>
               <p className="mt-3 text-sm">
-                Most called: <strong>{stats.mostCalledTechnique ?? '—'}</strong>
+                Most called: <strong>{stats.mostCalledTechniqueName ?? '—'}</strong>
               </p>
               <p className="text-sm">
                 Least-trained category: <strong>{stats.leastTrainedCategory ?? '—'}</strong>
@@ -146,7 +151,7 @@ export function StatsPage() {
               <ol className="mt-3 list-decimal space-y-1 pl-5 text-sm">
                 {stats.topTechniques.map((t) => (
                   <li key={t.id}>
-                    {t.id} · {t.count}
+                    {t.name} · {t.count}
                   </li>
                 ))}
               </ol>
@@ -168,15 +173,15 @@ export function StatsPage() {
               <ul className="mt-2 space-y-1 text-sm">
                 {stats.mostPracticedCombos.map((c) => (
                   <li key={c.id}>
-                    {COMBO_MAP[c.id]?.title ?? c.id} · {c.count}
+                    {c.title} · {c.count}
                   </li>
                 ))}
                 {!stats.mostPracticedCombos.length && <li className="text-[var(--text-dim)]">No combo IDs recorded yet.</li>}
               </ul>
               <h3 className="mt-4 font-semibold">Recently practiced</h3>
               <ul className="mt-2 space-y-1 text-sm">
-                {stats.recentCombos.map((id) => (
-                  <li key={id}>{COMBO_MAP[id]?.title ?? id}</li>
+                {stats.recentCombos.map((c) => (
+                  <li key={c.id}>{c.title}</li>
                 ))}
               </ul>
             </div>
@@ -190,7 +195,13 @@ export function StatsPage() {
               <li>Most combos in one session: {stats.personalRecords.mostCombos}</li>
               <li>Longest streak: {stats.personalRecords.longestStreak} days</li>
               <li>Most active week: {stats.personalRecords.mostActiveWeekMinutes} min</li>
-              <li>Fastest selected pace: {stats.personalRecords.fastestPace ?? '—'}</li>
+              <li>
+                Fastest selected pace:{' '}
+                {stats.personalRecords.fastestPace === 'custom' &&
+                stats.personalRecords.fastestPaceMultiplier != null
+                  ? `Custom (${stats.personalRecords.fastestPaceMultiplier.toFixed(2)}x)`
+                  : (stats.personalRecords.fastestPace ?? '—')}
+              </li>
               <li>Highest unique-combo count: {stats.personalRecords.mostUniqueCombosInSession}</li>
             </ul>
           </section>

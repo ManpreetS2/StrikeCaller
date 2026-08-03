@@ -19,18 +19,21 @@ import {
   saveHistory,
   clearHistory as clearHistoryStore,
   resetPreferences as resetPreferencesStore,
-  loadDailyDrill,
+  loadDailyDrillMap,
   saveDailyDrill,
+  saveDailyDrillMap,
   exportUserData,
   importUserData,
 } from '../storage/localStore'
 import type {
   CustomCombo,
+  DailyDrillMap,
   DailyDrillState,
   SessionSummary,
   ThemePreference,
   UserPreferences,
 } from '../types'
+import { normalizeDailyDrillState } from '../utils/dailyDrill'
 
 interface AppContextValue {
   preferences: UserPreferences
@@ -47,8 +50,10 @@ interface AppContextValue {
   addHistory: (summary: SessionSummary) => void
   clearHistory: () => void
   resetPreferences: () => void
-  dailyDrill: DailyDrillState | null
+  dailyDrills: DailyDrillMap
+  /** Upsert one sport/date record into the daily drill map */
   setDailyDrill: (state: DailyDrillState) => void
+  getDailyDrill: (dateKey: string) => DailyDrillState | null
   exportData: () => string
   importData: (json: string) => { ok: boolean; message: string }
 }
@@ -70,7 +75,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [favorites, setFavorites] = useState<string[]>(() => loadFavorites())
   const [customCombos, setCustomCombos] = useState<CustomCombo[]>(() => loadCustomCombos())
   const [history, setHistory] = useState<SessionSummary[]>(() => loadHistory())
-  const [dailyDrill, setDailyDrillState] = useState<DailyDrillState | null>(() => loadDailyDrill())
+  const [dailyDrills, setDailyDrillsState] = useState<DailyDrillMap>(() => loadDailyDrillMap())
   const [resolvedTheme, setResolvedTheme] = useState<'dark' | 'light'>(() =>
     resolveTheme(loadPreferences().theme),
   )
@@ -94,6 +99,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // Persist migrated history / custom combos so legacy records keep repaired shape.
     saveHistory(history)
     saveCustomCombos(customCombos)
+    saveDailyDrillMap(dailyDrills)
     // intentionally once after initial load
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -153,7 +159,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setHistory((prev) => {
           if (prev.some((h) => h.id === summary.id)) return prev
           if (summary.excludeFromStats || summary.isDemo || summary.mode === 'demo') {
-            // Prefer not storing demos; keep state unchanged
             return prev
           }
           const next = [summary, ...prev]
@@ -169,11 +174,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const next = resetPreferencesStore()
         setPreferencesState(next)
       },
-      dailyDrill,
+      dailyDrills,
       setDailyDrill: (state) => {
-        saveDailyDrill(state)
-        setDailyDrillState(state)
+        const normalized = normalizeDailyDrillState(state)
+        if (!normalized) return
+        saveDailyDrill(normalized)
+        setDailyDrillsState((prev) => ({ ...prev, [normalized.dateKey]: normalized }))
       },
+      getDailyDrill: (dateKey) => dailyDrills[dateKey] ?? null,
       exportData: exportUserData,
       importData: (json) => {
         const result = importUserData(json)
@@ -182,7 +190,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setFavorites(loadFavorites())
           setCustomCombos(loadCustomCombos())
           setHistory(loadHistory())
-          setDailyDrillState(loadDailyDrill())
+          setDailyDrillsState(loadDailyDrillMap())
         }
         return result
       },
@@ -195,7 +203,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       favorites,
       customCombos,
       history,
-      dailyDrill,
+      dailyDrills,
     ],
   )
 

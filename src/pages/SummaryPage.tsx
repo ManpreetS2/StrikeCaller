@@ -1,10 +1,13 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { getTechnique } from '../data/techniques'
+import { useApp } from '../context/AppContext'
+import { buildTrainAgainPayload } from '../utils/trainAgain'
 import type { SessionSummary } from '../types'
 
 export function SummaryPage() {
   const location = useLocation()
   const navigate = useNavigate()
+  const { customCombos } = useApp()
   const summary = (location.state as { summary?: SessionSummary } | null)?.summary
 
   if (!summary) {
@@ -24,16 +27,14 @@ export function SummaryPage() {
     .slice(0, 8)
 
   const trainAgain = () => {
-    if (summary.workoutConfig) {
-      navigate('/session', {
-        state: {
-          config: summary.workoutConfig,
-          demo: summary.isDemo,
-        },
-      })
-      return
-    }
-    navigate('/train')
+    const payload = buildTrainAgainPayload(summary, customCombos)
+    navigate('/session', {
+      state: {
+        config: payload.config,
+        comboQueue: payload.comboQueue,
+        demo: summary.isDemo,
+      },
+    })
   }
 
   return (

@@ -15,6 +15,8 @@ import { useApp } from '../context/AppContext'
 import { ComboDisplay } from '../components/ComboDisplay'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { formatClock } from '../utils/format'
+import { localDateKey } from '../utils/localDate'
+import { dailyDrillKey } from '../utils/dailyDrill'
 import type { SessionSummary, WorkoutConfig } from '../types'
 
 interface LocationState {
@@ -27,7 +29,7 @@ interface LocationState {
 export function SessionPage() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { preferences, addHistory, toggleFavorite, favorites, dailyDrill, setDailyDrill } = useApp()
+  const { preferences, addHistory, toggleFavorite, favorites, getDailyDrill, setDailyDrill } = useApp()
   const state = (location.state as LocationState | null) ?? {}
   const isDemo = Boolean(state.demo) || state.config?.mode === 'demo'
   const config = useMemo(
@@ -103,18 +105,19 @@ export function SessionPage() {
   const applyDailyPhase = (summary: SessionSummary, cancelled: boolean) => {
     if (cancelled || !state.dailyPhase) return summary
     const phase = state.dailyPhase
-    const key = dailyDrill?.dateKey
-    const base = dailyDrill ?? {
-      dateKey: key ?? '',
+    const art = summary.martialArt
+    const key = dailyDrillKey(localDateKey(), art)
+    const existing = getDailyDrill(key)
+    const base = existing ?? {
+      dateKey: key,
       comboId: summary.workoutConfig?.selectedComboIds?.[0] ?? '',
-      martialArt: summary.martialArt,
+      martialArt: art,
       slowDone: false,
       normalDone: false,
       fightDone: false,
       completed: false,
     }
-    if (!base.dateKey) return { ...summary, dailyPhase: phase }
-    const next = { ...base, [phase]: true }
+    const next = { ...base, martialArt: art, dateKey: key, [phase]: true }
     const completed = Boolean(next.slowDone && next.normalDone && next.fightDone)
     setDailyDrill({ ...next, completed })
     return { ...summary, dailyPhase: phase, dailyDrillCompleted: completed }

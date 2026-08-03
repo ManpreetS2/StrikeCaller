@@ -4,11 +4,14 @@ import type {
   PacePreset,
   SessionSummary,
   StatsRange,
+  TechniqueCategory,
   TrainingMode,
   UnlockedMilestone,
 } from '../types'
 import { addLocalDays, startOfLocalDay } from '../utils/localDate'
 import { getPaceMultiplier } from './timingEngine'
+import { getTechnique } from '../data/techniques'
+import { COMBO_MAP } from '../data/combos'
 
 export const MILESTONES: MilestoneDefinition[] = [
   { id: 'first-session', title: 'First session', description: 'Completed your first training session.' },
@@ -24,6 +27,19 @@ export const MILESTONES: MilestoneDefinition[] = [
   { id: 'unique-25', title: '25 unique combos', description: 'Trained 25 different combinations.' },
   { id: 'streak-7', title: 'Seven-day streak', description: 'Trained on seven consecutive days.' },
 ]
+
+const MT_CATEGORIES: TechniqueCategory[] = [
+  'punch',
+  'kick',
+  'teep',
+  'knee',
+  'elbow',
+  'defense',
+  'movement',
+  'counter',
+  'clinch',
+]
+const BX_CATEGORIES: TechniqueCategory[] = ['punch', 'defense', 'movement', 'counter']
 
 function isGenuineSession(summary: SessionSummary): boolean {
   if (summary.cancelled) return false
@@ -54,9 +70,7 @@ export function filterHistory(
 }
 
 export function computeStreaks(history: SessionSummary[], now = Date.now()): { current: number; longest: number } {
-  const days = new Set(
-    history.filter(isGenuineSession).map((h) => startOfLocalDay(h.startedAt)),
-  )
+  const days = new Set(history.filter(isGenuineSession).map((h) => startOfLocalDay(h.startedAt)))
   if (days.size === 0) return { current: 0, longest: 0 }
 
   const sorted = [...days].sort((a, b) => a - b)
@@ -86,11 +100,11 @@ export function computeStreaks(history: SessionSummary[], now = Date.now()): { c
 
 export function computeStatsPreview(history: SessionSummary[], now = Date.now()) {
   const week = filterHistory(history, { range: '7d' })
-  const streaks = computeStreaks(history, now)
+  const overall = computeStreaks(history, now)
   return {
     sessionsThisWeek: week.length,
     minutesThisWeek: Math.round(week.reduce((s, h) => s + h.totalTrainingMs, 0) / 60000),
-    currentStreak: streaks.current,
+    currentStreak: overall.current,
   }
 }
 
@@ -107,12 +121,13 @@ export interface TrainingStats {
   weeklyMinutes: { dayLabel: string; minutes: number; sessions: number }[]
   sportBreakdownMs: { martialArt: MartialArt; ms: number }[]
   modeBreakdown: { mode: string; count: number }[]
-  topTechniques: { id: string; count: number }[]
+  topTechniques: { id: string; name: string; count: number }[]
   mostCalledTechnique: string | null
+  mostCalledTechniqueName: string | null
   leastTrainedCategory: string | null
   categoryDistribution: { category: string; count: number }[]
-  mostPracticedCombos: { id: string; count: number }[]
-  recentCombos: string[]
+  mostPracticedCombos: { id: string; title: string; count: number }[]
+  recentCombos: { id: string; title: string }[]
   muayThaiCombos: number
   boxingCombos: number
   customCombosCompleted: number
@@ -123,6 +138,7 @@ export interface TrainingStats {
     longestStreak: number
     mostActiveWeekMinutes: number
     fastestPace: PacePreset | null
+    fastestPaceMultiplier: number | null
     mostUniqueCombosInSession: number
   }
   milestones: UnlockedMilestone[]
@@ -142,8 +158,45 @@ function dayLabels(now: number) {
 }
 
 function paceSpeed(summary: SessionSummary): number {
-  // Lower multiplier = faster calls
   return getPaceMultiplier(summary.pace, summary.customPaceMultiplier ?? 1)
+}
+
+function techniqueName(id: string): string {
+  try {
+    return getTechnique(id).name
+  } catch {
+    return id
+  }
+}
+
+function resolveComboSport(comboId: string, session: SessionSummary): MartialArt | 'custom' {
+  const snap = session.comboSnapshots?.find((c) => c.id === comboId)
+  if (snap?.martialArt === 'boxing' || snap?.martialArt === 'muay-thai') return snap.martialArt
+  const curated = COMBO_MAP[comboId]
+  if (curated?.martialArt === 'boxing' || curated?.martialArt === 'muay-thai') return curated.martialArt
+  if (comboId.startsWith('custom-') || (session.usedCustomCombo && comboId.startsWith('custom'))) {
+    return 'custom'
+  }
+  if (comboId.startsWith('bx-')) return 'boxing'
+  return session.martialArt === 'boxing' ? 'boxing' : 'muay-thai'
+}
+
+function comboTitle(comboId: string, history: SessionSummary[]): string {
+  const curated = COMBO_MAP[comboId]
+  if (curated) return curated.title
+  for (const h of history) {
+    const snap = h.comboSnapshots?.find((c) => c.id === comboId)
+    if (snap) return snap.title
+    const queued = h.queuedCombos?.find((c) => c.id === comboId)
+    if (queued) return queued.title
+  }
+  return comboId
+}
+
+function applicableCategories(martialArt: MartialArt | 'all' | undefined): TechniqueCategory[] {
+  if (martialArt === 'boxing') return BX_CATEGORIES
+  if (martialArt === 'muay-thai') return MT_CATEGORIES
+  return [...new Set([...MT_CATEGORIES, ...BX_CATEGORIES])]
 }
 
 export function computeTrainingStats(
@@ -152,7 +205,7 @@ export function computeTrainingStats(
   now = Date.now(),
 ): TrainingStats {
   const filtered = filterHistory(history, options)
-  const streaks = computeStreaks(history, now)
+  const streaks = computeStreaks(filtered, now)
   const techniqueCounts: Record<string, number> = {}
   const categoryCounts: Record<string, number> = {}
   const comboCounts: Record<string, number> = {}
@@ -173,52 +226,38 @@ export function computeTrainingStats(
     for (const [cat, count] of Object.entries(h.techniqueCategoryCounts ?? {})) {
       categoryCounts[cat] = (categoryCounts[cat] ?? 0) + count
     }
-    for (const id of h.comboIds ?? []) {
-      comboCounts[id] = (comboCounts[id] ?? 0) + 1
-      if (id.startsWith('bx-') || id.startsWith('custom-')) {
-        /* counted below */
-      }
-      if (id.startsWith('bx-')) boxingCombos += 1
-      else if (!id.startsWith('custom-')) muayThaiCombos += 1
-    }
-    if (h.usedCustomCombo) customCombosCompleted += h.combinationsCompleted
-    if (h.martialArt === 'boxing') {
-      boxingCombos += Math.max(0, h.combinationsCompleted - (h.comboIds?.filter((id) => id.startsWith('bx-')).length ?? 0))
-    } else {
-      muayThaiCombos += Math.max(
-        0,
-        h.combinationsCompleted - (h.comboIds?.filter((id) => !id.startsWith('bx-') && !id.startsWith('custom-')).length ?? 0),
-      )
-    }
-  }
 
-  // Prefer combo id tallies when present; fall back to combinationsCompleted by sport
-  if (Object.keys(comboCounts).length === 0) {
-    muayThaiCombos = filtered.filter((h) => h.martialArt !== 'boxing').reduce((s, h) => s + h.combinationsCompleted, 0)
-    boxingCombos = filtered.filter((h) => h.martialArt === 'boxing').reduce((s, h) => s + h.combinationsCompleted, 0)
-  } else {
-    muayThaiCombos = Object.entries(comboCounts)
-      .filter(([id]) => !id.startsWith('bx-') && !id.startsWith('custom-'))
-      .reduce((s, [, c]) => s + c, 0)
-    boxingCombos = Object.entries(comboCounts)
-      .filter(([id]) => id.startsWith('bx-'))
-      .reduce((s, [, c]) => s + c, 0)
-    customCombosCompleted = Object.entries(comboCounts)
-      .filter(([id]) => id.startsWith('custom-'))
-      .reduce((s, [, c]) => s + c, 0)
+    if (h.comboIds?.length) {
+      for (const id of h.comboIds) {
+        comboCounts[id] = (comboCounts[id] ?? 0) + 1
+        const sport = resolveComboSport(id, h)
+        if (sport === 'boxing') boxingCombos += 1
+        else if (sport === 'custom') customCombosCompleted += 1
+        else muayThaiCombos += 1
+      }
+    } else {
+      if (h.martialArt === 'boxing') boxingCombos += h.combinationsCompleted
+      else muayThaiCombos += h.combinationsCompleted
+      if (h.usedCustomCombo) customCombosCompleted += h.combinationsCompleted
+    }
   }
 
   const topTechniques = Object.entries(techniqueCounts)
-    .map(([id, count]) => ({ id, count }))
+    .map(([id, count]) => ({ id, name: techniqueName(id), count }))
     .sort((a, b) => b.count - a.count)
     .slice(0, 5)
 
-  const categoryDistribution = Object.entries(categoryCounts)
-    .map(([category, count]) => ({ category, count }))
-    .sort((a, b) => b.count - a.count)
+  const cats = applicableCategories(options.martialArt)
+  for (const cat of cats) {
+    if (categoryCounts[cat] == null) categoryCounts[cat] = 0
+  }
+  const categoryByLeast = cats
+    .map((category) => ({ category, count: categoryCounts[category] ?? 0 }))
+    .sort((a, b) => a.count - b.count || a.category.localeCompare(b.category))
+  const leastTrainedCategory = categoryByLeast.length ? categoryByLeast[0]!.category : null
 
   const mostPracticedCombos = Object.entries(comboCounts)
-    .map(([id, count]) => ({ id, count }))
+    .map(([id, count]) => ({ id, title: comboTitle(id, filtered), count }))
     .sort((a, b) => b.count - a.count)
     .slice(0, 5)
 
@@ -226,6 +265,7 @@ export function computeTrainingStats(
     .flatMap((h) => [...(h.comboIds ?? [])].reverse())
     .filter((id, i, arr) => arr.indexOf(id) === i)
     .slice(0, 8)
+    .map((id) => ({ id, title: comboTitle(id, filtered) }))
 
   const weekly = dayLabels(now).map(({ start, label }) => {
     const daySessions = filtered.filter((h) => startOfLocalDay(h.startedAt) === start)
@@ -236,7 +276,6 @@ export function computeTrainingStats(
     }
   })
 
-  // Most active week (rolling 7 local-day windows)
   let mostActiveWeekMinutes = 0
   const allDays = [...new Set(filtered.map((h) => startOfLocalDay(h.startedAt)))].sort((a, b) => a - b)
   for (const day of allDays) {
@@ -248,19 +287,21 @@ export function computeTrainingStats(
   }
 
   let fastestPace: PacePreset | null = null
+  let fastestPaceMultiplier: number | null = null
   let fastestSpeed = Number.POSITIVE_INFINITY
   for (const h of filtered) {
     const speed = paceSpeed(h)
     if (speed < fastestSpeed) {
       fastestSpeed = speed
       fastestPace = h.pace
+      fastestPaceMultiplier =
+        h.pace === 'custom' ? (h.customPaceMultiplier ?? 1) : getPaceMultiplier(h.pace, 1)
     }
   }
 
   const totalSessions = filtered.length
   const totalTrainingMs = filtered.reduce((s, h) => s + h.totalTrainingMs, 0)
   const uniqueCombinations = new Set(filtered.flatMap((h) => h.comboIds ?? [])).size
-
   const milestones = unlockMilestones(history, now)
 
   return {
@@ -281,10 +322,9 @@ export function computeTrainingStats(
     modeBreakdown: Object.entries(modeCounts).map(([mode, count]) => ({ mode, count })),
     topTechniques,
     mostCalledTechnique: topTechniques[0]?.id ?? null,
-    leastTrainedCategory: categoryDistribution.length
-      ? categoryDistribution[categoryDistribution.length - 1]!.category
-      : null,
-    categoryDistribution,
+    mostCalledTechniqueName: topTechniques[0]?.name ?? null,
+    leastTrainedCategory,
+    categoryDistribution: [...categoryByLeast].sort((a, b) => b.count - a.count),
     mostPracticedCombos,
     recentCombos,
     muayThaiCombos,
@@ -297,6 +337,7 @@ export function computeTrainingStats(
       longestStreak: streaks.longest,
       mostActiveWeekMinutes,
       fastestPace,
+      fastestPaceMultiplier,
       mostUniqueCombosInSession: filtered.reduce(
         (m, h) => Math.max(m, new Set(h.comboIds ?? []).size),
         0,

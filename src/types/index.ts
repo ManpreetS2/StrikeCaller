@@ -203,6 +203,11 @@ export interface WorkoutConfig {
   selectedComboIds?: string[]
   customComboId?: string
   repeatCount?: number
+  /**
+   * When true, the session only plays the provided combo queue (or selected IDs once),
+   * then finishes — never falls through to the generator.
+   */
+  finishWhenQueueEmpty?: boolean
 }
 
 export interface UserPreferences {
@@ -263,6 +268,8 @@ export interface SessionSummary {
   usedCustomCombo: boolean
   /** Replay configuration for Train Again */
   workoutConfig?: WorkoutConfig
+  /** Exact runtime queue used for finite custom/fixed-queue sessions */
+  queuedCombos?: Combo[]
   /** Guided demos are excluded from genuine training stats */
   excludeFromStats?: boolean
   isDemo?: boolean
@@ -287,12 +294,15 @@ export interface CustomCombo {
 export interface DailyDrillState {
   dateKey: string
   comboId: string
-  martialArt?: MartialArt
+  martialArt: MartialArt
   slowDone: boolean
   normalDone: boolean
   fightDone: boolean
   completed: boolean
 }
+
+/** Collection of daily drills keyed by `${localDate}:${martialArt}` */
+export type DailyDrillMap = Record<string, DailyDrillState>
 
 export interface ValidationIssue {
   code: string

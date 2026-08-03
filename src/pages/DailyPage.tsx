@@ -4,8 +4,15 @@ import { BEGINNER_COMBOS, INTERMEDIATE_COMBOS, BOXING_COMBOS, getCombo } from '.
 import { BOXING_BEGINNER, BOXING_INTERMEDIATE } from '../data/boxing'
 import { ComboDisplay } from '../components/ComboDisplay'
 import { useApp } from '../context/AppContext'
-import { createDefaultWorkout } from '../data/defaults'
+import { createDefaultWorkout, definedPartial } from '../data/defaults'
 import { localDateKey } from '../utils/localDate'
+import {
+  dailyDrillCompleteMessage,
+  dailyDrillKey,
+  emptyDailyDrill,
+  phaseLockReason,
+  phaseUnlocked,
+} from '../utils/dailyDrill'
 import type { MartialArt, PacePreset, WorkoutConfig } from '../types'
 
 interface DailyLocationState {
@@ -26,16 +33,15 @@ export function DailyPage() {
   const navigate = useNavigate()
   const location = useLocation()
   const seed = (location.state as DailyLocationState | null)?.workoutSeed
-  const { preferences, dailyDrill, setDailyDrill } = useApp()
+  const { preferences, getDailyDrill, setDailyDrill } = useApp()
   const martialArt = seed?.martialArt ?? preferences.martialArt
-  const key = `${localDateKey()}:${martialArt}`
+  const key = dailyDrillKey(localDateKey(), martialArt)
 
   const comboId = useMemo(() => {
-    if (dailyDrill?.dateKey === key && dailyDrill.martialArt === martialArt) {
-      return dailyDrill.comboId
-    }
+    const existing = getDailyDrill(key)
+    if (existing?.comboId) return existing.comboId
     return pickDailyComboId(key, martialArt)
-  }, [dailyDrill, key, martialArt])
+  }, [getDailyDrill, key, martialArt])
 
   const combo = useMemo(() => {
     try {
@@ -45,21 +51,11 @@ export function DailyPage() {
     }
   }, [comboId, martialArt])
 
-  const state =
-    dailyDrill?.dateKey === key
-      ? dailyDrill
-      : {
-          dateKey: key,
-          comboId,
-          martialArt,
-          slowDone: false,
-          normalDone: false,
-          fightDone: false,
-          completed: false,
-        }
+  const state = getDailyDrill(key) ?? emptyDailyDrill(localDateKey(), martialArt, comboId)
 
   const startPhase = (pace: PacePreset, field: 'slowDone' | 'normalDone' | 'fightDone') => {
-    // Persist date/combo identity without marking the phase complete yet
+    if (!phaseUnlocked(state, field)) return
+
     setDailyDrill({
       ...state,
       comboId: combo.id,
@@ -67,8 +63,9 @@ export function DailyPage() {
       dateKey: key,
     })
 
+    const seedDefined = definedPartial(seed ?? {})
     const config = createDefaultWorkout({
-      ...(seed ?? {}),
+      ...seedDefined,
       martialArt,
       mode: 'daily',
       stance: seed?.stance ?? preferences.stance,
@@ -87,13 +84,13 @@ export function DailyPage() {
       sound: seed?.sound ?? preferences.sound,
       sideTerminology: seed?.sideTerminology ?? preferences.sideTerminology,
       resumeBehavior: seed?.resumeBehavior ?? preferences.resumeBehavior,
-      includeKnees: seed?.includeKnees,
-      includeElbows: seed?.includeElbows,
-      includeHeadKicks: seed?.includeHeadKicks,
-      includeClinch: seed?.includeClinch,
-      defenseFrequency: seed?.defenseFrequency,
-      movementFrequency: seed?.movementFrequency,
-      categories: seed?.categories,
+      ...(seed?.includeKnees !== undefined ? { includeKnees: seed.includeKnees } : {}),
+      ...(seed?.includeElbows !== undefined ? { includeElbows: seed.includeElbows } : {}),
+      ...(seed?.includeHeadKicks !== undefined ? { includeHeadKicks: seed.includeHeadKicks } : {}),
+      ...(seed?.includeClinch !== undefined ? { includeClinch: seed.includeClinch } : {}),
+      ...(seed?.defenseFrequency !== undefined ? { defenseFrequency: seed.defenseFrequency } : {}),
+      ...(seed?.movementFrequency !== undefined ? { movementFrequency: seed.movementFrequency } : {}),
+      ...(seed?.categories !== undefined ? { categories: seed.categories } : {}),
     })
     navigate('/session', { state: { config, dailyPhase: field } })
   }
@@ -103,7 +100,8 @@ export function DailyPage() {
       <header>
         <h1 className="display text-5xl">Daily Drill</h1>
         <p className="mt-2 max-w-2xl text-[var(--text-muted)]">
-          One focused combination. Slow practice, normal practice, then a fight-pace attempt.
+          One focused {martialArt === 'boxing' ? 'Boxing' : 'Muay Thai'} combination. Complete Slow, then Normal,
+          then Fight Pace.
         </p>
       </header>
 
@@ -118,34 +116,61 @@ export function DailyPage() {
         <PhaseCard
           title="Slow practice"
           done={state.slowDone}
+          locked={!phaseUnlocked(state, 'slowDone')}
+          lockReason={phaseLockReason('slowDone')}
           onClick={() => startPhase('slow', 'slowDone')}
         />
         <PhaseCard
           title="Normal practice"
           done={state.normalDone}
+          locked={!phaseUnlocked(state, 'normalDone')}
+          lockReason={phaseLockReason('normalDone')}
           onClick={() => startPhase('normal', 'normalDone')}
         />
         <PhaseCard
           title="Fight-pace attempt"
           done={state.fightDone}
+          locked={!phaseUnlocked(state, 'fightDone')}
+          lockReason={phaseLockReason('fightDone')}
           onClick={() => startPhase('fight', 'fightDone')}
         />
       </div>
 
       {state.completed && (
         <p className="rounded-lg border border-[var(--success)] p-3 text-sm" role="status">
-          Daily drill complete for {key}. Consistency beats intensity.
+          {dailyDrillCompleteMessage(martialArt)} Consistency beats intensity.
         </p>
       )}
     </div>
   )
 }
 
-function PhaseCard({ title, done, onClick }: { title: string; done: boolean; onClick: () => void }) {
+function PhaseCard({
+  title,
+  done,
+  locked,
+  lockReason,
+  onClick,
+}: {
+  title: string
+  done: boolean
+  locked: boolean
+  lockReason: string | null
+  onClick: () => void
+}) {
   return (
-    <button type="button" className={`panel p-4 text-left ${done ? 'border-[var(--success)]' : ''}`} onClick={onClick}>
+    <button
+      type="button"
+      className={`panel p-4 text-left ${done ? 'border-[var(--success)]' : ''} ${locked ? 'opacity-50' : ''}`}
+      onClick={onClick}
+      disabled={locked}
+      aria-disabled={locked}
+      title={locked && lockReason ? lockReason : undefined}
+    >
       <h2 className="font-semibold">{title}</h2>
-      <p className="mt-1 text-sm text-[var(--text-muted)]">{done ? 'Completed' : 'Tap to start'}</p>
+      <p className="mt-1 text-sm text-[var(--text-muted)]">
+        {done ? 'Completed' : locked && lockReason ? lockReason : 'Tap to start'}
+      </p>
     </button>
   )
 }

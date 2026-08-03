@@ -16,7 +16,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
 
   return (
     <div className="app-shell">
-      <a href="#main" className="sr-only">
+      <a href="#main" className="skip-link">
         Skip to content
       </a>
       <header className="sticky top-0 z-40 border-b border-[var(--border)] bg-[color-mix(in_srgb,var(--bg)_88%,transparent)] backdrop-blur-md">

@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { filterCombos } from '../data/combos'
 import { ComboDisplay } from '../components/ComboDisplay'
 import { useApp } from '../context/AppContext'
-import { createDefaultWorkout } from '../data/defaults'
+import { createDefaultWorkout, definedPartial } from '../data/defaults'
 import { getTechnique } from '../data/techniques'
 import type { PacePreset, WorkoutConfig } from '../types'
 
@@ -49,8 +49,9 @@ export function LearnPage() {
   const technique = getTechnique(combo.techniques[Math.min(step, combo.techniques.length - 1)]!.techniqueId)
 
   const practice = () => {
+    const seedDefined = definedPartial(seed ?? {})
     const config = createDefaultWorkout({
-      ...(seed ?? {}),
+      ...seedDefined,
       martialArt,
       mode: 'learn',
       stance,

@@ -1,12 +1,14 @@
 import { DEFAULT_PREFERENCES } from '../data/defaults'
 import type {
   CustomCombo,
+  DailyDrillMap,
   DailyDrillState,
   MusicCompatibilityRecord,
   MusicCompatibilityResult,
   SessionSummary,
   UserPreferences,
 } from '../types'
+import { migrateDailyDrillMap, normalizeDailyDrillState } from '../utils/dailyDrill'
 
 const KEYS = {
   preferences: 'strikecaller:preferences',
@@ -272,6 +274,9 @@ export function validateSessionSummary(raw: unknown): SessionSummary | null {
     workoutConfig: isObject(raw.workoutConfig)
       ? (raw.workoutConfig as unknown as SessionSummary['workoutConfig'])
       : undefined,
+    queuedCombos: Array.isArray(raw.queuedCombos)
+      ? (raw.queuedCombos as SessionSummary['queuedCombos'])
+      : undefined,
     comboSnapshots: Array.isArray(raw.comboSnapshots)
       ? (raw.comboSnapshots as SessionSummary['comboSnapshots'])
       : undefined,
@@ -310,23 +315,42 @@ export function clearHistory(): void {
   writeJSON(KEYS.history, [])
 }
 
-export function loadDailyDrill(): DailyDrillState | null {
+export function loadDailyDrillMap(): DailyDrillMap {
   const raw = readJSON(KEYS.daily)
-  if (!isObject(raw)) return null
-  if (typeof raw.dateKey !== 'string' || typeof raw.comboId !== 'string') return null
-  return raw as unknown as DailyDrillState
+  const map = migrateDailyDrillMap(raw)
+  // Persist migrated shape so single-record storage becomes a map
+  if (raw != null && isObject(raw) && typeof raw.dateKey === 'string' && typeof raw.comboId === 'string') {
+    writeJSON(KEYS.daily, map)
+  }
+  return map
+}
+
+/** @deprecated Prefer loadDailyDrillMap — returns today's first entry or null for legacy callers */
+export function loadDailyDrill(): DailyDrillState | null {
+  const map = loadDailyDrillMap()
+  const values = Object.values(map)
+  return values[0] ?? null
+}
+
+export function saveDailyDrillMap(map: DailyDrillMap): void {
+  writeJSON(KEYS.daily, map)
 }
 
 export function saveDailyDrill(state: DailyDrillState): void {
-  writeJSON(KEYS.daily, state)
+  const normalized = normalizeDailyDrillState(state)
+  if (!normalized) return
+  const map = loadDailyDrillMap()
+  map[normalized.dateKey] = normalized
+  saveDailyDrillMap(map)
 }
 
-export const EXPORT_VERSION = 2
+export const EXPORT_VERSION = 3
 export const MAX_IMPORT_BYTES = 2 * 1024 * 1024
 export const MAX_IMPORT_HISTORY = 5000
 export const MAX_IMPORT_CUSTOM_COMBOS = 500
 
 export function exportUserData(): string {
+  const dailyDrills = loadDailyDrillMap()
   return JSON.stringify(
     {
       version: EXPORT_VERSION,
@@ -335,7 +359,9 @@ export function exportUserData(): string {
       favorites: loadFavorites(),
       customCombos: loadCustomCombos(),
       history: loadHistory(),
-      dailyDrill: loadDailyDrill(),
+      dailyDrills,
+      // Legacy single-record mirror for older importers
+      dailyDrill: Object.values(dailyDrills)[0] ?? null,
     },
     null,
     2,
@@ -345,7 +371,7 @@ export function exportUserData(): string {
 function validateImportPayload(data: unknown): { ok: true; value: Record<string, unknown> } | { ok: false; message: string } {
   if (!isObject(data)) return { ok: false, message: 'Invalid JSON structure.' }
   const version = data.version
-  if (version !== 1 && version !== 2 && version !== undefined) {
+  if (version !== 1 && version !== 2 && version !== 3 && version !== undefined) {
     return { ok: false, message: `Unsupported export version: ${String(version)}.` }
   }
 
@@ -403,6 +429,14 @@ function validateImportPayload(data: unknown): { ok: true; value: Record<string,
       return { ok: false, message: 'dailyDrill is missing required fields.' }
     }
   }
+  if (data.dailyDrills != null) {
+    if (!isObject(data.dailyDrills)) return { ok: false, message: 'dailyDrills must be an object.' }
+    for (const value of Object.values(data.dailyDrills)) {
+      if (!normalizeDailyDrillState(value)) {
+        return { ok: false, message: 'One or more dailyDrills records are invalid.' }
+      }
+    }
+  }
   return { ok: true, value: data }
 }
 
@@ -431,14 +465,17 @@ export function importUserData(json: string): { ok: boolean; message: string } {
           .filter((h): h is SessionSummary => h != null)
           .filter((h) => !h.excludeFromStats && !h.isDemo && h.mode !== 'demo')
       : null
-    const daily =
-      data.dailyDrill && isObject(data.dailyDrill) ? (data.dailyDrill as unknown as DailyDrillState) : null
+    const dailyFromMap =
+      data.dailyDrills && isObject(data.dailyDrills) ? migrateDailyDrillMap(data.dailyDrills) : null
+    const dailyLegacy =
+      data.dailyDrill && isObject(data.dailyDrill) ? migrateDailyDrillMap(data.dailyDrill) : null
+    const daily = dailyFromMap ?? dailyLegacy
 
     if (prefs) savePreferences(prefs)
     if (favorites) saveFavorites(favorites)
     if (combos) saveCustomCombos(combos)
     if (history) saveHistory(history)
-    if (daily) saveDailyDrill(daily)
+    if (daily) saveDailyDrillMap(daily)
 
     return { ok: true, message: 'Import successful.' }
   } catch {
