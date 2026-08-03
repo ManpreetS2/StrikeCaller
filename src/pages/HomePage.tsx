@@ -10,6 +10,8 @@ import { getQuickStartPresets, type QuickStartId } from '../data/quickStart'
 import { computeStatsPreview } from '../engines/statsEngine'
 import { APP_VERSION } from '../data/defaults'
 import { HeroVisual, SportVisual, PresetVisual, ModeVisual, MetricVisual } from '../components/visual'
+import { primeTrainingAudio } from '../utils/primeAudio'
+import { useOnceAction } from '../hooks/useOnceAction'
 import type { MartialArt } from '../types'
 
 const COMING_SOON = ['Kickboxing', 'MMA Striking', 'Karate', 'Taekwondo'] as const
@@ -31,7 +33,7 @@ export function HomePage() {
     updatePreferences({ martialArt: art })
   }
 
-  const startQuick = (id: QuickStartId) => {
+  const startQuick = useOnceAction(async (id: QuickStartId) => {
     if (!preferences.onboardingComplete) {
       navigate('/onboarding', { state: { after: 'quick', quickId: id } })
       return
@@ -41,21 +43,31 @@ export function HomePage() {
       navigate('/daily')
       return
     }
-    navigate('/session', { state: { config: preset.build(preferences) } })
-  }
+    await primeTrainingAudio({ musicFriendly: preferences.speech.musicFriendly })
+    const built = preset.build(preferences)
+    navigate('/session', {
+      state: {
+        config: { ...built, minimalMode: preferences.preferMinimalMode || built.minimalMode },
+        audioPrimed: true,
+      },
+    })
+  })
 
-  const trainAgain = () => {
+  const trainAgain = useOnceAction(async () => {
     if (recent) {
       const payload = buildTrainAgainPayload(recent, customCombos)
-      navigate('/session', { state: { config: payload.config, comboQueue: payload.comboQueue } })
+      await primeTrainingAudio({ musicFriendly: preferences.speech.musicFriendly })
+      navigate('/session', {
+        state: { config: payload.config, comboQueue: payload.comboQueue, audioPrimed: true },
+      })
       return
     }
-    startQuick(preferences.martialArt === 'boxing' ? 'quick-boxing' : 'quick-train')
-  }
+    await startQuick(preferences.martialArt === 'boxing' ? 'quick-boxing' : 'quick-train')
+  })
 
   return (
-    <div className="space-y-10">
-      <section className="relative overflow-hidden rounded-[18px] border border-[var(--border)] bg-[var(--bg-panel)] px-6 py-10 sm:px-10 sm:py-14">
+    <div className="space-y-8 sm:space-y-10">
+      <section className="relative overflow-hidden rounded-[18px] border border-[var(--border)] bg-[var(--bg-panel)] px-5 py-7 sm:px-10 sm:py-14">
         <div
           className="pointer-events-none absolute inset-0 opacity-40"
           style={{
@@ -64,37 +76,33 @@ export function HomePage() {
           }}
           aria-hidden
         />
-        <div className="relative flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
-          <div className="relative z-10 max-w-2xl">
-            <p className="mb-3 text-sm font-semibold uppercase tracking-[0.22em] text-[var(--accent-text)]">
+        <div className="relative flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 lg:gap-6">
+          <div className="relative z-10 max-w-2xl order-1">
+            <p className="mb-2 text-sm font-semibold uppercase tracking-[0.22em] text-[var(--accent-text)]">
               v{APP_VERSION} · Muay Thai & Boxing
             </p>
-            <h1 className="display text-6xl sm:text-7xl md:text-8xl">StrikeCaller</h1>
-            <p className="mt-4 max-w-xl text-lg text-[var(--text-muted)] sm:text-xl">
+            <h1 className="display text-5xl sm:text-7xl md:text-8xl">StrikeCaller</h1>
+            <p className="mt-3 max-w-xl text-base text-[var(--text-muted)] sm:text-xl">
               225+ realistic combinations across Muay Thai and Boxing.
             </p>
-            <p className="mt-3 max-w-xl text-sm text-[var(--text-dim)]">
-              Spoken combinations, adaptive pacing, timed rounds, and local training stats. Free. No account. No
-              download.
-            </p>
-            <div className="mt-8 flex flex-wrap gap-3">
+            <div className="mt-5 flex flex-col gap-3 sm:mt-8 sm:flex-row sm:flex-wrap">
               <button
                 type="button"
-                className="btn btn-primary"
+                className="btn btn-primary !min-h-12"
                 onClick={() =>
-                  startQuick(preferences.martialArt === 'boxing' ? 'quick-boxing' : 'quick-train')
+                  void startQuick(preferences.martialArt === 'boxing' ? 'quick-boxing' : 'quick-train')
                 }
               >
                 <Play size={18} aria-hidden />
                 {preferences.martialArt === 'boxing' ? 'Quick Boxing' : 'Quick Train'}
               </button>
-              <Link to="/demo" className="btn">
+              <Link to="/demo" className="btn !min-h-12">
                 <Sparkles size={18} aria-hidden />
                 Guided Demo
               </Link>
               <Link
                 to="/train"
-                className="btn"
+                className="btn !min-h-12"
                 onClick={(e) => {
                   if (!preferences.onboardingComplete) {
                     e.preventDefault()
@@ -106,9 +114,13 @@ export function HomePage() {
                 Customize Workout
               </Link>
             </div>
+            <p className="mt-3 max-w-xl text-sm text-[var(--text-dim)] hidden sm:block">
+              Spoken combinations, adaptive pacing, timed rounds, and local training stats. Free. No account. No
+              download.
+            </p>
           </div>
-          <div className="hero-visual-layer" aria-hidden>
-            <HeroVisual size={220} />
+          <div className="hero-visual-layer order-2 hidden sm:block lg:order-2" aria-hidden>
+            <HeroVisual size={180} />
           </div>
         </div>
       </section>
@@ -122,7 +134,7 @@ export function HomePage() {
       <section aria-label="Martial arts">
         <h2 className="mb-3 text-2xl font-semibold">Martial arts</h2>
         <p className="mb-4 text-sm text-[var(--text-muted)]">Select a sport to load matching Quick Starts.</p>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2">
           <InteractiveCard
             selected={preferences.martialArt === 'muay-thai'}
             title="Muay Thai"
@@ -155,6 +167,8 @@ export function HomePage() {
             }
             onClick={() => setSport('boxing')}
           />
+        </div>
+        <div className="coming-soon-grid mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {COMING_SOON.map((name) => (
             <div key={name} className="panel p-4 opacity-55" aria-disabled="true">
               <div className="flex items-start gap-3">
@@ -189,7 +203,7 @@ export function HomePage() {
               title={preset.title}
               body={preset.body}
               visual={<PresetVisual id={preset.id} size="md" />}
-              onClick={() => startQuick(preset.id)}
+              onClick={() => void startQuick(preset.id)}
             />
           ))}
           <Link to="/train" className="interactive-card panel block text-left no-underline">
@@ -259,7 +273,7 @@ export function HomePage() {
                   type="button"
                   className="mt-2 btn btn-primary"
                   onClick={() =>
-                    startQuick(preferences.martialArt === 'boxing' ? 'quick-boxing' : 'quick-train')
+                    void startQuick(preferences.martialArt === 'boxing' ? 'quick-boxing' : 'quick-train')
                   }
                 >
                   <Play size={16} aria-hidden /> Quick Train

@@ -231,6 +231,10 @@ export interface UserPreferences {
   resumeBehavior: ResumeBehavior
   musicCompatibility: MusicCompatibilityRecord | null
   customComboMigrationNoticeShown: boolean
+  /** Prefer Minimal Mode when starting workouts from Train / Quick Start. */
+  preferMinimalMode: boolean
+  /** User dismissed the optional wake-lock tip. */
+  wakeLockNoticeDismissed: boolean
 }
 
 export interface SessionTechniqueEvent {

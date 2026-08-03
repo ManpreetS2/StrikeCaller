@@ -7,6 +7,8 @@ import { isPaceTooFast } from '../engines/timingEngine'
 import { SafetyNotice } from '../components/SafetyNotice'
 import { InteractiveCard } from '../components/InteractiveCard'
 import { ModeVisual, SportVisual } from '../components/visual'
+import { primeTrainingAudio } from '../utils/primeAudio'
+import { useOnceAction } from '../hooks/useOnceAction'
 import {
   clampNumber,
   parseIntegerInput,
@@ -65,7 +67,7 @@ export function TrainPage() {
   const [volumeOn, setVolumeOn] = useState(preferences.sound.masterVolume > 0)
   const [vibrationEnabled, setVibrationEnabled] = useState(preferences.sound.vibrationEnabled)
   const [musicFriendly, setMusicFriendly] = useState(preferences.speech.musicFriendly)
-  const [minimalMode, setMinimalMode] = useState(false)
+  const [minimalMode, setMinimalMode] = useState(preferences.preferMinimalMode)
   const [largeText, setLargeText] = useState(preferences.largeText)
   const [sideTerminology, setSideTerminology] = useState<SideTerminology>(preferences.sideTerminology)
   const [openAdvanced, setOpenAdvanced] = useState(false)
@@ -204,13 +206,13 @@ export function TrainPage() {
       timingMultipliers: preferences.timingMultipliers,
       sideTerminology,
       largeText,
-      minimalMode,
+      minimalMode: minimalMode || preferences.preferMinimalMode,
       resumeBehavior: preferences.resumeBehavior,
       showNextTechnique: !minimalMode,
     })
   }
 
-  const start = () => {
+  const start = useOnceAction(async () => {
     if (!configValid) return
     updatePreferences({
       martialArt,
@@ -221,6 +223,7 @@ export function TrainPage() {
       equipment,
       largeText,
       sideTerminology,
+      preferMinimalMode: minimalMode,
       customPaceMultiplier: customPaceMultiplier ?? preferences.customPaceMultiplier,
       speech: {
         ...preferences.speech,
@@ -247,8 +250,9 @@ export function TrainPage() {
       return
     }
 
-    navigate('/session', { state: { config: buildConfig() } })
-  }
+    await primeTrainingAudio({ musicFriendly })
+    navigate('/session', { state: { config: buildConfig(), audioPrimed: true } })
+  })
 
   const equipmentWarning = useMemo(() => {
     if (boxing) return null
@@ -321,7 +325,7 @@ export function TrainPage() {
           <p className="text-[var(--text-muted)]">
             Daily Drill uses a separate focused flow with slow → normal → fight-pace practice of one combo.
           </p>
-          <button type="button" className="btn btn-primary" onClick={start} disabled={!configValid}>
+          <button type="button" className="btn btn-primary" onClick={() => void start()} disabled={!configValid}>
             Open Daily Drill
           </button>
         </section>
@@ -680,9 +684,25 @@ export function TrainPage() {
             </ul>
           )}
 
-          <button type="button" className="btn btn-primary" onClick={start} disabled={!configValid}>
-            {mode === 'learn' ? 'Open Learn Mode' : 'Start Workout'}
-          </button>
+          <div className="sticky-start-bar">
+            <p className="mb-2 text-sm text-[var(--text-muted)]">
+              {martialArt === 'boxing' ? 'Boxing' : 'Muay Thai'} · {mode}
+              {showRoundControls
+                ? ` · ${roundsInput || '—'} rounds × ${roundDurationInput || '—'}s`
+                : showSessionDuration
+                  ? ` · ${sessionDurationInput || '—'}s`
+                  : ''}{' '}
+              · {pace}
+            </p>
+            <button
+              type="button"
+              className="btn btn-primary w-full sm:w-auto"
+              onClick={() => void start()}
+              disabled={!configValid}
+            >
+              {mode === 'learn' ? 'Open Learn Mode' : 'Start Workout'}
+            </button>
+          </div>
         </>
       )}
 

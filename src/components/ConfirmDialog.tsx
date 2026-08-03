@@ -77,7 +77,7 @@ export function ConfirmDialog({
       aria-modal="true"
       aria-labelledby={titleId}
     >
-      <div ref={panelRef} className="panel max-w-md space-y-4 p-5">
+      <div ref={panelRef} className="panel dialog-scroll max-w-md space-y-4 p-5">
         <h2 id={titleId} className="text-xl font-semibold">
           {title}
         </h2>

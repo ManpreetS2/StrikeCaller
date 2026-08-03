@@ -1,10 +1,10 @@
-# StrikeCaller v1.2.0 — Interactive Visual Polish
+# StrikeCaller v1.2.1 — Mobile Gym Experience
 
 **Hear the combo. Set the pace. Build the reaction.**
 
 StrikeCaller is a browser-based striking coach for **Muay Thai** and **Boxing**. It speaks realistic combinations during shadowboxing, bag work, pad work, or solo drills, with adaptive pacing, timed rounds, and local training stats.
 
-Version **1.2.0** adds interactive visual polish: dimensional SVG identity, restrained motion, and clearer training surfaces — without changing workout logic. Version **1.1.3** fixed Session routing for GitHub Pages.
+Version **1.2.1** treats the phone as the primary product: a gym-ready Session dock, safer audio/visibility recovery, and mobile-first layouts. Desktop remains a secondary responsive layout.
 
 225+ realistic combinations across Muay Thai and Boxing. Free. No account. No download.
 
@@ -149,6 +149,19 @@ Until Actions deployment is connected, the repository may also publish from the 
 ## Testing
 
 Deterministic Vitest + Testing Library coverage includes combo validation, timing, call styles, storage safety, training surfaces, session controls, and accessibility labels. Tests do not require the public internet.
+
+## Release notes — v1.2.1
+
+Mobile gym experience:
+
+- Session rebuilt for portrait phones: large technique, large timer with labeled states, thumb-zone control dock, safe-area padding
+- Active Session hides app navigation; End Session + blocker remain the exit path
+- Minimal Mode trimmed for gym use and preference persistence
+- Audio primed from Start gestures; visibility interruptions pause safely and cancel stale speech
+- Wake lock tip (dismissible); optional home-screen install via web manifest
+- Home, Onboarding, Train, Builder, and Stats tuned for one-handed phone use
+
+Workout generation, finite queues, Train Again, Daily Drill, stats math, and hash routing are unchanged.
 
 ## Release notes — v1.2.0
 

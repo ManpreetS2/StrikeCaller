@@ -3,13 +3,15 @@ import { createDefaultWorkout } from '../data/defaults'
 import { useApp } from '../context/AppContext'
 import { SafetyNotice } from '../components/SafetyNotice'
 import { Sparkles } from 'lucide-react'
+import { primeTrainingAudio } from '../utils/primeAudio'
+import { useOnceAction } from '../hooks/useOnceAction'
 
 export function DemoPage() {
   const navigate = useNavigate()
   const { preferences } = useApp()
   const boxing = preferences.martialArt === 'boxing'
 
-  const startDemo = () => {
+  const startDemo = useOnceAction(async () => {
     // Temporary demo values only — never mutate saved preferences
     const config = createDefaultWorkout({
       martialArt: preferences.martialArt,
@@ -35,10 +37,12 @@ export function DemoPage() {
       sound: preferences.sound,
       sideTerminology: 'lead-rear',
       resumeBehavior: preferences.resumeBehavior,
+      minimalMode: preferences.preferMinimalMode,
     })
 
-    navigate('/session', { state: { config, demo: true } })
-  }
+    await primeTrainingAudio({ musicFriendly: preferences.speech.musicFriendly })
+    navigate('/session', { state: { config, demo: true, audioPrimed: true } })
+  })
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -69,7 +73,7 @@ export function DemoPage() {
         <li>Ends with a session summary</li>
       </ol>
 
-      <button type="button" className="btn btn-primary" onClick={startDemo}>
+      <button type="button" className="btn btn-primary !min-h-12" onClick={() => void startDemo()}>
         <Sparkles size={18} aria-hidden />
         Start guided demo
       </button>

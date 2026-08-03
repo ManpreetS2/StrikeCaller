@@ -117,8 +117,8 @@ describe('v1.2.0 visual polish', () => {
     matchReducedMotion(false)
   })
 
-  it('reports APP_VERSION 1.2.0', () => {
-    expect(APP_VERSION).toBe('1.2.0')
+  it('reports APP_VERSION in the 1.2 line', () => {
+    expect(APP_VERSION.startsWith('1.2')).toBe(true)
   })
 
   it('InteractiveCard exposes pressed semantics when selected', async () => {

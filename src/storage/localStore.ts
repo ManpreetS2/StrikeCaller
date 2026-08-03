@@ -125,6 +125,8 @@ export function validatePreferences(raw: unknown): UserPreferences {
       typeof raw.customPaceMultiplier === 'number' ? raw.customPaceMultiplier : DEFAULT_PREFERENCES.customPaceMultiplier,
     wakeLock: raw.wakeLock !== false,
     customComboMigrationNoticeShown: Boolean(raw.customComboMigrationNoticeShown),
+    preferMinimalMode: Boolean(raw.preferMinimalMode),
+    wakeLockNoticeDismissed: Boolean(raw.wakeLockNoticeDismissed),
     speech: {
       ...DEFAULT_PREFERENCES.speech,
       voiceURI: null,

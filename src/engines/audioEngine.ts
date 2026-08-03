@@ -26,6 +26,19 @@ export class AudioEngine {
     this.activeNodes = []
   }
 
+  /**
+   * Unlock / resume AudioContext from a user gesture.
+   * Safe to call repeatedly; no-ops when Web Audio is unavailable.
+   */
+  async prepare(): Promise<boolean> {
+    const ctx = await this.ensure()
+    return Boolean(ctx)
+  }
+
+  isReady(): boolean {
+    return Boolean(this.ctx && this.ctx.state === 'running')
+  }
+
   private async ensure(): Promise<AudioContext | null> {
     if (typeof window === 'undefined') return null
     const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext

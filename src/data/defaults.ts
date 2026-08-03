@@ -44,10 +44,12 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   resumeBehavior: 'restart-combo',
   musicCompatibility: null,
   customComboMigrationNoticeShown: false,
+  preferMinimalMode: false,
+  wakeLockNoticeDismissed: false,
 }
 
-export const APP_VERSION = '1.2.0'
-export const APP_RELEASE_TITLE = 'StrikeCaller v1.2.0 — Interactive Visual Polish'
+export const APP_VERSION = '1.2.1'
+export const APP_RELEASE_TITLE = 'StrikeCaller v1.2.1 — Mobile Gym Experience'
 
 /** Keep only own properties whose values are not undefined. */
 export function definedPartial<T extends object>(partial?: Partial<T>): Partial<T> {

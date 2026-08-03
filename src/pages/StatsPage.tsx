@@ -99,19 +99,19 @@ export function StatsPage() {
         </div>
       ) : (
         <>
-          <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3" aria-label="Summary">
+          <section className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3" aria-label="Summary">
             <StatCard label="Sessions" value={stats.totalSessions} kind="sessions" />
             <StatCard label="Training time" valueLabel={formatDuration(stats.totalTrainingMs)} kind="minutes" />
-            <StatCard label="Rounds" value={stats.roundsCompleted} kind="rounds" />
-            <StatCard label="Combinations" value={stats.combinationsCompleted} kind="combos" />
-            <StatCard label="Techniques called" value={stats.techniquesCalled} kind="techniques" />
-            <StatCard label="Unique combos" value={stats.uniqueCombinations} kind="combos" />
             <StatCard
               label="Current streak (filtered)"
               value={stats.currentStreak}
               suffix={` day${stats.currentStreak === 1 ? '' : 's'}`}
               kind="streak"
             />
+            <StatCard label="Rounds" value={stats.roundsCompleted} kind="rounds" />
+            <StatCard label="Combinations" value={stats.combinationsCompleted} kind="combos" />
+            <StatCard label="Techniques called" value={stats.techniquesCalled} kind="techniques" />
+            <StatCard label="Unique combos" value={stats.uniqueCombinations} kind="combos" />
             <StatCard
               label="Longest streak (filtered)"
               value={stats.longestStreak}

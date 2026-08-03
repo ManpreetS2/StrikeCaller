@@ -99,6 +99,26 @@ export function SettingsPage() {
             Enable large text
           </label>
         </Field>
+        <Field label="Minimal mode preference">
+          <label className="flex min-h-11 items-center gap-3">
+            <input
+              type="checkbox"
+              checked={preferences.preferMinimalMode}
+              onChange={(e) => updatePreferences({ preferMinimalMode: e.target.checked })}
+            />
+            Prefer Minimal Mode for new workouts
+          </label>
+        </Field>
+        <Field label="Keep screen awake">
+          <label className="flex min-h-11 items-center gap-3">
+            <input
+              type="checkbox"
+              checked={preferences.wakeLock}
+              onChange={(e) => updatePreferences({ wakeLock: e.target.checked })}
+            />
+            Request wake lock during sessions when supported
+          </label>
+        </Field>
         <Field label="Resume behavior">
           <select
             value={preferences.resumeBehavior}
@@ -246,6 +266,15 @@ export function SettingsPage() {
         >
           Reset timing multipliers
         </button>
+      </section>
+
+      <section className="panel space-y-3 p-5" aria-label="Install on phone">
+        <h2 className="text-xl font-semibold">Install on phone</h2>
+        <p className="text-sm text-[var(--text-muted)]">
+          StrikeCaller can be added to your home screen from the browser menu (Add to Home Screen / Install app)
+          where supported. No account and no push notifications are required. Normal browser use continues to work
+          with hash routes unchanged.
+        </p>
       </section>
 
       <section className="panel space-y-3 p-5" aria-label="Data">

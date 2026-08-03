@@ -294,6 +294,7 @@ function Choice({
         {options.map((opt) => (
           <InteractiveCard
             key={opt.id}
+            className="w-full"
             selected={value === opt.id}
             title={opt.label}
             visual={opt.visual}

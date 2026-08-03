@@ -6,6 +6,8 @@ import { useApp } from '../context/AppContext'
 import { createDefaultWorkout } from '../data/defaults'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { CategoryVisual, SportVisual } from '../components/visual'
+import { primeTrainingAudio } from '../utils/primeAudio'
+import { useOnceAction } from '../hooks/useOnceAction'
 import {
   clampRepeatCount,
   clampTechniqueIds,
@@ -105,7 +107,45 @@ export function BuilderPage() {
     })
   }
 
-  const save = () => {
+  const trainCombo = useOnceAction(async (combo: CustomCombo) => {
+    const runtime = customComboToRuntime(combo)
+    const repeats = clampRepeatCount(combo.repeatCount)
+    const queue = Array.from({ length: repeats }, () => ({
+      ...runtime,
+      techniques: [...runtime.techniques],
+    }))
+    const config = createDefaultWorkout({
+      martialArt: runtime.martialArt,
+      mode: 'custom',
+      stance: preferences.stance,
+      difficulty: preferences.experience,
+      callStyle: preferences.callStyle,
+      pace: preferences.pace,
+      sessionDurationSec: Math.max(60, repeats * 20),
+      roundDurationSec: Math.max(60, repeats * 20),
+      rounds: 1,
+      customComboId: combo.id,
+      repeatCount: repeats,
+      finishWhenQueueEmpty: true,
+      speech: { ...preferences.speech, callStyle: preferences.callStyle },
+      sound: preferences.sound,
+      sideTerminology: preferences.sideTerminology,
+      resumeBehavior: preferences.resumeBehavior,
+      minimalMode: preferences.preferMinimalMode,
+      categories:
+        runtime.martialArt === 'boxing'
+          ? ['punch', 'defense', 'movement', 'counter']
+          : ['punch', 'kick', 'teep', 'defense', 'movement'],
+      includeKnees: runtime.martialArt === 'muay-thai',
+      includeElbows: false,
+      includeHeadKicks: false,
+      includeClinch: false,
+    })
+    await primeTrainingAudio({ musicFriendly: preferences.speech.musicFriendly })
+    navigate('/session', { state: { config, comboQueue: queue, audioPrimed: true } })
+  })
+
+  const save = useOnceAction(() => {
     if (!validation.valid || sequence.length === 0 || sequence.length > MAX_COMBO_LENGTH) return
     const incompatible = sequence.filter((id) => !techniqueSupportsArt(id, activeArt))
     if (incompatible.length) {
@@ -134,43 +174,7 @@ export function BuilderPage() {
     upsertCustomCombo(combo)
     setEditingId(combo.id)
     setEditingArt(martialArt)
-  }
-
-  const trainCombo = (combo: CustomCombo) => {
-    const runtime = customComboToRuntime(combo)
-    const repeats = clampRepeatCount(combo.repeatCount)
-    const queue = Array.from({ length: repeats }, () => ({
-      ...runtime,
-      techniques: [...runtime.techniques],
-    }))
-    const config = createDefaultWorkout({
-      martialArt: runtime.martialArt,
-      mode: 'custom',
-      stance: preferences.stance,
-      difficulty: preferences.experience,
-      callStyle: preferences.callStyle,
-      pace: preferences.pace,
-      sessionDurationSec: Math.max(60, repeats * 20),
-      roundDurationSec: Math.max(60, repeats * 20),
-      rounds: 1,
-      customComboId: combo.id,
-      repeatCount: repeats,
-      finishWhenQueueEmpty: true,
-      speech: { ...preferences.speech, callStyle: preferences.callStyle },
-      sound: preferences.sound,
-      sideTerminology: preferences.sideTerminology,
-      resumeBehavior: preferences.resumeBehavior,
-      categories:
-        runtime.martialArt === 'boxing'
-          ? ['punch', 'defense', 'movement', 'counter']
-          : ['punch', 'kick', 'teep', 'defense', 'movement'],
-      includeKnees: runtime.martialArt === 'muay-thai',
-      includeElbows: false,
-      includeHeadKicks: false,
-      includeClinch: false,
-    })
-    navigate('/session', { state: { config, comboQueue: queue } })
-  }
+  })
 
   const startEdit = (combo: CustomCombo) => {
     const art: MartialArt = combo.martialArt === 'boxing' ? 'boxing' : 'muay-thai'
@@ -325,7 +329,7 @@ export function BuilderPage() {
           <button
             key={tech.id}
             type="button"
-            className="btn"
+            className="btn !min-h-11"
             disabled={atMax}
             onClick={() => addTechnique(tech.id)}
           >
@@ -352,7 +356,7 @@ export function BuilderPage() {
           type="button"
           className="btn btn-primary"
           disabled={!validation.valid || sequence.length === 0 || sequence.length > MAX_COMBO_LENGTH}
-          onClick={save}
+          onClick={() => void save()}
         >
           Save combo
         </button>
@@ -412,14 +416,14 @@ export function BuilderPage() {
                     {clampRepeatCount(combo.repeatCount)} reps
                   </p>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  <button type="button" className="btn btn-primary" onClick={() => trainCombo(combo)}>
+                <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap">
+                  <button type="button" className="btn btn-primary !min-h-12" onClick={() => void trainCombo(combo)}>
                     Train Combo
                   </button>
-                  <button type="button" className="btn" onClick={() => startEdit(combo)}>
+                  <button type="button" className="btn !min-h-11" onClick={() => startEdit(combo)}>
                     Edit
                   </button>
-                  <button type="button" className="btn btn-danger" onClick={() => setDeleteId(combo.id)}>
+                  <button type="button" className="btn btn-danger !min-h-11" onClick={() => setDeleteId(combo.id)}>
                     Delete
                   </button>
                 </div>

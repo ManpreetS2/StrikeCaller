@@ -32,6 +32,8 @@ export interface SessionSnapshot {
   paused: boolean
   speechSupported: boolean
   canSkipOrRepeat: boolean
+  wakeLockActive: boolean
+  interrupted: boolean
 }
 
 type Listener = (snapshot: SessionSnapshot) => void
@@ -80,6 +82,8 @@ export class SessionEngine {
   private sessionFavoriteIds = new Set<string>()
   private visibilityHandler: (() => void) | null = null
   private wakeLockEnabled = true
+  private wakeLockActive = false
+  private interrupted = false
   /** Original queue template for Train Again / finite sessions */
   private initialQueue: Combo[] = []
   private finishWhenQueueEmpty = false
@@ -125,6 +129,8 @@ export class SessionEngine {
       paused: this.paused,
       speechSupported: this.speech.supported,
       canSkipOrRepeat: canMutateCombo(this.phase, this.paused),
+      wakeLockActive: this.wakeLockActive,
+      interrupted: this.interrupted,
     }
   }
 
@@ -158,6 +164,7 @@ export class SessionEngine {
     this.demoMode = Boolean(options?.demo) || this.config.mode === 'demo'
     this.cancelled = false
     this.paused = false
+    this.interrupted = false
     this.resumeInFlight = false
     this.runToken += 1
     this.startedAt = Date.now()
@@ -201,8 +208,22 @@ export class SessionEngine {
     if (typeof document === 'undefined') return
     this.unbindVisibility()
     this.visibilityHandler = () => {
-      if (document.visibilityState === 'visible' && !this.cancelled && this.phase !== 'summary' && this.phase !== 'idle') {
+      if (this.cancelled || this.phase === 'summary' || this.phase === 'idle') return
+      if (document.visibilityState === 'hidden') {
+        // Stop silent advancement while suspended; cancel any queued speech backlog.
+        if (!this.paused && (this.phase === 'work' || this.phase === 'rest' || this.phase === 'countdown')) {
+          this.pause({ interrupted: true })
+        } else {
+          this.speech.cancel()
+          audioEngine.stopAll()
+        }
+        return
+      }
+      if (document.visibilityState === 'visible') {
         void this.requestWakeLock()
+        if (this.interrupted && this.paused) {
+          this.setCaption('Interrupted — tap Resume')
+        }
       }
     }
     document.addEventListener('visibilitychange', this.visibilityHandler)
@@ -457,27 +478,30 @@ export class SessionEngine {
     await this.playStep(token)
   }
 
-  pause() {
+  pause(options?: { interrupted?: boolean }) {
     if (this.paused || this.phase === 'summary' || this.phase === 'idle') return
     if (this.phase !== 'work' && this.phase !== 'rest' && this.phase !== 'countdown') return
 
     this.pausedFrom = this.phase
     this.paused = true
     this.phase = 'paused'
+    this.interrupted = Boolean(options?.interrupted)
     this.runToken += 1
     this.resumeInFlight = false
     this.abortWait()
     this.clearClock()
     this.speech.cancel()
     audioEngine.stopAll()
-    this.setCaption('Paused')
+    this.setCaption(this.interrupted ? 'Interrupted — tap Resume' : 'Paused')
   }
 
   async resume() {
     if (!this.paused || this.resumeInFlight || this.cancelled) return
     this.resumeInFlight = true
+    this.interrupted = false
     this.speech.hardReset()
     audioEngine.stopAll()
+    await audioEngine.prepare()
 
     const token = ++this.runToken
     this.paused = false
@@ -659,19 +683,32 @@ export class SessionEngine {
   }
 
   private async requestWakeLock() {
-    if (!this.wakeLockEnabled) return
+    if (!this.wakeLockEnabled) {
+      this.wakeLockActive = false
+      return
+    }
     if (typeof navigator === 'undefined') return
     try {
       if ('wakeLock' in navigator) {
         this.wakeLock = await navigator.wakeLock.request('screen')
+        this.wakeLockActive = true
+        this.wakeLock.addEventListener?.('release', () => {
+          this.wakeLockActive = false
+          this.emit()
+        })
+        this.emit()
+      } else {
+        this.wakeLockActive = false
       }
     } catch {
-      // unsupported / denied
+      this.wakeLockActive = false
+      this.emit()
     }
   }
 
   private releaseWakeLock() {
     void this.wakeLock?.release()
     this.wakeLock = null
+    this.wakeLockActive = false
   }
 }

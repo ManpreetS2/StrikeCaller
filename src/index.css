@@ -58,6 +58,8 @@ html,
 body,
 #root {
   min-height: 100%;
+  max-width: 100%;
+  overflow-x: clip;
 }
 
 body {
@@ -510,6 +512,454 @@ textarea {
   color: var(--success);
 }
 
+/* —— v1.2.1 mobile gym session —— */
+
+:root {
+  --session-dock-h: 5.5rem;
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-top: env(safe-area-inset-top, 0px);
+}
+
+.app-shell.session-active {
+  --nav-hidden: 1;
+}
+
+.app-shell.session-active .app-header,
+.app-shell.session-active .mobile-nav {
+  display: none !important;
+}
+
+.app-shell.session-active .app-main {
+  max-width: none;
+  padding: 0;
+  margin: 0;
+  padding-top: var(--safe-top);
+}
+
+.mobile-nav {
+  padding-bottom: max(0.5rem, var(--safe-bottom));
+}
+
+.mobile-nav-link {
+  min-height: 44px;
+  min-width: 44px;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.mobile-nav-link[aria-current='page'] {
+  color: var(--accent-text);
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent);
+  font-weight: 600;
+}
+
+.session-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-height: 100dvh;
+  padding: 0.75rem 0.85rem calc(var(--session-dock-h) + var(--safe-bottom) + 0.5rem);
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.session-preparing {
+  align-items: center;
+  justify-content: center;
+}
+
+.session-top {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.75rem;
+  align-items: start;
+  flex-shrink: 0;
+}
+
+.session-meta {
+  margin: 0;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--text-dim);
+}
+
+.session-phase {
+  margin: 0.15rem 0 0;
+  font-family: var(--font-display);
+  font-size: clamp(1.75rem, 7vw, 2.6rem);
+  letter-spacing: 0.04em;
+  line-height: 1;
+}
+
+.session-interrupt {
+  margin: 0.4rem 0 0;
+  font-size: 0.85rem;
+  color: var(--warning);
+}
+
+.session-timer {
+  text-align: right;
+  min-width: 7.5rem;
+  padding: 0.45rem 0.7rem;
+  border-radius: 12px;
+  border: 2px solid var(--border-strong);
+  background: var(--bg-elevated);
+}
+
+.session-timer-label {
+  margin: 0;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--text-muted);
+}
+
+.session-timer-clock {
+  margin: 0.1rem 0 0;
+  font-size: clamp(1.8rem, 8vw, 2.75rem);
+  font-weight: 600;
+  line-height: 1;
+}
+
+.session-timer-countdown {
+  border-color: var(--border-strong);
+}
+
+.session-timer-work {
+  border-color: var(--border-strong);
+}
+
+.session-timer-warn-30 {
+  border-color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 12%, var(--bg-elevated));
+}
+
+.session-timer-warn-30 .session-timer-clock {
+  color: var(--warning);
+}
+
+.session-timer-warn-10 {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, var(--bg-elevated));
+}
+
+.session-timer-warn-10 .session-timer-clock {
+  color: var(--accent-text);
+}
+
+.session-timer-warn-10 .session-timer-label {
+  color: var(--accent-text);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .session-timer-warn-10 {
+    animation: pulse-soft 1.4s ease-in-out infinite;
+  }
+}
+
+.session-timer-rest {
+  border-color: var(--success);
+  background: color-mix(in srgb, var(--success) 12%, var(--bg-elevated));
+}
+
+.session-timer-rest .session-timer-clock {
+  color: var(--success);
+}
+
+.session-timer-paused {
+  border-style: dashed;
+  opacity: 0.9;
+}
+
+.session-timer-paused .session-timer-clock {
+  color: var(--text-muted);
+}
+
+.session-call {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  min-height: clamp(9rem, 34dvh, 20rem);
+  padding: 1rem 0.85rem;
+  overflow: hidden;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.session-call-eyebrow {
+  margin: 0;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--text-dim);
+}
+
+.session-call-text {
+  margin: 0.55rem 0 0;
+  font-weight: 700;
+  font-size: clamp(2.1rem, 11vw, 4.25rem);
+  line-height: 1.08;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.session-call-text-lg {
+  font-size: clamp(2.4rem, 12.5vw, 4.75rem);
+}
+
+.session-call-next {
+  margin: 0.65rem 0 0;
+  font-size: clamp(0.9rem, 3.4vw, 1.05rem);
+  color: var(--text-muted);
+}
+
+.session-combo-desktop {
+  display: none;
+}
+
+.session-combo-mobile {
+  display: block;
+  flex-shrink: 0;
+  max-height: 28dvh;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.combo-path {
+  padding: 0.7rem 0.85rem;
+}
+
+.combo-path-title {
+  margin: 0 0 0.45rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.combo-path-steps {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.combo-path-item {
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  padding: 0.35rem 0.7rem;
+  font-size: 0.8rem;
+}
+
+.combo-path-prev {
+  opacity: 0.55;
+}
+
+.combo-path-current {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  font-weight: 700;
+  font-size: 0.92rem;
+}
+
+.combo-path-next {
+  opacity: 0.75;
+}
+
+.combo-path-more {
+  opacity: 0.5;
+}
+
+.combo-path-wrap {
+  display: none;
+}
+
+.session-secondary,
+.session-minimal-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.session-stats {
+  width: 100%;
+  margin: 0;
+}
+
+.session-wake-tip {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.55rem 0.7rem;
+}
+
+.session-dock {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 45;
+  border-top: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg) 94%, transparent);
+  backdrop-filter: blur(10px);
+  padding: 0.55rem 0.75rem calc(0.55rem + var(--safe-bottom));
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.session-dock-inner {
+  display: grid;
+  grid-template-columns: 1.35fr 1fr 1fr auto;
+  gap: 0.45rem;
+  max-width: 40rem;
+  margin: 0 auto;
+  align-items: stretch;
+}
+
+.session-minimal .session-dock-inner {
+  grid-template-columns: 1.5fr auto;
+}
+
+.session-dock-primary,
+.session-dock-btn,
+.session-dock-end {
+  min-height: 52px;
+  border-radius: 14px;
+  touch-action: manipulation;
+}
+
+.session-dock-primary {
+  min-height: 56px;
+  font-weight: 700;
+}
+
+.session-dock-btn {
+  flex-direction: column;
+  gap: 0.15rem;
+  font-size: 0.75rem;
+  padding-inline: 0.4rem;
+}
+
+.session-dock-end {
+  min-width: 4.5rem;
+  margin-left: 0.15rem;
+}
+
+.dialog-scroll {
+  max-height: min(80dvh, 36rem);
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.sticky-start-bar {
+  position: sticky;
+  bottom: calc(4.25rem + var(--safe-bottom));
+  z-index: 20;
+  margin-top: 1rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--bg-panel) 92%, transparent);
+  backdrop-filter: blur(8px);
+}
+
+@media (min-width: 768px) {
+  .sticky-start-bar {
+    bottom: 1rem;
+  }
+
+  .session-combo-mobile {
+    display: none;
+  }
+
+  .session-combo-desktop {
+    display: block;
+  }
+
+  .session-dock-inner {
+    grid-template-columns: 1.2fr repeat(3, 1fr);
+    max-width: 48rem;
+  }
+
+  .session-minimal .session-dock-inner {
+    grid-template-columns: 1.4fr 1fr;
+  }
+
+  .session-dock-btn {
+    flex-direction: row;
+    font-size: 0.95rem;
+  }
+}
+
+/* Phone landscape: timer | call, dock stays bottom */
+@media (max-height: 480px) and (orientation: landscape) {
+  .session-shell {
+    gap: 0.4rem;
+    padding-top: 0.4rem;
+    padding-bottom: calc(4.4rem + var(--safe-bottom));
+    overflow: auto;
+  }
+
+  .session-top {
+    grid-template-columns: auto 1fr;
+    align-items: center;
+  }
+
+  .session-call {
+    min-height: 0;
+    flex: 1 1 auto;
+    padding: 0.5rem;
+  }
+
+  .session-call-text {
+    font-size: clamp(1.6rem, 7vh, 2.8rem);
+  }
+
+  .session-combo-mobile,
+  .session-secondary,
+  .session-stats {
+    display: none;
+  }
+
+  .session-dock-primary,
+  .session-dock-btn,
+  .session-dock-end {
+    min-height: 48px;
+  }
+}
+
+@media (max-width: 430px) {
+  .hero-visual-layer {
+    max-width: 140px;
+    margin-top: 0.75rem;
+  }
+
+  .coming-soon-grid {
+    display: none;
+  }
+}
+
+.touch-press:active {
+  transform: translateY(1px);
+}
+
+.no-select-ui {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .interactive-card,
   .technique-step,
@@ -529,7 +979,8 @@ textarea {
   .milestone-unlock,
   .onboarding-step-enter,
   .timer-pulse,
-  .pulse-soft {
+  .pulse-soft,
+  .session-timer-warn-10 {
     animation: none !important;
   }
 }
