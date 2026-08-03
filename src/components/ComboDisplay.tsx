@@ -37,24 +37,32 @@ export function ComboDisplay({
       </div>
 
       <ol className="flex flex-wrap items-center gap-2" aria-label="Technique sequence">
-        {labels.map((label, index) => (
-          <li key={`${combo.id}-${index}`} className="flex items-center gap-2">
-            <span
-              className={`rounded-lg border px-3 py-2 text-sm font-medium ${
-                index === activeIndex
-                  ? 'technique-active border-[var(--accent)] bg-[var(--accent-soft)]'
-                  : 'border-[var(--border)] bg-[var(--bg-elevated)]'
-              }`}
-            >
-              {label}
-            </span>
-            {index < labels.length - 1 && (
-              <span className="text-[var(--text-dim)]" aria-hidden>
-                →
+        {labels.map((label, index) => {
+          const isActive = index === activeIndex
+          const isDone = activeIndex >= 0 && index < activeIndex
+          return (
+            <li key={`${combo.id}-${index}`} className="flex items-center gap-2">
+              <span
+                className={[
+                  'technique-step rounded-lg border px-3 py-2 text-sm font-medium',
+                  isActive
+                    ? 'technique-step-active technique-active border-[var(--accent)] bg-[var(--accent-soft)]'
+                    : isDone
+                      ? 'technique-step-done border-[var(--border-strong)] bg-[var(--bg-elevated)]'
+                      : 'border-[var(--border)] bg-[var(--bg-elevated)] opacity-85',
+                ].join(' ')}
+                aria-current={isActive ? 'step' : undefined}
+              >
+                {label}
               </span>
-            )}
-          </li>
-        ))}
+              {index < labels.length - 1 && (
+                <span className="text-[var(--text-dim)]" aria-hidden>
+                  →
+                </span>
+              )}
+            </li>
+          )
+        })}
       </ol>
 
       {showMeta && (

@@ -1,10 +1,10 @@
-# StrikeCaller v1.1.3 — Boxing & Muay Thai Training Coach
+# StrikeCaller v1.2.0 — Interactive Visual Polish
 
 **Hear the combo. Set the pace. Build the reaction.**
 
 StrikeCaller is a browser-based striking coach for **Muay Thai** and **Boxing**. It speaks realistic combinations during shadowboxing, bag work, pad work, or solo drills, with adaptive pacing, timed rounds, and local training stats.
 
-Version **1.1.3** is an emergency routing hotfix so Session works with GitHub Pages hash URLs (`useBlocker` requires a data router). Version **1.1.2** covered finite custom combos, onboarding, and daily-drill-per-sport behavior.
+Version **1.2.0** adds interactive visual polish: dimensional SVG identity, restrained motion, and clearer training surfaces — without changing workout logic. Version **1.1.3** fixed Session routing for GitHub Pages.
 
 225+ realistic combinations across Muay Thai and Boxing. Free. No account. No download.
 
@@ -150,6 +150,21 @@ Until Actions deployment is connected, the repository may also publish from the 
 
 Deterministic Vitest + Testing Library coverage includes combo validation, timing, call styles, storage safety, training surfaces, session controls, and accessibility labels. Tests do not require the public internet.
 
+## Release notes — v1.2.0
+
+Interactive visual polish only:
+
+- Dimensional inline SVG icon system for sports, modes, categories, metrics, and presets
+- Restrained motion (press, select, technique change, stats count-up, milestone unlock)
+- Home hero illustration, sport/Quick Start identity, clearer empty states
+- Onboarding step illustrations with progress chips
+- Customize Workout sport/mode visuals and collapsible section icons
+- Session call-change flash, timer warning states, category cue (non-minimal)
+- Combo Display progression path; Builder sport/category identity
+- Full `prefers-reduced-motion` support
+
+Workout logic, routing, speech, stats math, and data schemas are unchanged from v1.1.3.
+
 ## Limitations
 
 - StrikeCaller does **not** evaluate technique quality, power, speed, accuracy, or calories burned.
@@ -157,6 +172,7 @@ Deterministic Vitest + Testing Library coverage includes combo validation, timin
 - Combinations are training drills and common tactical sequences — **not** guarantees of fight performance.
 - Clinch, elbows, and some knee work need appropriate equipment or a partner; the app will warn or filter where practical.
 - Voice quality depends on the browser’s installed speech voices.
+- Visual polish uses CSS/SVG only — no WebGL or 3D scene.
 
 ## Safety
 
@@ -166,7 +182,7 @@ StrikeCaller is a training aid, not medical advice, sparring supervision, or a r
 
 ## Future martial arts
 
-Muay Thai is available now. Boxing, Kickboxing, MMA striking, Karate, and Taekwondo are labeled **Coming soon** — no fake functionality is exposed.
+Muay Thai and Boxing are available now. Kickboxing, MMA striking, Karate, and Taekwondo are labeled **Coming soon** — no fake functionality is exposed.
 
 ## Author
 

@@ -46,8 +46,8 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   customComboMigrationNoticeShown: false,
 }
 
-export const APP_VERSION = '1.1.3'
-export const APP_RELEASE_TITLE = 'StrikeCaller v1.1.3 — Routing Hotfix'
+export const APP_VERSION = '1.2.0'
+export const APP_RELEASE_TITLE = 'StrikeCaller v1.2.0 — Interactive Visual Polish'
 
 /** Keep only own properties whose values are not undefined. */
 export function definedPartial<T extends object>(partial?: Partial<T>): Partial<T> {

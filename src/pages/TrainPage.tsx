@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Check, Sparkles, AlertTriangle, ChevronDown } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { createDefaultWorkout } from '../data/defaults'
 import { isPaceTooFast } from '../engines/timingEngine'
 import { SafetyNotice } from '../components/SafetyNotice'
+import { InteractiveCard } from '../components/InteractiveCard'
+import { ModeVisual, SportVisual } from '../components/visual'
 import {
   clampNumber,
   parseIntegerInput,
@@ -284,6 +286,7 @@ export function TrainPage() {
               selected={martialArt === art.id}
               title={art.title}
               body={art.body}
+              visual={<SportVisual art={art.id} size="md" />}
               onSelect={() => selectMartialArt(art.id)}
             />
           ))}
@@ -301,6 +304,7 @@ export function TrainPage() {
               selected={mode === m.id}
               title={m.title}
               body={m.body}
+              visual={<ModeVisual mode={m.id} size="md" />}
               onSelect={() => selectMode(m.id)}
             />
           ))}
@@ -366,7 +370,10 @@ export function TrainPage() {
 
             {showRoundControls && (
               <>
-                <Field label="Rounds">
+                <Field
+                  label="Rounds"
+                  hint={`Valid ${WORKOUT_LIMITS.rounds.min}–${WORKOUT_LIMITS.rounds.max}`}
+                >
                   <input
                     type="number"
                     min={WORKOUT_LIMITS.rounds.min}
@@ -376,7 +383,10 @@ export function TrainPage() {
                     onChange={(e) => setRoundsInput(e.target.value)}
                   />
                 </Field>
-                <Field label="Round duration (seconds)">
+                <Field
+                  label="Round duration (seconds)"
+                  hint={`Valid ${WORKOUT_LIMITS.roundDurationSec.min}–${WORKOUT_LIMITS.roundDurationSec.max}`}
+                >
                   <input
                     type="number"
                     min={WORKOUT_LIMITS.roundDurationSec.min}
@@ -386,7 +396,10 @@ export function TrainPage() {
                     onChange={(e) => setRoundDurationInput(e.target.value)}
                   />
                 </Field>
-                <Field label="Rest duration (seconds)">
+                <Field
+                  label="Rest duration (seconds)"
+                  hint={`Valid ${WORKOUT_LIMITS.restDurationSec.min}–${WORKOUT_LIMITS.restDurationSec.max}`}
+                >
                   <input
                     type="number"
                     min={WORKOUT_LIMITS.restDurationSec.min}
@@ -400,7 +413,10 @@ export function TrainPage() {
             )}
 
             {showSessionDuration && (
-              <Field label="Session duration (seconds)">
+              <Field
+                label="Session duration (seconds)"
+                hint={`Valid ${WORKOUT_LIMITS.sessionDurationSec.min}–${WORKOUT_LIMITS.sessionDurationSec.max}`}
+              >
                 <input
                   type="number"
                   min={WORKOUT_LIMITS.sessionDurationSec.min}
@@ -421,7 +437,12 @@ export function TrainPage() {
 
           {showSessionConfig && (
             <>
-              <Collapsible title="Advanced Training" open={openAdvanced} onToggle={() => setOpenAdvanced((v) => !v)}>
+              <Collapsible
+                title="Advanced Training"
+                icon={<ModeVisual mode="advanced" size="sm" />}
+                open={openAdvanced}
+                onToggle={() => setOpenAdvanced((v) => !v)}
+              >
                 <div className="grid gap-4 md:grid-cols-2">
                   <Field label={`Combo length min (${comboMin})`}>
                     <input
@@ -496,7 +517,10 @@ export function TrainPage() {
                       <option value="limited-space">Limited space</option>
                     </select>
                   </Field>
-                  <Field label={`Custom pace (${(customPaceMultiplier ?? 1).toFixed(2)}x)`}>
+                  <Field
+                    label={`Custom pace (${Number.isFinite(customPaceMultiplier) ? (customPaceMultiplier as number).toFixed(2) : '—'}x)`}
+                    hint={`Valid ${WORKOUT_LIMITS.customPaceMultiplier.min}–${WORKOUT_LIMITS.customPaceMultiplier.max}`}
+                  >
                     <input
                       type="number"
                       min={WORKOUT_LIMITS.customPaceMultiplier.min}
@@ -546,7 +570,12 @@ export function TrainPage() {
                 )}
               </Collapsible>
 
-              <Collapsible title="Audio & Feedback" open={openAudio} onToggle={() => setOpenAudio((v) => !v)}>
+              <Collapsible
+                title="Audio & Feedback"
+                icon={<ModeVisual mode="audio" size="sm" />}
+                open={openAudio}
+                onToggle={() => setOpenAudio((v) => !v)}
+              >
                 <div className="grid gap-3 sm:grid-cols-2">
                   <label className="flex items-center gap-3">
                     <input
@@ -598,7 +627,12 @@ export function TrainPage() {
                 </div>
               </Collapsible>
 
-              <Collapsible title="Display Settings" open={openDisplay} onToggle={() => setOpenDisplay((v) => !v)}>
+              <Collapsible
+                title="Display Settings"
+                icon={<ModeVisual mode="display" size="sm" />}
+                open={openDisplay}
+                onToggle={() => setOpenDisplay((v) => !v)}
+              >
                 <div className="grid gap-3 sm:grid-cols-2">
                   <label className="flex items-center gap-3">
                     <input type="checkbox" checked={minimalMode} onChange={(e) => setMinimalMode(e.target.checked)} />
@@ -661,21 +695,32 @@ function SelectableCard({
   selected,
   title,
   body,
+  visual,
   onSelect,
 }: {
   selected: boolean
   title: string
   body: string
+  visual?: ReactNode
   onSelect: () => void
 }) {
   return (
-    <button
-      type="button"
+    <InteractiveCard
       role="radio"
       aria-checked={selected}
-      className={`panel p-4 text-left transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] ${
-        selected ? 'border-[var(--accent)] ring-1 ring-[var(--accent)]' : ''
-      }`}
+      selected={selected}
+      title={title}
+      body={body}
+      visual={visual}
+      badge={
+        selected ? (
+          <span className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--accent-text)]">
+            <Check size={14} aria-hidden /> Selected
+          </span>
+        ) : (
+          <span className="text-xs text-[var(--text-dim)]">Select</span>
+        )
+      }
       onClick={onSelect}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -683,32 +728,22 @@ function SelectableCard({
           onSelect()
         }
       }}
-    >
-      <div className="flex items-start justify-between gap-2">
-        <h3 className="font-semibold">{title}</h3>
-        {selected ? (
-          <span className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--accent-text)]">
-            <Check size={14} aria-hidden /> Selected
-          </span>
-        ) : (
-          <span className="text-xs text-[var(--text-dim)]">Select</span>
-        )}
-      </div>
-      <p className="mt-1 text-sm text-[var(--text-muted)]">{body}</p>
-    </button>
+    />
   )
 }
 
 function Collapsible({
   title,
+  icon,
   open,
   onToggle,
   children,
 }: {
   title: string
+  icon?: ReactNode
   open: boolean
   onToggle: () => void
-  children: React.ReactNode
+  children: ReactNode
 }) {
   return (
     <section className="panel overflow-hidden">
@@ -718,19 +753,29 @@ function Collapsible({
         aria-expanded={open}
         onClick={onToggle}
       >
-        <span className="text-lg font-semibold">{title}</span>
+        <span className="flex items-center gap-3 text-lg font-semibold">
+          {icon ? (
+            <span className="icon-well !h-9 !w-9" aria-hidden>
+              {icon}
+            </span>
+          ) : null}
+          {title}
+        </span>
         <ChevronDown size={18} className={`transition ${open ? 'rotate-180' : ''}`} aria-hidden />
       </button>
-      {open && <div className="border-t border-[var(--border)] p-4">{children}</div>}
+      {open ? (
+        <div className="border-t border-[var(--border)] p-4 onboarding-step-enter">{children}</div>
+      ) : null}
     </section>
   )
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
   return (
     <div className="field">
       <label>{label}</label>
       {children}
+      {hint ? <p className="mt-1 text-xs text-[var(--text-dim)]">{hint}</p> : null}
     </div>
   )
 }

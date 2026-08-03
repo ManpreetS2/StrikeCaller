@@ -5,6 +5,7 @@ import { MAX_COMBO_LENGTH, validateTechniqueSequence } from '../engines/comboVal
 import { useApp } from '../context/AppContext'
 import { createDefaultWorkout } from '../data/defaults'
 import { ConfirmDialog } from '../components/ConfirmDialog'
+import { CategoryVisual, SportVisual } from '../components/visual'
 import {
   clampRepeatCount,
   clampTechniqueIds,
@@ -195,12 +196,17 @@ export function BuilderPage() {
 
   return (
     <div className="space-y-6">
-      <header>
-        <h1 className="display text-5xl">Custom Combo Builder</h1>
-        <p className="mt-2 max-w-2xl text-[var(--text-muted)]">
-          Tap techniques into a sequence (max {MAX_COMBO_LENGTH}). Invalid transitions are explained before you can
-          save. Building for {activeArt === 'boxing' ? 'Boxing' : 'Muay Thai'}.
-        </p>
+      <header className="flex flex-wrap items-start gap-4">
+        <div className="icon-well" aria-hidden>
+          <SportVisual art={activeArt} size="md" />
+        </div>
+        <div>
+          <h1 className="display text-5xl">Custom Combo Builder</h1>
+          <p className="mt-2 max-w-2xl text-[var(--text-muted)]">
+            Tap techniques into a sequence (max {MAX_COMBO_LENGTH}). Invalid transitions are explained before you can
+            save. Building for {activeArt === 'boxing' ? 'Boxing' : 'Muay Thai'}.
+          </p>
+        </div>
       </header>
 
       {notice && (
@@ -306,6 +312,9 @@ export function BuilderPage() {
             className={`btn ${category === cat ? 'btn-primary' : ''}`}
             onClick={() => setCategory(cat)}
           >
+            <span className="mr-2 inline-flex" aria-hidden>
+              <CategoryVisual category={cat} size={22} />
+            </span>
             {cat}
           </button>
         ))}

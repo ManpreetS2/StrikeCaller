@@ -14,16 +14,41 @@ import { createDefaultWorkout } from '../data/defaults'
 import { useApp } from '../context/AppContext'
 import { ComboDisplay } from '../components/ComboDisplay'
 import { ConfirmDialog } from '../components/ConfirmDialog'
+import { CategoryVisual } from '../components/visual'
 import { formatClock } from '../utils/format'
 import { localDateKey } from '../utils/localDate'
 import { dailyDrillKey } from '../utils/dailyDrill'
-import type { SessionSummary, WorkoutConfig } from '../types'
+import { getTechnique } from '../data/techniques'
+import type { SessionSummary, TechniqueCategory, WorkoutConfig } from '../types'
 
 interface LocationState {
   config?: WorkoutConfig
   demo?: boolean
   dailyPhase?: 'slowDone' | 'normalDone' | 'fightDone'
   comboQueue?: import('../types').Combo[]
+}
+
+function resolveCallCategory(
+  snap: SessionSnapshot,
+): TechniqueCategory | 'strike' | null {
+  const step = snap.currentCombo?.techniques[snap.currentStepIndex]
+  if (!step) return null
+  try {
+    const cat = getTechnique(step.techniqueId).category
+    if (cat === 'defense' || cat === 'counter' || cat === 'movement' || cat === 'clinch') return cat
+    return 'strike'
+  } catch {
+    return null
+  }
+}
+
+function timerClass(snap: SessionSnapshot): string {
+  if (snap.paused || snap.phase === 'paused') return 'timer-paused'
+  if (snap.phase === 'rest') return 'timer-rest'
+  const sec = Math.ceil(snap.timeRemainingMs / 1000)
+  if (snap.phase === 'work' && sec <= 10) return 'timer-warn-10 timer-pulse'
+  if (snap.phase === 'work' && sec <= 30) return 'timer-warn-30'
+  return ''
 }
 
 export function SessionPage() {
@@ -56,6 +81,8 @@ export function SessionPage() {
   const [snap, setSnap] = useState<SessionSnapshot | null>(null)
   const [confirmEnd, setConfirmEnd] = useState(false)
   const [minimal, setMinimal] = useState(config.minimalMode)
+  const [callFlash, setCallFlash] = useState(false)
+  const lastCaptionRef = useRef<string | null>(null)
 
   const hasMeaningfulProgress = Boolean(
     snap && (snap.techniquesCalled > 0 || snap.combinationsCompleted > 0 || snap.phase === 'work' || snap.phase === 'rest'),
@@ -91,6 +118,20 @@ export function SessionPage() {
     // intentionally once on mount
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  useEffect(() => {
+    if (!snap) return
+    const key = `${snap.currentCombo?.id ?? ''}:${snap.currentStepIndex}:${snap.caption}`
+    if (lastCaptionRef.current === null) {
+      lastCaptionRef.current = key
+      return
+    }
+    if (lastCaptionRef.current === key) return
+    lastCaptionRef.current = key
+    setCallFlash(true)
+    const t = window.setTimeout(() => setCallFlash(false), 420)
+    return () => window.clearTimeout(t)
+  }, [snap?.caption, snap?.currentStepIndex, snap?.currentCombo?.id])
 
   useEffect(() => {
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -153,6 +194,7 @@ export function SessionPage() {
 
   const skipDisabled = !snap.canSkipOrRepeat
   const workActive = snap.phase === 'work' && !snap.paused
+  const category = !minimal ? resolveCallCategory(snap) : null
 
   return (
     <div className={`${minimal ? 'fixed inset-0 z-50 overflow-auto bg-[var(--bg)] p-4' : 'space-y-4'}`}>
@@ -172,7 +214,11 @@ export function SessionPage() {
           </h1>
         </div>
         <div className="text-right">
-          <p className="mono text-4xl tabular-nums" aria-live="polite" aria-atomic="true">
+          <p
+            className={`mono text-4xl tabular-nums ${timerClass(snap)}`}
+            aria-live="polite"
+            aria-atomic="true"
+          >
             {formatClock(snap.timeRemainingMs)}
           </p>
           <p className="text-sm text-[var(--text-muted)]">Time remaining</p>
@@ -180,13 +226,22 @@ export function SessionPage() {
       </div>
 
       <div
-        className="panel flex min-h-[220px] flex-col items-center justify-center gap-3 p-6 text-center"
+        className={`panel relative flex min-h-[220px] flex-col items-center justify-center gap-3 overflow-hidden p-6 text-center ${
+          callFlash ? 'call-impact-flash' : ''
+        }`}
         aria-live="assertive"
         aria-atomic="true"
       >
+        <div className={`call-impact ${callFlash ? 'call-impact-flash' : ''}`} aria-hidden />
         <p className="text-sm uppercase tracking-[0.18em] text-[var(--text-dim)]">Current call</p>
+        {category && (
+          <div className="flex items-center gap-2" aria-hidden>
+            <CategoryVisual category={category} size="sm" />
+            <span className="text-xs uppercase tracking-[0.14em] text-[var(--text-dim)]">{category}</span>
+          </div>
+        )}
         <p
-          className={`technique-active pulse-soft font-semibold ${
+          className={`technique-active font-semibold ${
             preferences.largeText || config.largeText ? 'text-5xl sm:text-6xl' : 'text-4xl sm:text-5xl'
           }`}
         >

@@ -1,43 +1,18 @@
 import { resolveCombo } from '../utils/resolveCombo'
 import { buildTrainAgainPayload } from '../utils/trainAgain'
 import { Link, useNavigate } from 'react-router-dom'
-import {
-  ArrowRight,
-  Play,
-  Sparkles,
-  Wrench,
-  CalendarDays,
-  Lock,
-  Timer,
-  Dumbbell,
-  Wind,
-  Flame,
-  SlidersHorizontal,
-  Shield,
-} from 'lucide-react'
+import { ArrowRight, Play, Sparkles, Lock, Check, SlidersHorizontal } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { SafetyNotice } from '../components/SafetyNotice'
+import { InteractiveCard } from '../components/InteractiveCard'
 import { getComboStats } from '../data/combos'
 import { getQuickStartPresets, type QuickStartId } from '../data/quickStart'
 import { computeStatsPreview } from '../engines/statsEngine'
 import { APP_VERSION } from '../data/defaults'
+import { HeroVisual, SportVisual, PresetVisual, ModeVisual, MetricVisual } from '../components/visual'
 import type { MartialArt } from '../types'
 
 const COMING_SOON = ['Kickboxing', 'MMA Striking', 'Karate', 'Taekwondo'] as const
-
-const PRESET_ICONS: Record<string, typeof Play> = {
-  'quick-train': Timer,
-  'heavy-bag': Dumbbell,
-  shadowboxing: Wind,
-  conditioning: Flame,
-  'daily-drill': CalendarDays,
-  'quick-boxing': Timer,
-  'boxing-bag': Dumbbell,
-  'boxing-shadow': Wind,
-  'boxing-defense': Shield,
-  'boxing-conditioning': Flame,
-  'boxing-daily': CalendarDays,
-}
 
 export function HomePage() {
   const navigate = useNavigate()
@@ -89,92 +64,110 @@ export function HomePage() {
           }}
           aria-hidden
         />
-        <div className="relative max-w-2xl">
-          <p className="mb-3 text-sm font-semibold uppercase tracking-[0.22em] text-[var(--accent-text)]">
-            v{APP_VERSION} · Muay Thai & Boxing
-          </p>
-          <h1 className="display text-6xl sm:text-7xl md:text-8xl">StrikeCaller</h1>
-          <p className="mt-4 max-w-xl text-lg text-[var(--text-muted)] sm:text-xl">
-            225+ realistic combinations across Muay Thai and Boxing.
-          </p>
-          <p className="mt-3 max-w-xl text-sm text-[var(--text-dim)]">
-            Spoken combinations, adaptive pacing, timed rounds, and local training stats. Free. No account. No
-            download.
-          </p>
-          <div className="mt-8 flex flex-wrap gap-3">
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={() =>
-                startQuick(preferences.martialArt === 'boxing' ? 'quick-boxing' : 'quick-train')
-              }
-            >
-              <Play size={18} aria-hidden />
-              {preferences.martialArt === 'boxing' ? 'Quick Boxing' : 'Quick Train'}
-            </button>
-            <Link to="/demo" className="btn">
-              <Sparkles size={18} aria-hidden />
-              Guided Demo
-            </Link>
-            <Link
-              to="/train"
-              className="btn"
-              onClick={(e) => {
-                if (!preferences.onboardingComplete) {
-                  e.preventDefault()
-                  navigate('/onboarding', { state: { after: 'train' } })
+        <div className="relative flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6">
+          <div className="relative z-10 max-w-2xl">
+            <p className="mb-3 text-sm font-semibold uppercase tracking-[0.22em] text-[var(--accent-text)]">
+              v{APP_VERSION} · Muay Thai & Boxing
+            </p>
+            <h1 className="display text-6xl sm:text-7xl md:text-8xl">StrikeCaller</h1>
+            <p className="mt-4 max-w-xl text-lg text-[var(--text-muted)] sm:text-xl">
+              225+ realistic combinations across Muay Thai and Boxing.
+            </p>
+            <p className="mt-3 max-w-xl text-sm text-[var(--text-dim)]">
+              Spoken combinations, adaptive pacing, timed rounds, and local training stats. Free. No account. No
+              download.
+            </p>
+            <div className="mt-8 flex flex-wrap gap-3">
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() =>
+                  startQuick(preferences.martialArt === 'boxing' ? 'quick-boxing' : 'quick-train')
                 }
-              }}
-            >
-              <SlidersHorizontal size={18} aria-hidden />
-              Customize Workout
-            </Link>
+              >
+                <Play size={18} aria-hidden />
+                {preferences.martialArt === 'boxing' ? 'Quick Boxing' : 'Quick Train'}
+              </button>
+              <Link to="/demo" className="btn">
+                <Sparkles size={18} aria-hidden />
+                Guided Demo
+              </Link>
+              <Link
+                to="/train"
+                className="btn"
+                onClick={(e) => {
+                  if (!preferences.onboardingComplete) {
+                    e.preventDefault()
+                    navigate('/onboarding', { state: { after: 'train' } })
+                  }
+                }}
+              >
+                <SlidersHorizontal size={18} aria-hidden />
+                Customize Workout
+              </Link>
+            </div>
+          </div>
+          <div className="hero-visual-layer" aria-hidden>
+            <HeroVisual size={220} />
           </div>
         </div>
       </section>
 
       <section className="grid gap-3 sm:grid-cols-3" aria-label="Stats preview">
-        <PreviewStat label="Sessions this week" value={String(preview.sessionsThisWeek)} />
-        <PreviewStat label="Minutes trained" value={String(preview.minutesThisWeek)} />
-        <PreviewStat label="Current streak" value={`${preview.currentStreak}d`} />
+        <PreviewStat label="Sessions this week" value={String(preview.sessionsThisWeek)} kind="sessions" />
+        <PreviewStat label="Minutes trained" value={String(preview.minutesThisWeek)} kind="minutes" />
+        <PreviewStat label="Current streak" value={`${preview.currentStreak}d`} kind="streak" />
       </section>
 
       <section aria-label="Martial arts">
         <h2 className="mb-3 text-2xl font-semibold">Martial arts</h2>
         <p className="mb-4 text-sm text-[var(--text-muted)]">Select a sport to load matching Quick Starts.</p>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <button
-            type="button"
-            className={`panel p-4 text-left ${preferences.martialArt === 'muay-thai' ? 'border-[var(--accent)]' : ''}`}
-            aria-pressed={preferences.martialArt === 'muay-thai'}
+          <InteractiveCard
+            selected={preferences.martialArt === 'muay-thai'}
+            title="Muay Thai"
+            body="125 curated combos"
+            visual={<SportVisual art="muay-thai" size="md" />}
+            badge={
+              preferences.martialArt === 'muay-thai' ? (
+                <span className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--accent-text)]">
+                  <Check size={14} aria-hidden /> Selected
+                </span>
+              ) : (
+                <span className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--success)]">Available</span>
+              )
+            }
             onClick={() => setSport('muay-thai')}
-          >
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--success)]">Available</p>
-            <h3 className="mt-1 text-xl font-semibold">Muay Thai</h3>
-            <p className="mt-1 text-sm text-[var(--text-muted)]">125 curated combos</p>
-            {preferences.martialArt === 'muay-thai' && (
-              <p className="mt-2 text-xs font-semibold text-[var(--accent-text)]">Selected</p>
-            )}
-          </button>
-          <button
-            type="button"
-            className={`panel p-4 text-left ${preferences.martialArt === 'boxing' ? 'border-[var(--accent)]' : ''}`}
-            aria-pressed={preferences.martialArt === 'boxing'}
+          />
+          <InteractiveCard
+            selected={preferences.martialArt === 'boxing'}
+            title="Boxing"
+            body="100+ curated combos"
+            visual={<SportVisual art="boxing" size="md" />}
+            badge={
+              preferences.martialArt === 'boxing' ? (
+                <span className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--accent-text)]">
+                  <Check size={14} aria-hidden /> Selected
+                </span>
+              ) : (
+                <span className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--accent-text)]">New in v1.1</span>
+              )
+            }
             onClick={() => setSport('boxing')}
-          >
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--accent-text)]">New in v1.1</p>
-            <h3 className="mt-1 text-xl font-semibold">Boxing</h3>
-            <p className="mt-1 text-sm text-[var(--text-muted)]">100+ curated combos</p>
-            {preferences.martialArt === 'boxing' && (
-              <p className="mt-2 text-xs font-semibold text-[var(--accent-text)]">Selected</p>
-            )}
-          </button>
+          />
           {COMING_SOON.map((name) => (
-            <div key={name} className="panel p-4 opacity-60" aria-disabled="true">
-              <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-dim)]">
-                <Lock size={12} aria-hidden /> Coming soon
-              </p>
-              <h3 className="mt-1 text-xl font-semibold">{name}</h3>
+            <div key={name} className="panel p-4 opacity-55" aria-disabled="true">
+              <div className="flex items-start gap-3">
+                <div className="icon-well" aria-hidden>
+                  <SportVisual art="coming-soon" size="md" />
+                </div>
+                <div>
+                  <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-dim)]">
+                    <Lock size={12} aria-hidden /> Coming soon
+                  </p>
+                  <h3 className="mt-1 text-xl font-semibold">{name}</h3>
+                </div>
+              </div>
             </div>
           ))}
         </div>
@@ -190,47 +183,51 @@ export function HomePage() {
           One press. Uses your saved sport, stance, experience, calls, and pace.
         </p>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {presets.map((preset) => {
-            const Icon = PRESET_ICONS[preset.id] ?? Play
-            return (
-              <button
-                key={preset.id}
-                type="button"
-                className="panel p-4 text-left transition hover:border-[var(--accent)]"
-                onClick={() => startQuick(preset.id)}
-              >
-                <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-[var(--accent-soft)] text-[var(--accent-text)]">
-                  <Icon size={18} aria-hidden />
-                </div>
-                <h3 className="font-semibold">{preset.title}</h3>
-                <p className="mt-1 text-sm text-[var(--text-muted)]">{preset.body}</p>
-              </button>
-            )
-          })}
-          <Link to="/train" className="panel block p-4 transition hover:border-[var(--accent)]">
-            <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-[var(--accent-soft)] text-[var(--accent-text)]">
-              <SlidersHorizontal size={18} aria-hidden />
+          {presets.map((preset) => (
+            <InteractiveCard
+              key={preset.id}
+              title={preset.title}
+              body={preset.body}
+              visual={<PresetVisual id={preset.id} size="md" />}
+              onClick={() => startQuick(preset.id)}
+            />
+          ))}
+          <Link to="/train" className="interactive-card panel block text-left no-underline">
+            <div className="flex items-start gap-3">
+              <div className="icon-well" aria-hidden>
+                <ModeVisual mode="advanced" size="md" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-[var(--text)]">Customize Workout</h3>
+                <p className="mt-1 text-sm text-[var(--text-muted)]">Full mode, rounds, pace, and technique filters.</p>
+              </div>
             </div>
-            <h3 className="font-semibold">Customize Workout</h3>
-            <p className="mt-1 text-sm text-[var(--text-muted)]">Full mode, rounds, pace, and technique filters.</p>
           </Link>
         </div>
       </section>
 
       <section className="grid gap-4 md:grid-cols-2">
-        <Link to="/builder" className="panel block p-5 transition hover:border-[var(--accent)]">
-          <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-[var(--accent-soft)] text-[var(--accent-text)]">
-            <Wrench size={18} aria-hidden />
+        <Link to="/builder" className="interactive-card panel block p-5 no-underline">
+          <div className="flex items-start gap-3">
+            <div className="icon-well" aria-hidden>
+              <ModeVisual mode="builder" size="md" />
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-[var(--text)]">Build Custom Combo</h3>
+              <p className="mt-1 text-sm text-[var(--text-muted)]">Up to eight validated techniques.</p>
+            </div>
           </div>
-          <h3 className="text-lg font-semibold">Build Custom Combo</h3>
-          <p className="mt-1 text-sm text-[var(--text-muted)]">Up to eight validated techniques.</p>
         </Link>
-        <Link to="/stats" className="panel block p-5 transition hover:border-[var(--accent)]">
-          <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-[var(--accent-soft)] text-[var(--accent-text)]">
-            <Sparkles size={18} aria-hidden />
+        <Link to="/stats" className="interactive-card panel block p-5 no-underline">
+          <div className="flex items-start gap-3">
+            <div className="icon-well" aria-hidden>
+              <ModeVisual mode="stats" size="md" />
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-[var(--text)]">Training Stats</h3>
+              <p className="mt-1 text-sm text-[var(--text-muted)]">Local streaks, records, and milestones.</p>
+            </div>
           </div>
-          <h3 className="text-lg font-semibold">Training Stats</h3>
-          <p className="mt-1 text-sm text-[var(--text-muted)]">Local streaks, records, and milestones.</p>
         </Link>
       </section>
 
@@ -252,7 +249,23 @@ export function HomePage() {
               </button>
             </div>
           ) : (
-            <p className="text-sm text-[var(--text-muted)]">No sessions yet. Tap Quick Train to begin.</p>
+            <div className="flex items-start gap-3">
+              <div className="icon-well" aria-hidden>
+                <MetricVisual kind="empty" size="md" />
+              </div>
+              <div>
+                <p className="text-sm text-[var(--text-muted)]">No sessions yet.</p>
+                <button
+                  type="button"
+                  className="mt-2 btn btn-primary"
+                  onClick={() =>
+                    startQuick(preferences.martialArt === 'boxing' ? 'quick-boxing' : 'quick-train')
+                  }
+                >
+                  <Play size={16} aria-hidden /> Quick Train
+                </button>
+              </div>
+            </div>
           )}
         </div>
         <div className="panel p-5">
@@ -260,7 +273,17 @@ export function HomePage() {
           {favoriteCombo ? (
             <p className="text-sm text-[var(--text)]">{favoriteCombo.title}</p>
           ) : (
-            <p className="text-sm text-[var(--text-muted)]">Star combos during training to pin them here.</p>
+            <div className="flex items-start gap-3">
+              <div className="icon-well" aria-hidden>
+                <MetricVisual kind="favorite" size="md" />
+              </div>
+              <div>
+                <p className="text-sm text-[var(--text-muted)]">Star combos during training to pin them here.</p>
+                <Link to="/train" className="mt-2 inline-flex btn">
+                  Start a workout
+                </Link>
+              </div>
+            </div>
           )}
         </div>
       </section>
@@ -270,11 +293,24 @@ export function HomePage() {
   )
 }
 
-function PreviewStat({ label, value }: { label: string; value: string }) {
+function PreviewStat({
+  label,
+  value,
+  kind,
+}: {
+  label: string
+  value: string
+  kind: 'sessions' | 'minutes' | 'streak'
+}) {
   return (
-    <div className="panel px-4 py-3">
-      <p className="text-xs uppercase tracking-[0.14em] text-[var(--text-dim)]">{label}</p>
-      <p className="mt-1 text-xl font-semibold">{value}</p>
+    <div className="metric-card panel flex items-center gap-3 px-4 py-3">
+      <div className="icon-well !h-10 !w-10" aria-hidden>
+        <MetricVisual kind={kind} size="sm" />
+      </div>
+      <div>
+        <p className="text-xs uppercase tracking-[0.14em] text-[var(--text-dim)]">{label}</p>
+        <p className="mt-1 text-xl font-semibold">{value}</p>
+      </div>
     </div>
   )
 }

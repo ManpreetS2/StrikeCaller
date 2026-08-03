@@ -296,3 +296,240 @@ textarea {
 .pulse-soft {
   animation: pulse-soft 1.6s ease-in-out infinite;
 }
+
+/* —— v1.2 dimensional visual system —— */
+
+:root {
+  --motion-press: 100ms;
+  --motion-select: 160ms;
+  --motion-step: 200ms;
+  --motion-expand: 220ms;
+  --elevation: 0 8px 22px rgba(0, 0, 0, 0.28);
+  --elevation-selected: 0 10px 28px rgba(225, 29, 72, 0.18);
+}
+
+[data-theme='light'] {
+  --elevation: 0 8px 20px rgba(28, 25, 23, 0.1);
+  --elevation-selected: 0 10px 24px rgba(190, 18, 60, 0.14);
+}
+
+.dim-icon {
+  display: block;
+  flex-shrink: 0;
+}
+
+.icon-well {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 3.25rem;
+  height: 3.25rem;
+  border-radius: 12px;
+  background:
+    linear-gradient(160deg, color-mix(in srgb, var(--bg-elevated) 88%, white), var(--bg-panel));
+  border: 1px solid var(--border);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 2px 0 color-mix(in srgb, var(--border-strong) 70%, transparent);
+}
+
+.interactive-card {
+  padding: 1rem;
+  transition:
+    transform var(--motion-select) ease,
+    border-color var(--motion-select) ease,
+    box-shadow var(--motion-select) ease,
+    background var(--motion-select) ease;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    var(--shadow);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .interactive-card:hover:not(:disabled) {
+    transform: translateY(-2px);
+    border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+    box-shadow: var(--elevation);
+  }
+}
+
+.interactive-card:active:not(:disabled) {
+  transform: translateY(1px);
+  transition-duration: var(--motion-press);
+}
+
+.interactive-card-selected,
+.interactive-card[data-selected='true'],
+.interactive-card[aria-pressed='true'] {
+  border-color: var(--accent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent),
+    var(--elevation-selected);
+}
+
+.metric-card {
+  padding: 1rem;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    var(--shadow);
+}
+
+.hero-visual {
+  pointer-events: none;
+  user-select: none;
+}
+
+.hero-visual-layer {
+  position: absolute;
+  inset: auto 0 0 auto;
+  width: min(42%, 280px);
+  opacity: 0.9;
+}
+
+@media (max-width: 640px) {
+  .hero-visual-layer {
+    position: relative;
+    width: 100%;
+    max-width: 220px;
+    margin: 1.25rem auto 0;
+    inset: auto;
+  }
+}
+
+.call-impact {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow: inset 0 0 0 0 transparent;
+}
+
+.call-impact-flash {
+  animation: call-impact 420ms ease-out 1;
+}
+
+@keyframes call-impact {
+  0% {
+    box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent);
+    transform: scale(0.985);
+  }
+  100% {
+    box-shadow: inset 0 0 0 0 transparent;
+    transform: scale(1);
+  }
+}
+
+.technique-step {
+  transition:
+    transform var(--motion-step) ease,
+    border-color var(--motion-step) ease,
+    background var(--motion-step) ease,
+    opacity var(--motion-step) ease;
+}
+
+.technique-step-active {
+  transform: scale(1.04);
+}
+
+.technique-step-done {
+  opacity: 0.72;
+}
+
+.timer-warn-30 {
+  color: var(--warning);
+}
+
+.timer-warn-10 {
+  color: var(--accent-text);
+}
+
+.timer-pulse {
+  animation: pulse-soft 1.4s ease-in-out infinite;
+}
+
+.timer-rest {
+  color: var(--success);
+}
+
+.timer-paused {
+  color: var(--text-muted);
+}
+
+.collapsible-body {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows var(--motion-expand) ease, opacity var(--motion-expand) ease;
+  opacity: 0;
+}
+
+.collapsible-body[data-open='true'] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+.collapsible-body > div {
+  overflow: hidden;
+}
+
+.milestone-unlock {
+  animation: milestone-in 520ms ease-out 1;
+}
+
+@keyframes milestone-in {
+  0% {
+    transform: translateY(6px) scale(0.96);
+    opacity: 0.4;
+  }
+  60% {
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 22%, transparent);
+  }
+  100% {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+.onboarding-step-enter {
+  animation: step-in var(--motion-step) ease-out;
+}
+
+@keyframes step-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.chip-done {
+  border-color: color-mix(in srgb, var(--success) 55%, var(--border));
+  color: var(--success);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .interactive-card,
+  .technique-step,
+  .call-impact,
+  .collapsible-body,
+  .btn {
+    transition: none !important;
+  }
+
+  .interactive-card:hover:not(:disabled),
+  .interactive-card:active:not(:disabled),
+  .technique-step-active {
+    transform: none !important;
+  }
+
+  .call-impact-flash,
+  .milestone-unlock,
+  .onboarding-step-enter,
+  .timer-pulse,
+  .pulse-soft {
+    animation: none !important;
+  }
+}

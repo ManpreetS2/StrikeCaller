@@ -1,8 +1,11 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { flushSync } from 'react-dom'
+import { Check } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import { SafetyNotice } from '../components/SafetyNotice'
+import { InteractiveCard } from '../components/InteractiveCard'
+import { SportVisual, ModeVisual, MetricVisual } from '../components/visual'
 import { getQuickStartPreset, type QuickStartId } from '../data/quickStart'
 import type { CallStyle, Difficulty, MartialArt, Stance } from '../types'
 
@@ -42,7 +45,6 @@ export function OnboardingPage() {
     callStyle: false,
   })
 
-  // Completed setup opened directly → Settings (not a fake “first run”)
   if (redirectToSettings) {
     return <Navigate to="/settings" replace />
   }
@@ -133,73 +135,116 @@ export function OnboardingPage() {
         {STEPS.map((label, index) => (
           <span
             key={label}
-            className={`chip ${index === step ? 'chip-active' : ''}`}
+            className={`chip ${index === step ? 'chip-active' : ''} ${index < step ? 'chip-done' : ''}`}
             aria-current={index === step ? 'step' : undefined}
           >
+            {index < step ? <Check size={12} aria-hidden className="mr-1 inline" /> : null}
             {index + 1}. {label}
           </span>
         ))}
       </div>
 
       <section className="panel space-y-4 p-5" aria-live="polite">
-        {step === 0 && (
-          <Choice
-            title="Martial art"
-            options={[
-              { id: 'muay-thai', label: 'Muay Thai' },
-              { id: 'boxing', label: 'Boxing' },
-            ]}
-            value={martialArt}
-            onChange={(v) => {
-              setMartialArt(v as MartialArt)
-              markTouched('martialArt')
-            }}
-          />
-        )}
-        {step === 1 && (
-          <Choice
-            title="Your stance"
-            options={[
-              { id: 'orthodox', label: 'Orthodox' },
-              { id: 'southpaw', label: 'Southpaw' },
-            ]}
-            value={stance}
-            onChange={(v) => {
-              setStance(v as Stance)
-              markTouched('stance')
-            }}
-          />
-        )}
-        {step === 2 && (
-          <Choice
-            title="Experience level"
-            options={[
-              { id: 'beginner', label: 'Beginner' },
-              { id: 'intermediate', label: 'Intermediate' },
-              { id: 'advanced', label: 'Advanced' },
-            ]}
-            value={experience}
-            onChange={(v) => {
-              setExperience(v as Difficulty)
-              markTouched('experience')
-            }}
-          />
-        )}
-        {step === 3 && (
-          <Choice
-            title="Calling style"
-            options={[
-              { id: 'names', label: 'Technique names' },
-              { id: 'numbers', label: 'Numbers' },
-              { id: 'hybrid', label: 'Hybrid' },
-            ]}
-            value={callStyle}
-            onChange={(v) => {
-              setCallStyle(v as CallStyle)
-              markTouched('callStyle')
-            }}
-          />
-        )}
+        <div key={step} className="onboarding-step-enter space-y-4">
+          {step === 0 && (
+            <Choice
+              title="Martial art"
+              options={[
+                {
+                  id: 'muay-thai',
+                  label: 'Muay Thai',
+                  visual: <SportVisual art="muay-thai" size="md" />,
+                },
+                {
+                  id: 'boxing',
+                  label: 'Boxing',
+                  visual: <SportVisual art="boxing" size="md" />,
+                },
+              ]}
+              value={martialArt}
+              onChange={(v) => {
+                setMartialArt(v as MartialArt)
+                markTouched('martialArt')
+              }}
+            />
+          )}
+          {step === 1 && (
+            <Choice
+              title="Your stance"
+              options={[
+                {
+                  id: 'orthodox',
+                  label: 'Orthodox',
+                  visual: <ModeVisual mode="learn" size="md" />,
+                },
+                {
+                  id: 'southpaw',
+                  label: 'Southpaw',
+                  visual: <ModeVisual mode="coach" size="md" />,
+                },
+              ]}
+              value={stance}
+              onChange={(v) => {
+                setStance(v as Stance)
+                markTouched('stance')
+              }}
+            />
+          )}
+          {step === 2 && (
+            <Choice
+              title="Experience level"
+              options={[
+                {
+                  id: 'beginner',
+                  label: 'Beginner',
+                  visual: <ModeVisual mode="learn" size="md" />,
+                },
+                {
+                  id: 'intermediate',
+                  label: 'Intermediate',
+                  visual: <ModeVisual mode="round" size="md" />,
+                },
+                {
+                  id: 'advanced',
+                  label: 'Advanced',
+                  visual: <ModeVisual mode="advanced" size="md" />,
+                },
+              ]}
+              value={experience}
+              onChange={(v) => {
+                setExperience(v as Difficulty)
+                markTouched('experience')
+              }}
+            />
+          )}
+          {step === 3 && (
+            <Choice
+              title="Calling style"
+              options={[
+                {
+                  id: 'names',
+                  label: 'Technique names',
+                  visual: <ModeVisual mode="audio" size="md" />,
+                },
+                {
+                  id: 'numbers',
+                  label: 'Numbers',
+                  visual: <MetricVisual kind="techniques" size="md" />,
+                },
+                {
+                  id: 'hybrid',
+                  label: 'Hybrid',
+                  visual: <ModeVisual mode="coach" size="md" />,
+                },
+              ]}
+              value={callStyle}
+              onChange={(v) => {
+                setCallStyle(v as CallStyle)
+                markTouched('callStyle')
+              }}
+            />
+          )}
+        </div>
 
         <div className="flex flex-wrap gap-3 pt-2">
           {step > 0 && (
@@ -238,7 +283,7 @@ function Choice({
   onChange,
 }: {
   title: string
-  options: { id: string; label: string }[]
+  options: { id: string; label: string; visual?: ReactNode }[]
   value: string
   onChange: (id: string) => void
 }) {
@@ -247,15 +292,20 @@ function Choice({
       <legend className="mb-3 text-xl font-semibold">{title}</legend>
       <div className="grid gap-2 sm:grid-cols-2">
         {options.map((opt) => (
-          <button
+          <InteractiveCard
             key={opt.id}
-            type="button"
-            className={`btn justify-start ${value === opt.id ? 'chip-active' : ''}`}
-            aria-pressed={value === opt.id}
+            selected={value === opt.id}
+            title={opt.label}
+            visual={opt.visual}
+            badge={
+              value === opt.id ? (
+                <span className="inline-flex items-center gap-1 text-xs font-semibold text-[var(--accent-text)]">
+                  <Check size={14} aria-hidden /> Selected
+                </span>
+              ) : null
+            }
             onClick={() => onChange(opt.id)}
-          >
-            {opt.label}
-          </button>
+          />
         ))}
       </div>
     </fieldset>

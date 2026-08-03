@@ -1,21 +1,42 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useApp } from '../context/AppContext'
 import {
   computeTrainingStats,
   formatDuration,
   MILESTONES,
 } from '../engines/statsEngine'
+import { MetricVisual, type MetricVisualId } from '../components/visual'
+import { useCountUp } from '../hooks/useCountUp'
 import type { MartialArt, StatsRange } from '../types'
 
 export function StatsPage() {
-  const { history, favorites } = useApp()
+  const { history, favorites, customCombos } = useApp()
   const [range, setRange] = useState<StatsRange>('30d')
   const [sport, setSport] = useState<MartialArt | 'all'>('all')
+  const seenMilestones = useRef<Set<string>>(new Set())
+  const milestonesPrimed = useRef(false)
+  const [freshUnlocks, setFreshUnlocks] = useState<Set<string>>(new Set())
 
   const stats = useMemo(
     () => computeTrainingStats(history, { range, martialArt: sport }),
     [history, range, sport],
   )
+
+  useEffect(() => {
+    if (!milestonesPrimed.current) {
+      for (const m of stats.milestones) seenMilestones.current.add(m.id)
+      milestonesPrimed.current = true
+      return
+    }
+    const next = new Set<string>()
+    for (const m of stats.milestones) {
+      if (!seenMilestones.current.has(m.id)) {
+        next.add(m.id)
+        seenMilestones.current.add(m.id)
+      }
+    }
+    if (next.size) setFreshUnlocks(next)
+  }, [stats.milestones])
 
   const empty = stats.totalSessions === 0
 
@@ -67,7 +88,10 @@ export function StatsPage() {
       </div>
 
       {empty ? (
-        <div className="panel p-8 text-center">
+        <div className="panel flex flex-col items-center gap-3 p-8 text-center">
+          <div className="icon-well" aria-hidden>
+            <MetricVisual kind="empty" size="lg" />
+          </div>
           <h2 className="text-2xl font-semibold">No sessions in this range</h2>
           <p className="mt-2 text-[var(--text-muted)]">
             Complete a Quick Start or Customize Workout session to populate stats.
@@ -76,21 +100,26 @@ export function StatsPage() {
       ) : (
         <>
           <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3" aria-label="Summary">
-            <StatCard label="Sessions" value={String(stats.totalSessions)} />
-            <StatCard label="Training time" value={formatDuration(stats.totalTrainingMs)} />
-            <StatCard label="Rounds" value={String(stats.roundsCompleted)} />
-            <StatCard label="Combinations" value={String(stats.combinationsCompleted)} />
-            <StatCard label="Techniques called" value={String(stats.techniquesCalled)} />
-            <StatCard label="Unique combos" value={String(stats.uniqueCombinations)} />
+            <StatCard label="Sessions" value={stats.totalSessions} kind="sessions" />
+            <StatCard label="Training time" valueLabel={formatDuration(stats.totalTrainingMs)} kind="minutes" />
+            <StatCard label="Rounds" value={stats.roundsCompleted} kind="rounds" />
+            <StatCard label="Combinations" value={stats.combinationsCompleted} kind="combos" />
+            <StatCard label="Techniques called" value={stats.techniquesCalled} kind="techniques" />
+            <StatCard label="Unique combos" value={stats.uniqueCombinations} kind="combos" />
             <StatCard
               label="Current streak (filtered)"
-              value={`${stats.currentStreak} day${stats.currentStreak === 1 ? '' : 's'}`}
+              value={stats.currentStreak}
+              suffix={` day${stats.currentStreak === 1 ? '' : 's'}`}
+              kind="streak"
             />
             <StatCard
               label="Longest streak (filtered)"
-              value={`${stats.longestStreak} day${stats.longestStreak === 1 ? '' : 's'}`}
+              value={stats.longestStreak}
+              suffix={` day${stats.longestStreak === 1 ? '' : 's'}`}
+              kind="longest-streak"
             />
-            <StatCard label="Avg session" value={formatDuration(stats.averageSessionMs)} />
+            <StatCard label="Avg session" valueLabel={formatDuration(stats.averageSessionMs)} kind="minutes" />
+            <StatCard label="Custom combos saved" value={customCombos.length} kind="custom" />
           </section>
 
           <section className="grid gap-4 lg:grid-cols-2" aria-labelledby="activity-heading">
@@ -190,7 +219,12 @@ export function StatsPage() {
           <section className="panel p-5">
             <h2 className="text-xl font-semibold">Personal records</h2>
             <ul className="mt-3 grid gap-2 sm:grid-cols-2 text-sm">
-              <li>Longest session: {formatDuration(stats.personalRecords.longestSessionMs)}</li>
+              <li className="flex items-start gap-2">
+                <span aria-hidden>
+                  <MetricVisual kind="record" size="sm" />
+                </span>
+                Longest session: {formatDuration(stats.personalRecords.longestSessionMs)}
+              </li>
               <li>Most rounds in one workout: {stats.personalRecords.mostRounds}</li>
               <li>Most combos in one session: {stats.personalRecords.mostCombos}</li>
               <li>Longest streak: {stats.personalRecords.longestStreak} days</li>
@@ -211,21 +245,37 @@ export function StatsPage() {
             <ul className="mt-3 grid gap-3 sm:grid-cols-2">
               {MILESTONES.map((m) => {
                 const unlocked = stats.milestones.find((u) => u.id === m.id)
+                const fresh = Boolean(unlocked && freshUnlocks.has(m.id))
                 return (
                   <li
                     key={m.id}
-                    className={`rounded-lg border p-3 ${unlocked ? 'border-[var(--accent)]' : 'border-[var(--border)] opacity-70'}`}
+                    className={`rounded-lg border p-3 ${unlocked ? 'border-[var(--accent)]' : 'border-[var(--border)] opacity-70'} ${
+                      fresh ? 'milestone-unlock' : ''
+                    }`}
                   >
-                    <p className="font-semibold">
-                      {unlocked ? 'Unlocked · ' : 'Locked · '}
-                      {m.title}
-                    </p>
-                    <p className="text-sm text-[var(--text-muted)]">{m.description}</p>
-                    {unlocked && (
-                      <p className="mt-1 text-xs text-[var(--text-dim)]">
-                        {new Date(unlocked.unlockedAt).toLocaleDateString()}
-                      </p>
-                    )}
+                    <div className="flex items-start gap-3">
+                      <span aria-hidden>
+                        <MetricVisual kind="milestone" size="sm" />
+                      </span>
+                      <div>
+                        <p className="font-semibold">
+                          {unlocked ? (
+                            <span className="mr-1 inline-flex rounded border border-[var(--accent)] px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-[var(--accent-text)]">
+                              Unlocked
+                            </span>
+                          ) : (
+                            'Locked · '
+                          )}
+                          {m.title}
+                        </p>
+                        <p className="text-sm text-[var(--text-muted)]">{m.description}</p>
+                        {unlocked && (
+                          <p className="mt-1 text-xs text-[var(--text-dim)]">
+                            {new Date(unlocked.unlockedAt).toLocaleDateString()}
+                          </p>
+                        )}
+                      </div>
+                    </div>
                   </li>
                 )
               })}
@@ -237,11 +287,34 @@ export function StatsPage() {
   )
 }
 
-function StatCard({ label, value }: { label: string; value: string }) {
+function StatCard({
+  label,
+  value,
+  valueLabel,
+  suffix = '',
+  kind,
+}: {
+  label: string
+  value?: number
+  valueLabel?: string
+  suffix?: string
+  kind: MetricVisualId
+}) {
+  const animated = useCountUp(value ?? 0)
+  const display = valueLabel ?? `${animated}${suffix}`
+  const finalForSr = valueLabel ?? `${value ?? 0}${suffix}`
   return (
-    <div className="panel p-4">
-      <p className="text-xs uppercase tracking-[0.16em] text-[var(--text-dim)]">{label}</p>
-      <p className="mt-2 text-2xl font-semibold">{value}</p>
+    <div className="metric-card panel flex items-start gap-3 p-4">
+      <div className="icon-well !h-11 !w-11" aria-hidden>
+        <MetricVisual kind={kind} size="sm" />
+      </div>
+      <div>
+        <p className="text-xs uppercase tracking-[0.16em] text-[var(--text-dim)]">{label}</p>
+        <p className="mt-2 text-2xl font-semibold" aria-hidden={value != null}>
+          {display}
+        </p>
+        {value != null ? <span className="sr-only">{finalForSr}</span> : null}
+      </div>
     </div>
   )
 }
@@ -254,12 +327,18 @@ function BarChart({
   unit: string
 }) {
   const max = Math.max(1, ...items.map((i) => i.value))
+  if (!items.length) {
+    return <p className="mt-4 text-sm text-[var(--text-muted)]">No chart data yet.</p>
+  }
   return (
     <div className="mt-4 space-y-2" role="img" aria-label={`Bar chart in ${unit}`}>
       {items.map((item) => (
         <div key={item.label} className="grid grid-cols-[4.5rem_1fr_auto] items-center gap-2 text-sm">
           <span>{item.label}</span>
-          <div className="h-3 overflow-hidden rounded bg-[var(--bg-elevated)]">
+          <div
+            className="h-3 overflow-hidden rounded bg-[var(--bg-elevated)]"
+            title={`${item.value} ${unit}${item.secondary ? ` · ${item.secondary}` : ''}`}
+          >
             <div
               className="h-full rounded bg-[var(--accent)]"
               style={{
