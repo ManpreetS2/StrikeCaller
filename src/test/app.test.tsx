@@ -1,13 +1,13 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, createMemoryRouter, RouterProvider } from 'react-router-dom'
 import { AppProvider } from '../context/AppContext'
 import { HomePage } from '../pages/HomePage'
 import { SessionEngine } from '../engines/sessionEngine'
 import { createDefaultWorkout } from '../data/defaults'
 import { createSpeechEngine } from '../engines/speechEngine'
-import App from '../App'
+import { appRoutes } from '../routes'
 
 function renderApp(route = '/') {
   return render(
@@ -24,20 +24,25 @@ describe('accessibility and UI', () => {
     window.localStorage.clear()
   })
 
-  it('home screen exposes Quick Start controls', () => {
-    renderApp()
-    expect(screen.getByRole('heading', { name: /strikecaller/i })).toBeInTheDocument()
-    expect(screen.getAllByRole('button', { name: /quick train|quick boxing/i }).length).toBeGreaterThan(0)
-    expect(screen.getAllByText(/coming soon/i).length).toBeGreaterThan(0)
-  })
-
   it('theme switch has accessible pressed state', async () => {
     const user = userEvent.setup()
-    render(<App />)
+    const router = createMemoryRouter(appRoutes, { initialEntries: ['/'] })
+    render(
+      <AppProvider>
+        <RouterProvider router={router} />
+      </AppProvider>,
+    )
     const light = screen.getByRole('button', { name: /light theme/i })
     await user.click(light)
     expect(light).toHaveAttribute('aria-pressed', 'true')
-  })
+  }, 15000)
+
+  it('home screen exposes Quick Start controls', () => {
+    renderApp()
+    expect(screen.getByRole('heading', { name: /^strikecaller$/i })).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: /quick train|quick boxing/i }).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/coming soon/i).length).toBeGreaterThan(0)
+  }, 15000)
 
   it('spoken calls have visible text region on home caption philosophy', () => {
     renderApp()

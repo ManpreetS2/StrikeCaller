@@ -317,8 +317,10 @@ export function SessionPage() {
           cancelLabel="Stay"
           danger
           onConfirm={() => {
+            // Clear the blocked transition, then end into Summary.
+            // Calling proceed() after finalize races the Summary navigation.
+            blocker.reset?.()
             finalize(true)
-            blocker.proceed?.()
           }}
           onCancel={() => blocker.reset?.()}
         >

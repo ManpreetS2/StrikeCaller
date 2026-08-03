@@ -1,8 +1,7 @@
-import { Link, NavLink } from 'react-router-dom'
+import { Link, NavLink, Outlet } from 'react-router-dom'
 import { Moon, Sun, Monitor, Settings, Home, Dumbbell, Shield, BarChart3 } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import type { ThemePreference } from '../types'
-import type { ReactNode } from 'react'
 import { APP_VERSION } from '../data/defaults'
 
 const themes: { id: ThemePreference; label: string; icon: typeof Moon }[] = [
@@ -11,7 +10,7 @@ const themes: { id: ThemePreference; label: string; icon: typeof Moon }[] = [
   { id: 'system', label: 'System', icon: Monitor },
 ]
 
-export function AppLayout({ children }: { children: ReactNode }) {
+export function AppLayout() {
   const { preferences, setTheme } = useApp()
 
   return (
@@ -66,7 +65,7 @@ export function AppLayout({ children }: { children: ReactNode }) {
       </header>
 
       <main id="main" className="mx-auto max-w-6xl px-4 py-6 pb-24 md:pb-10">
-        {children}
+        <Outlet />
       </main>
 
       <nav
