@@ -31,11 +31,23 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Configure Pages BEFORE the build so the canonical, case-correct Pages
+      # base URL is known and can be passed to Vite. This prevents hardcoded /
+      # mis-cased base paths that 404 the app's JS/CSS.
+      - name: Configure GitHub Pages
+        id: pages
+        uses: actions/configure-pages@v5
+
       - name: Build for GitHub Pages
+        env:
+          GITHUB_PAGES: 'true'
+          PAGES_BASE_URL: ${{ steps.pages.outputs.base_url }}
         run: npm run build:pages
 
-      - name: Configure Pages
-        uses: actions/configure-pages@v5
+      - name: Verify Pages build artifact
+        env:
+          PAGES_BASE_URL: ${{ steps.pages.outputs.base_url }}
+        run: npm run verify:pages
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
@@ -48,7 +60,102 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+    outputs:
+      page_url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+  verify-live:
+    needs: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify public availability of the deployed site
+        env:
+          PAGE_URL: ${{ needs.deploy.outputs.page_url }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${PAGE_URL:-}" ]; then
+            echo "::error::deploy job did not expose a page_url output"
+            exit 1
+          fi
+
+          # Normalize to a single trailing slash.
+          base_url="${PAGE_URL%/}/"
+          bust="${base_url}?sha=${COMMIT_SHA}"
+          echo "Canonical Pages URL: ${base_url}"
+          echo "Cache-busted URL:    ${bust}"
+
+          attempts=12
+          delay=10
+          html=""
+          success=0
+          for i in $(seq 1 "${attempts}"); do
+            echo "Attempt ${i}/${attempts}: GET ${bust}"
+            code=$(curl -sSL -o /tmp/page.html -w '%{http_code}' -H 'Cache-Control: no-cache' "${bust}" || echo "000")
+            echo "  HTTP ${code}"
+            if [ "${code}" = "200" ]; then
+              html=$(cat /tmp/page.html)
+              # Guard against GitHub's generic Pages 404 served with a 200 in edge cases.
+              if printf '%s' "${html}" | grep -qi "There isn't a GitHub Pages site here"; then
+                echo "  Served GitHub generic 404 body; retrying after propagation delay"
+              else
+                success=1
+                break
+              fi
+            fi
+            sleep "${delay}"
+          done
+
+          if [ "${success}" -ne 1 ]; then
+            echo "::error::Public site did not become available at ${base_url}"
+            exit 1
+          fi
+
+          # Confirm the StrikeCaller app shell, not a placeholder/404.
+          if ! printf '%s' "${html}" | grep -qi "StrikeCaller v"; then
+            echo "::error::Deployed HTML did not contain the expected StrikeCaller title"
+            exit 1
+          fi
+
+          # Extract local JS/CSS asset URLs referenced by the page.
+          assets=$(printf '%s' "${html}" \
+            | grep -oE '(src|href)="[^"]+\.(js|css)"' \
+            | sed -E 's/^(src|href)="//; s/"$//' \
+            | grep -vE '^https?://' || true)
+
+          if [ -z "${assets}" ]; then
+            echo "::error::No local JS/CSS asset references found in deployed HTML"
+            exit 1
+          fi
+
+          host="$(printf '%s' "${base_url}" | sed -E 's#^(https?://[^/]+).*#\1#')"
+          echo "Checking local assets under ${host}"
+          while IFS= read -r asset; do
+            [ -z "${asset}" ] && continue
+            case "${asset}" in
+              /*) asset_url="${host}${asset}" ;;
+              ./*) asset_url="${base_url}${asset#./}" ;;
+              *) asset_url="${base_url}${asset}" ;;
+            esac
+            acode=$(curl -sSL -o /dev/null -w '%{http_code}' "${asset_url}?sha=${COMMIT_SHA}" || echo "000")
+            echo "  asset ${asset_url} -> HTTP ${acode}"
+            if [ "${acode}" != "200" ]; then
+              echo "::error::Required local asset failed: ${asset_url} (HTTP ${acode})"
+              exit 1
+            fi
+          done <<< "${assets}"
+
+          {
+            echo "### StrikeCaller Pages availability verified"
+            echo ""
+            echo "- Canonical URL: ${base_url}"
+            echo "- HTTP status: 200"
+            echo "- Local JS/CSS assets: all HTTP 200"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+          echo "Public availability verified at ${base_url}"

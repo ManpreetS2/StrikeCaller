@@ -2,7 +2,7 @@
   "name": "StrikeCaller",
   "short_name": "StrikeCaller",
   "description": "Muay Thai and Boxing training coach — hear the combo, set the pace, build the reaction.",
-  "start_url": "./",
+  "start_url": "./#/",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",

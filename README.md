@@ -1,10 +1,10 @@
-# StrikeCaller v1.2.1 — Mobile Gym Experience
+# StrikeCaller v1.2.2 — GitHub Pages Availability Hotfix
 
 **Hear the combo. Set the pace. Build the reaction.**
 
 StrikeCaller is a browser-based striking coach for **Muay Thai** and **Boxing**. It speaks realistic combinations during shadowboxing, bag work, pad work, or solo drills, with adaptive pacing, timed rounds, and local training stats.
 
-Version **1.2.1** treats the phone as the primary product: a gym-ready Session dock, safer audio/visibility recovery, and mobile-first layouts. Desktop remains a secondary responsive layout.
+Version **1.2.2** is an availability hotfix: the GitHub Pages base path is now derived from GitHub's canonical, case-sensitive Pages URL so the published app's JavaScript and CSS load correctly (no more blank page or generic 404). Workout, Session, audio, routing, stats, storage, and onboarding behavior are unchanged.
 
 225+ realistic combinations across Muay Thai and Boxing. Free. No account. No download.
 
@@ -12,10 +12,10 @@ StrikeCaller tracks training activity, not technique quality or accuracy.
 
 ## Live demo
 
-**[Launch StrikeCaller](https://manpreets2.github.io/strikecaller/)**
+**[Launch StrikeCaller](https://manpreets2.github.io/StrikeCaller/)**
 
-Public site: [manpreets2.github.io/strikecaller](https://manpreets2.github.io/strikecaller/)  
-Repository: [github.com/ManpreetS2/strikecaller](https://github.com/ManpreetS2/strikecaller)
+Public site: [manpreets2.github.io/StrikeCaller](https://manpreets2.github.io/StrikeCaller/)  
+Repository: [github.com/ManpreetS2/StrikeCaller](https://github.com/ManpreetS2/StrikeCaller)
 
 No GitHub login is required to use the app.
 
@@ -113,30 +113,31 @@ npm run preview
 ```
 
 - `npm run build` — production build with base `/` for local or root hosting
-- `npm run build:pages` — production build with base `/strikecaller/` for GitHub Pages
+- `npm run build:pages` — production build for GitHub Pages; the base path is derived from GitHub's canonical Pages URL via `PAGES_BASE_URL` (falling back to `/StrikeCaller/` locally)
+- `npm run verify:pages` — validate the generated `dist/` artifact (correct base, existing local assets, expected title) before deploy
 
 Requirements: Node.js 20+ (22 LTS recommended) and a modern browser.
 
 ## GitHub Pages deployment
 
-The public site is published to GitHub Pages at `/strikecaller/`.
+The public site is published to GitHub Pages at the canonical URL **https://manpreets2.github.io/StrikeCaller/**. GitHub Pages paths are case-sensitive, so the exact casing matters.
 
-- **CI** (`.github/workflows/ci.yml`) — typecheck, test, and build on pushes and pull requests to `main`
-- **Deploy GitHub Pages** (`.github/workflows/deploy-pages.yml`) — builds with `npm run build:pages` and publishes the `dist` artifact via Actions
+There is exactly one authoritative deployment path:
 
-Routing uses `HashRouter` so deep links and refresh work on GitHub Pages without server rewrites (for example `/strikecaller/#/train`).
+- **Deploy GitHub Pages** (`.github/workflows/deploy-pages.yml`) — configures Pages first, passes GitHub's canonical Pages URL to the Vite build via `PAGES_BASE_URL`, verifies the artifact (`npm run verify:pages`), publishes the `dist` artifact via Actions, and then runs a `verify-live` job that fails unless the public URL and its JS/CSS assets return HTTP 200.
+- **CI** (`.github/workflows/ci.yml`) — typecheck, test, and build on pushes and pull requests to `main`.
+- **Pages Diagnostics** (`.github/workflows/pages-diagnostics.yml`) — a manual (`workflow_dispatch`), read-only workflow that inspects the live Pages configuration and asset availability without rebuilding.
+
+Pages source must be **Settings → Pages → Build and deployment → Source → GitHub Actions**. Do not publish from a `gh-pages` branch; that would create a second, competing publication system.
+
+Routing uses `HashRouter` so deep links and refresh work on GitHub Pages without server rewrites (for example `https://manpreets2.github.io/StrikeCaller/#/train`).
 
 Local Pages build:
 
 ```bash
 npm run build:pages
+npm run verify:pages
 ```
-
-If the Actions deploy workflow is not yet connected, enable Pages under:
-
-Repository Settings → Pages → Build and deployment → Source → GitHub Actions
-
-Until Actions deployment is connected, the repository may also publish from the `gh-pages` branch.
 
 ## Supported browsers and feature limits
 
@@ -149,6 +150,16 @@ Until Actions deployment is connected, the repository may also publish from the 
 ## Testing
 
 Deterministic Vitest + Testing Library coverage includes combo validation, timing, call styles, storage safety, training surfaces, session controls, and accessibility labels. Tests do not require the public internet.
+
+## Release notes — v1.2.2
+
+GitHub Pages availability hotfix:
+
+- The Vite Pages base is derived from GitHub's canonical Pages URL (`PAGES_BASE_URL` from `actions/configure-pages`) instead of a hardcoded, mis-cased `/strikecaller/`. This restores the app's JavaScript/CSS on the case-sensitive Pages path and fixes the blank page / generic 404 seen on the public site.
+- The deploy workflow now configures Pages before building, validates the built artifact (`scripts/verify-pages-build.mjs`), and adds a post-deploy `verify-live` job that confirms the public URL and its assets return HTTP 200.
+- Added a manual, read-only `Pages Diagnostics` workflow.
+- Web manifest `start_url` now opens the app's root hash route under the project base; all displayed links use the canonical `https://manpreets2.github.io/StrikeCaller/`.
+- No changes to workout generation, Session behavior, audio timing, hash routing, stats, storage, or onboarding.
 
 ## Release notes — v1.2.1
 
