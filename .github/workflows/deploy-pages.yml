@@ -122,8 +122,6 @@ jobs:
             exit 1
           fi
 
-          origin="${base_url%/}"
-          origin="${origin%/*}"  # strip trailing path segment to get scheme://host
           # Extract local JS/CSS asset URLs referenced by the page.
           assets=$(printf '%s' "${html}" \
             | grep -oE '(src|href)="[^"]+\.(js|css)"' \
