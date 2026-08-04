@@ -1,0 +1,80 @@
+name: Pages Diagnostics
+
+# Manual, read-only diagnostics for the published GitHub Pages site.
+# Does NOT rebuild or redeploy the application — it inspects the live state so
+# availability issues (wrong base path, mis-cased URL, generic 404) can be
+# triaged quickly. The authoritative deploy path remains deploy-pages.yml.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Inspect Pages configuration and live availability
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          COMMIT_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          echo "## Pages API configuration"
+          # Read-only Pages API; prints config (source, build_type, custom domain).
+          pages_json=$(gh api "repos/${REPO}/pages" 2>/dev/null || echo '{}')
+          echo "${pages_json}" | jq '{status, html_url, build_type, cname, custom_404, source, https_enforced}' || echo "${pages_json}"
+
+          page_url=$(echo "${pages_json}" | jq -r '.html_url // empty')
+          if [ -z "${page_url}" ]; then
+            echo "::warning::Pages does not appear to be configured (no html_url)"
+            exit 0
+          fi
+          base_url="${page_url%/}/"
+          echo ""
+          echo "## Latest deployment URL"
+          echo "${base_url}"
+
+          echo ""
+          echo "## Live URL check"
+          bust="${base_url}?sha=${COMMIT_SHA}"
+          code=$(curl -sSL -o /tmp/diag.html -w '%{http_code}' "${bust}" || echo "000")
+          echo "GET ${bust} -> HTTP ${code}"
+          if grep -qi "There isn't a GitHub Pages site here" /tmp/diag.html; then
+            echo "::warning::Live URL returned GitHub's generic Pages 404 body"
+          fi
+          title=$(grep -oiE '<title>[^<]*</title>' /tmp/diag.html || echo '(no title)')
+          echo "Title: ${title}"
+
+          echo ""
+          echo "## Local asset checks"
+          host="$(printf '%s' "${base_url}" | sed -E 's#^(https?://[^/]+).*#\1#')"
+          assets=$(grep -oE '(src|href)="[^"]+\.(js|css)"' /tmp/diag.html \
+            | sed -E 's/^(src|href)="//; s/"$//' \
+            | grep -vE '^https?://' || true)
+          if [ -z "${assets}" ]; then
+            echo "::warning::No local JS/CSS asset references found in live HTML"
+          else
+            while IFS= read -r asset; do
+              [ -z "${asset}" ] && continue
+              case "${asset}" in
+                /*) asset_url="${host}${asset}" ;;
+                ./*) asset_url="${base_url}${asset#./}" ;;
+                *) asset_url="${base_url}${asset}" ;;
+              esac
+              acode=$(curl -sSL -o /dev/null -w '%{http_code}' "${asset_url}?sha=${COMMIT_SHA}" || echo "000")
+              echo "  ${asset_url} -> HTTP ${acode}"
+            done <<< "${assets}"
+          fi
+
+          {
+            echo "### Pages diagnostics"
+            echo ""
+            echo "- Canonical URL: ${base_url}"
+            echo "- Root HTTP status: ${code}"
+          } >> "${GITHUB_STEP_SUMMARY}"
