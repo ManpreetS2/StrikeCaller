@@ -49,8 +49,9 @@ describe('production release workflow gates', () => {
     expect(ciYml).toMatch(/workflow_dispatch:/)
   })
 
-  it('makes deploy depend on a verified Pages build which depends on tests', () => {
+  it('makes deploy depend on E2E and a verified Pages build after unit tests', () => {
     const verify = jobBlock(ciYml, 'verify')
+    const e2e = jobBlock(ciYml, 'e2e')
     const pages = jobBlock(ciYml, 'pages')
     const deploy = jobBlock(ciYml, 'deploy')
 
@@ -58,6 +59,16 @@ describe('production release workflow gates', () => {
     expect(verify).toMatch(/npm run typecheck/)
     expect(verify).toMatch(/npm test/)
     expect(verify).not.toMatch(/npm install(?:\s|$)/)
+    expect(verify).not.toMatch(/playwright/)
+
+    expect(e2e).toMatch(/needs:\s*verify/)
+    expect(e2e).toMatch(/npx playwright install --with-deps chromium firefox webkit/)
+    expect(e2e).toMatch(/npm run test:e2e/)
+    expect(e2e).not.toMatch(/continue-on-error:\s*true/)
+    expect(e2e).toMatch(/if:\s*\$\{\{\s*failure\(\)\s*&&\s*!cancelled\(\)\s*\}\}/)
+    expect(e2e).toMatch(/if-no-files-found:\s*ignore/)
+    expect(e2e).not.toMatch(/video/)
+    expect(e2e).toMatch(/actions\/upload-artifact/)
 
     expect(pages).toMatch(/needs:\s*verify/)
     expect(pages).toMatch(/npm run build:pages/)
@@ -69,7 +80,8 @@ describe('production release workflow gates', () => {
     expect(verifyAt).toBeGreaterThan(-1)
     expect(uploadAt).toBeGreaterThan(verifyAt)
 
-    expect(deploy).toMatch(/needs:\s*pages/)
+    expect(deploy).toMatch(/needs:\s*\[[^\]]*e2e[^\]]*\]/)
+    expect(deploy).toMatch(/needs:\s*\[[^\]]*pages[^\]]*\]/)
     expect(deploy).toMatch(/actions\/deploy-pages/)
     expect(deploy).toMatch(PRODUCTION_IF)
     expect(deploy).toMatch(/environment:[\s\S]*name:\s*github-pages/)
@@ -100,11 +112,14 @@ describe('production release workflow gates', () => {
     expect(beforeJobs).not.toMatch(/id-token:\s*write/)
 
     const verify = jobBlock(ciYml, 'verify')
+    const e2e = jobBlock(ciYml, 'e2e')
     const pages = jobBlock(ciYml, 'pages')
     const deploy = jobBlock(ciYml, 'deploy')
 
     expect(verify).not.toMatch(/pages:\s*write/)
     expect(verify).not.toMatch(/id-token:\s*write/)
+    expect(e2e).not.toMatch(/pages:\s*write/)
+    expect(e2e).not.toMatch(/id-token:\s*write/)
     expect(pages).not.toMatch(/pages:\s*write/)
     expect(pages).not.toMatch(/id-token:\s*write/)
 
@@ -115,6 +130,7 @@ describe('production release workflow gates', () => {
   it('does not continue on error for release gates', () => {
     expect(ciYml).not.toMatch(/continue-on-error:\s*true/)
     expect(jobBlock(ciYml, 'verify')).not.toMatch(/\|\|\s*true/)
+    expect(jobBlock(ciYml, 'e2e')).not.toMatch(/\|\|\s*true/)
     expect(jobBlock(ciYml, 'pages')).not.toMatch(/\|\|\s*true/)
     expect(jobBlock(ciYml, 'deploy')).not.toMatch(/\|\|\s*true/)
   })
@@ -126,5 +142,7 @@ describe('production release workflow gates', () => {
     expect(scripts['verify:release']).toBe(
       'npm run typecheck && npm test && npm run build:pages && npm run verify:pages',
     )
+    expect(scripts['verify:release']).not.toMatch(/test:e2e|playwright/)
+    expect(scripts['test:e2e']).toBe('playwright test')
   })
 })

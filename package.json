@@ -13,7 +13,10 @@
     "verify:pages": "node scripts/verify-pages-build.mjs",
     "verify:release": "npm run typecheck && npm test && npm run build:pages && npm run verify:pages",
     "preview": "vite preview",
-    "preview:pages": "node scripts/run-pages.mjs preview"
+    "preview:pages": "node scripts/run-pages.mjs preview",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:ui": "playwright test --ui"
   },
   "dependencies": {
     "lucide-react": "^1.28.0",
@@ -22,6 +25,7 @@
     "react-router-dom": "^7.18.2"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "@tailwindcss/vite": "^4.3.3",
     "@testing-library/jest-dom": "^7.0.0",
     "@testing-library/react": "^16.3.2",

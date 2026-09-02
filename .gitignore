@@ -23,6 +23,11 @@ pnpm-debug.log*
 # Coverage / test
 coverage/
 *.lcov
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+dist-pages/
 
 # Editor / OS
 .DS_Store
