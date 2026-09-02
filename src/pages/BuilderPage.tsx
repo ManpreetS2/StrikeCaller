@@ -141,8 +141,8 @@ export function BuilderPage() {
       includeHeadKicks: false,
       includeClinch: false,
     })
-    await primeTrainingAudio({ musicFriendly: preferences.speech.musicFriendly })
-    navigate('/session', { state: { config, comboQueue: queue, audioPrimed: true } })
+    const primed = await primeTrainingAudio({ musicFriendly: preferences.speech.musicFriendly })
+    navigate('/session', { state: { config, comboQueue: queue, audioPrimed: primed.ok } })
   })
 
   const save = useOnceAction(() => {

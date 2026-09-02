@@ -40,8 +40,8 @@ export function DemoPage() {
       minimalMode: preferences.preferMinimalMode,
     })
 
-    await primeTrainingAudio({ musicFriendly: preferences.speech.musicFriendly })
-    navigate('/session', { state: { config, demo: true, audioPrimed: true } })
+    const primed = await primeTrainingAudio({ musicFriendly: preferences.speech.musicFriendly })
+    navigate('/session', { state: { config, demo: true, audioPrimed: primed.ok } })
   })
 
   return (

@@ -114,6 +114,7 @@ export function SessionPage() {
   const lastTimerAnnounce = useRef('')
 
   const [preparing, setPreparing] = useState(true)
+  const [audioUnavailable, setAudioUnavailable] = useState(false)
   const [timerMs, setTimerMs] = useState(0)
   const [ui, setUi] = useState<SessionUi | null>(null)
   const [confirmEnd, setConfirmEnd] = useState(false)
@@ -158,12 +159,22 @@ export function SessionPage() {
     })
 
     ;(async () => {
-      if (!state.audioPrimed) {
-        setPreparing(true)
-        await primeTrainingAudio({ musicFriendly: config.speech.musicFriendly })
+      let audioFailed = false
+      try {
+        if (!state.audioPrimed) {
+          setPreparing(true)
+          try {
+            const primed = await primeTrainingAudio({ musicFriendly: config.speech.musicFriendly })
+            audioFailed = !primed.ok
+          } catch {
+            audioFailed = true
+          }
+        }
+      } finally {
+        if (alive) setPreparing(false)
       }
       if (!alive) return
-      setPreparing(false)
+      if (audioFailed) setAudioUnavailable(true)
       await engine.start({ demo: isDemo, comboQueue: state.comboQueue })
     })()
 
@@ -305,6 +316,11 @@ export function SessionPage() {
               Training paused after an interruption. Stale audio was cleared. Tap Resume when ready.
             </p>
           )}
+          {audioUnavailable && (config.sound.bellsEnabled || config.sound.tonesEnabled) ? (
+            <p className="mt-2 max-w-md text-sm text-[var(--text-muted)]" role="status">
+              Audio unavailable — workout will continue with visual cues.
+            </p>
+          ) : null}
         </div>
         <SessionTimer timeRemainingMs={timerMs} state={timerState} announce={timerAnnounce} />
       </header>

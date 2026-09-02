@@ -250,8 +250,8 @@ export function TrainPage() {
       return
     }
 
-    await primeTrainingAudio({ musicFriendly })
-    navigate('/session', { state: { config: buildConfig(), audioPrimed: true } })
+    const primed = await primeTrainingAudio({ musicFriendly })
+    navigate('/session', { state: { config: buildConfig(), audioPrimed: primed.ok } })
   })
 
   const equipmentWarning = useMemo(() => {

@@ -43,12 +43,12 @@ export function HomePage() {
       navigate('/daily')
       return
     }
-    await primeTrainingAudio({ musicFriendly: preferences.speech.musicFriendly })
+    const primed = await primeTrainingAudio({ musicFriendly: preferences.speech.musicFriendly })
     const built = preset.build(preferences)
     navigate('/session', {
       state: {
         config: { ...built, minimalMode: preferences.preferMinimalMode || built.minimalMode },
-        audioPrimed: true,
+        audioPrimed: primed.ok,
       },
     })
   })
@@ -56,9 +56,9 @@ export function HomePage() {
   const trainAgain = useOnceAction(async () => {
     if (recent) {
       const payload = buildTrainAgainPayload(recent, customCombos)
-      await primeTrainingAudio({ musicFriendly: preferences.speech.musicFriendly })
+      const primed = await primeTrainingAudio({ musicFriendly: preferences.speech.musicFriendly })
       navigate('/session', {
-        state: { config: payload.config, comboQueue: payload.comboQueue, audioPrimed: true },
+        state: { config: payload.config, comboQueue: payload.comboQueue, audioPrimed: primed.ok },
       })
       return
     }

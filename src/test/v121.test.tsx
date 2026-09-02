@@ -229,7 +229,7 @@ describe('v1.2.1 mobile gym experience', () => {
 
   it('primeTrainingAudio does not throw when AudioContext is unavailable', async () => {
     const spy = vi.spyOn(audioEngine, 'prepare').mockResolvedValue(false)
-    await expect(primeTrainingAudio({ timeoutMs: 50 })).resolves.toMatchObject({ ok: expect.any(Boolean) })
+    await expect(primeTrainingAudio({ timeoutMs: 50 })).resolves.toEqual({ ok: false, timedOut: false })
     spy.mockRestore()
   })
 
