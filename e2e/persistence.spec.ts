@@ -1,5 +1,6 @@
 import {
   expect,
+  expectStatsSessionCount,
   goToNav,
   openApp,
   startShortCoachSession,
@@ -27,12 +28,12 @@ test.describe('completed session persistence', () => {
     await expect(page.getByRole('heading', { name: 'Training Stats' })).toBeVisible()
     await expect(page.getByText('No sessions in this range')).toHaveCount(0)
     await expect(page.getByText('Sessions', { exact: true })).toBeVisible()
-    await expect(page.locator('.metric-card', { hasText: 'Sessions' }).getByText('1', { exact: true })).toBeVisible()
+    await expectStatsSessionCount(page, 1)
 
     await page.reload()
     await expect(page.getByRole('heading', { name: 'Training Stats' })).toBeVisible()
     await expect(page.getByText('No sessions in this range')).toHaveCount(0)
-    await expect(page.locator('.metric-card', { hasText: 'Sessions' }).getByText('1', { exact: true })).toBeVisible()
+    await expectStatsSessionCount(page, 1)
     const stored = await readIndexedDbSessions(page)
     expect(stored).toHaveLength(1)
     expect(stored[0]?.id).toBe(committed[0]?.id)
@@ -73,6 +74,6 @@ test.describe('legacy history migration', () => {
     expect(afterReload.map((row) => row.id)).toEqual([seeded.id])
     expect(new Set(afterReload.map((row) => row.id)).size).toBe(1)
     expect(await readLegacyHistoryKey(page)).toBeNull()
-    await expect(page.locator('.metric-card', { hasText: 'Sessions' }).getByText('1', { exact: true })).toBeVisible()
+    await expectStatsSessionCount(page, 1)
   })
 })

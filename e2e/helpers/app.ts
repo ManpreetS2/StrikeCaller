@@ -47,6 +47,11 @@ export async function waitForWorkPhase(page: Page): Promise<void> {
   await expect(page.getByRole('button', { name: 'Skip combination' })).toBeEnabled()
 }
 
+export async function expectStatsSessionCount(page: Page, count: number): Promise<void> {
+  const card = page.locator('.metric-card').filter({ has: page.getByText('Sessions', { exact: true }) })
+  await expect(card.locator('.sr-only')).toHaveText(String(count))
+}
+
 export function measureOverflow(page: Page) {
   return page.evaluate(() => {
     const root = document.documentElement
