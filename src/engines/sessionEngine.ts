@@ -497,10 +497,13 @@ export class SessionEngine {
     this.interrupted = false
     this.speech.hardReset()
     audioEngine.stopAll()
-    await audioEngine.prepare()
+    // Audio unlock is best-effort. A hanging AudioContext.resume() must not
+    // leave the session stuck on Pause with no way to continue.
+    void Promise.resolve(audioEngine.prepare()).catch(() => {})
 
     const token = ++this.runToken
     this.paused = false
+    this.emit()
 
     try {
       // Rest resumes remaining rest without Fight countdown/bell

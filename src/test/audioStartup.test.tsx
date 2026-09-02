@@ -159,6 +159,19 @@ class ThrowingAudioContext {
   }
 }
 
+class ResumeHangAudioContext {
+  state: AudioContextState = 'suspended'
+  currentTime = 0
+  destination = {} as AudioDestinationNode
+  resume() {
+    return new Promise<void>(() => {})
+  }
+  close() {
+    this.state = 'closed'
+    return Promise.resolve()
+  }
+}
+
 describe('audio startup reliability', () => {
   beforeEach(() => {
     localStorage.clear()
@@ -380,5 +393,35 @@ describe('audio startup reliability', () => {
     })
     expect(screen.getByText(/get ready/i)).toBeInTheDocument()
     expect(screen.queryByText(/audio unavailable/i)).toBeNull()
+  })
+
+  it('prepare gives up when AudioContext.resume never settles', async () => {
+    vi.stubGlobal('AudioContext', ResumeHangAudioContext)
+    vi.stubGlobal('webkitAudioContext', undefined)
+    const started = Date.now()
+    await expect(audioEngine.prepare()).resolves.toBe(false)
+    expect(Date.now() - started).toBeLessThan(2000)
+    expect(audioEngine.isReady()).toBe(false)
+  })
+
+  it('session resume unpauses even if audio prepare never settles', async () => {
+    vi.spyOn(audioEngine, 'prepare').mockReturnValue(new Promise(() => {}))
+    const engine = new SessionEngine(
+      sessionConfig({
+        sound: { bellsEnabled: false, tonesEnabled: false, vibrationEnabled: false, masterVolume: 0 },
+      }),
+      { wakeLock: false },
+    )
+    void engine.start()
+    await waitFor(() => {
+      expect(['countdown', 'work', 'paused']).toContain(engine.snapshot().phase)
+    })
+    engine.pause()
+    expect(engine.snapshot().paused).toBe(true)
+    void engine.resume()
+    await waitFor(() => {
+      expect(engine.snapshot().paused).toBe(false)
+    })
+    engine.dispose()
   })
 })

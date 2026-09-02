@@ -23,6 +23,7 @@ test.describe('active session', () => {
   test('pause and resume keep the session alive', async ({ page }) => {
     await startShortCoachSession(page)
     await waitForSessionActive(page)
+    await waitForWorkPhase(page)
     await page.getByRole('button', { name: 'Pause session' }).click()
     await expect(page.getByRole('button', { name: 'Resume session' })).toBeVisible()
     await expect(page.getByRole('heading', { name: /Paused|Interrupted|Get ready/ })).toBeVisible()

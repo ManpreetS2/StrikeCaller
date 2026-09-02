@@ -75,7 +75,7 @@ export class AudioEngine {
     }
     if (this.ctx.state === 'suspended') {
       try {
-        await this.ctx.resume()
+        await Promise.race([this.ctx.resume(), delay(AUDIO_UNLOCK_TIMEOUT_MS)])
       } catch {
         // Autoplay policy / browser bugs: keep the context for a later gesture.
       }
@@ -147,6 +147,9 @@ export class AudioEngine {
     }
   }
 }
+
+/** Firefox/Linux CI can leave AudioContext.resume() pending indefinitely. */
+const AUDIO_UNLOCK_TIMEOUT_MS = 800
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
