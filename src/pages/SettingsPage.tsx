@@ -25,6 +25,7 @@ export function SettingsPage() {
     exportData,
     importData,
     history,
+    historyReady,
     storageIssue,
   } = useApp()
   const [importMessage, setImportMessage] = useState('')
@@ -280,20 +281,28 @@ export function SettingsPage() {
 
       <section className="panel space-y-3 p-5" aria-label="Data">
         <h2 className="text-xl font-semibold">Data</h2>
-        <p className="text-sm text-[var(--text-muted)]">{history.length} saved sessions on this device.</p>
+        <p className="text-sm text-[var(--text-muted)]">
+          {!historyReady && history.length === 0
+            ? 'Loading saved sessions…'
+            : `${history.length} saved sessions on this device.`}
+        </p>
         <StorageStatus issue={storageIssue} />
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
             className="btn"
+            disabled={!historyReady}
             onClick={() => {
-              const blob = new Blob([exportData()], { type: 'application/json' })
-              const url = URL.createObjectURL(blob)
-              const a = document.createElement('a')
-              a.href = url
-              a.download = 'strikecaller-export.json'
-              a.click()
-              URL.revokeObjectURL(url)
+              void (async () => {
+                const json = await exportData()
+                const blob = new Blob([json], { type: 'application/json' })
+                const url = URL.createObjectURL(blob)
+                const a = document.createElement('a')
+                a.href = url
+                a.download = 'strikecaller-export.json'
+                a.click()
+                URL.revokeObjectURL(url)
+              })()
             }}
           >
             Export JSON
@@ -313,7 +322,7 @@ export function SettingsPage() {
                   return
                 }
                 const text = await file.text()
-                const result = importData(text)
+                const result = await importData(text)
                 setImportMessage(result.message)
                 e.target.value = ''
               }}
@@ -339,8 +348,10 @@ export function SettingsPage() {
           confirmLabel="Clear history"
           danger
           onConfirm={() => {
-            clearHistory()
-            setConfirmClear(false)
+            void (async () => {
+              await clearHistory()
+              setConfirmClear(false)
+            })()
           }}
           onCancel={() => setConfirmClear(false)}
         >

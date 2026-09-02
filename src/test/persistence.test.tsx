@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
 import { act, render, screen, waitFor, within } from '@testing-library/react'
+import { useState } from 'react'
 import userEvent from '@testing-library/user-event'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import { AppProvider, useApp } from '../context/AppContext'
@@ -7,22 +8,24 @@ import { AppLayout } from '../components/AppLayout'
 import { SettingsPage } from '../pages/SettingsPage'
 import { DEFAULT_PREFERENCES } from '../data/defaults'
 import {
-  saveHistory,
-  loadHistory,
   savePreferences,
   loadPreferences,
   saveFavorites,
   loadFavorites,
   saveCustomCombos,
   loadCustomCombos,
-  importUserData,
-  exportUserData,
+  saveDailyDrillMap,
   storageAvailable,
   resetStorageAvailabilityCache,
   STORAGE_WRITE_MESSAGES,
   HISTORY_QUOTA_MESSAGE,
+  loadLegacyHistory,
+  LEGACY_HISTORY_KEY,
 } from '../storage/localStore'
-import type { CustomCombo, SessionSummary } from '../types'
+import { exportUserData, importUserData } from '../storage/userData'
+import { loadHistory, saveSession, resetHistoryDbConnection } from '../storage/historyStore'
+import * as idb from '../storage/idb'
+import type { CustomCombo, DailyDrillMap, SessionSummary } from '../types'
 
 function session(id: string, extra: Partial<SessionSummary> = {}): SessionSummary {
   return {
@@ -68,6 +71,22 @@ function quotaError(): DOMException {
   return new DOMException('The quota has been exceeded.', 'QuotaExceededError')
 }
 
+function spyIdbPut(impl: (value: unknown, original: (value: unknown) => IDBRequest) => IDBRequest) {
+  const original = IDBObjectStore.prototype.put
+  return vi.spyOn(IDBObjectStore.prototype, 'put').mockImplementation(function (
+    this: IDBObjectStore,
+    value: unknown,
+    key?: IDBValidKey,
+  ) {
+    return impl(value, (v) => original.call(this, v, key))
+  })
+}
+
+function sessionIdOf(value: unknown): string | null {
+  if (typeof value !== 'object' || value === null || !('id' in value)) return null
+  return typeof value.id === 'string' ? value.id : null
+}
+
 function spySetItem(
   impl: (key: string, value: string, original: (key: string, value: string) => void) => void,
 ) {
@@ -89,13 +108,17 @@ function PersistenceHarness() {
     toggleFavorite,
     upsertCustomCombo,
     history,
+    historyReady,
     preferences,
     favorites,
     customCombos,
     storageIssue,
     storageWarningVisible,
     dismissStorageIssue,
+    exportData,
+    clearHistory,
   } = useApp()
+  const [exported, setExported] = useState('')
 
   return (
     <div>
@@ -104,6 +127,23 @@ function PersistenceHarness() {
       </button>
       <button type="button" onClick={() => addHistory(session('second-session'))}>
         add-second-workout
+      </button>
+      <button type="button" onClick={() => addHistory(session('B', { startedAt: 2_000_000_000_000 }))}>
+        add-B
+      </button>
+      <button type="button" onClick={() => addHistory(session('C', { startedAt: 3_000_000_000_000 }))}>
+        add-C
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          void exportData().then(setExported)
+        }}
+      >
+        export-now
+      </button>
+      <button type="button" onClick={() => void clearHistory()}>
+        clear-history
       </button>
       <button type="button" onClick={() => updatePreferences({ largeText: true })}>
         change-pref
@@ -122,12 +162,14 @@ function PersistenceHarness() {
       </button>
       <span data-testid="history-count">{history.length}</span>
       <span data-testid="history-ids">{history.map((h) => h.id).join(',')}</span>
+      <span data-testid="history-ready">{historyReady ? 'yes' : 'no'}</span>
       <span data-testid="large-text">{String(preferences.largeText)}</span>
       <span data-testid="favorites">{favorites.join(',')}</span>
       <span data-testid="combo-count">{customCombos.length}</span>
       <span data-testid="issue-reason">{storageIssue?.reason ?? 'none'}</span>
       <span data-testid="issue-source">{storageIssue?.source ?? 'none'}</span>
       <span data-testid="warning-visible">{storageWarningVisible ? 'yes' : 'no'}</span>
+      <pre data-testid="export-payload">{exported}</pre>
     </div>
   )
 }
@@ -169,10 +211,10 @@ describe('storage write results', () => {
     resetStorageAvailabilityCache()
   })
 
-  it('reports success for a normal write', () => {
-    const result = saveHistory([session('ok-1')])
+  it('reports success for a normal IndexedDB session write', async () => {
+    const result = await saveSession(session('ok-1'))
     expect(result).toEqual({ ok: true })
-    expect(loadHistory().map((h) => h.id)).toEqual(['ok-1'])
+    expect((await loadHistory()).map((h) => h.id)).toEqual(['ok-1'])
   })
 
   it('classifies blocked storage as unavailable', () => {
@@ -188,12 +230,12 @@ describe('storage write results', () => {
     expect(storageAvailable()).toBe(false)
   })
 
-  it('classifies a simulated QuotaExceededError as quota-exceeded', () => {
-    spySetItem((key, value, original) => {
-      if (key === 'strikecaller:history') throw quotaError()
-      original(key, value)
+  it('classifies a simulated QuotaExceededError as quota-exceeded', async () => {
+    spyIdbPut((value, original) => {
+      if (sessionIdOf(value) === 'quota-1') throw quotaError()
+      return original(value)
     })
-    const result = saveHistory([session('quota-1')])
+    const result = await saveSession(session('quota-1'))
     expect(result.ok).toBe(false)
     if (result.ok) return
     expect(result.reason).toBe('quota-exceeded')
@@ -201,16 +243,16 @@ describe('storage write results', () => {
     expect(result.message).not.toMatch(/QuotaExceededError/i)
   })
 
-  it('classifies NS_ERROR_DOM_QUOTA_REACHED as quota-exceeded', () => {
-    spySetItem((key, value, original) => {
-      if (key === 'strikecaller:history') {
+  it('classifies NS_ERROR_DOM_QUOTA_REACHED as quota-exceeded', async () => {
+    spyIdbPut((value, original) => {
+      if (sessionIdOf(value) === 'quota-ff') {
         const error = new Error('quota')
         Object.assign(error, { name: 'NS_ERROR_DOM_QUOTA_REACHED', code: 1014 })
         throw error
       }
-      original(key, value)
+      return original(value)
     })
-    const result = saveHistory([session('quota-ff')])
+    const result = await saveSession(session('quota-ff'))
     expect(result.ok).toBe(false)
     if (result.ok) return
     expect(result.reason).toBe('quota-exceeded')
@@ -231,9 +273,22 @@ describe('storage write results', () => {
   })
 
   it('classifies cyclic JSON as a serialization failure', () => {
-    const cyclic = session('cyclic') as SessionSummary & { self?: SessionSummary }
+    const cyclic = {
+      '2026-01-01:muay-thai': { dateKey: '2026-01-01:muay-thai', comboId: 'beg-01' },
+    } as unknown as DailyDrillMap & { self?: unknown }
     cyclic.self = cyclic
-    const result = saveHistory([cyclic])
+    const result = saveDailyDrillMap(cyclic)
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.reason).toBe('serialization')
+    expect(result.message).toBe(STORAGE_WRITE_MESSAGES.serialization)
+  })
+
+  it('classifies a non-cloneable session as an IndexedDB serialization failure', async () => {
+    const result = await saveSession({
+      ...session('cyclic'),
+      workoutConfig: { boom: () => 'nope' } as unknown as SessionSummary['workoutConfig'],
+    })
     expect(result.ok).toBe(false)
     if (result.ok) return
     expect(result.reason).toBe('serialization')
@@ -263,10 +318,10 @@ describe('storage write results', () => {
     expect(storageAvailable()).toBe(false)
     vi.restoreAllMocks()
     spySetItem((key, value, original) => {
-      if (key === 'strikecaller:history') throw quotaError()
+      if (key === 'strikecaller:favorites') throw quotaError()
       original(key, value)
     })
-    const result = saveHistory([session('after-unavailable')])
+    const result = saveFavorites(['after-unavailable'])
     expect(result.ok).toBe(false)
     if (result.ok) return
     expect(result.reason).toBe('quota-exceeded')
@@ -302,8 +357,8 @@ describe('history load, export, import, and related stores', () => {
 
   it('loads existing history from the stable storage key', () => {
     localStorage.setItem('strikecaller:history', JSON.stringify([session('legacy-1')]))
-    expect(loadHistory()).toHaveLength(1)
-    expect(loadHistory()[0]?.id).toBe('legacy-1')
+    expect(loadLegacyHistory()).toHaveLength(1)
+    expect(loadLegacyHistory()[0]?.id).toBe('legacy-1')
   })
 
   it('keeps successful preferences, favorites, and custom combo writes working', () => {
@@ -316,26 +371,26 @@ describe('history load, export, import, and related stores', () => {
     expect(loadCustomCombos()[0]?.id).toBe('custom-1')
   })
 
-  it('round-trips export and import without changing storage key names', () => {
+  it('round-trips export and import without changing storage key names', async () => {
     savePreferences({ ...DEFAULT_PREFERENCES, onboardingComplete: true, stance: 'southpaw' })
     saveFavorites(['beg-01'])
     saveCustomCombos([customCombo()])
-    saveHistory([session('export-1')])
-    const json = exportUserData()
+    expect(await saveSession(session('export-1'))).toEqual({ ok: true })
+    const json = await exportUserData()
     localStorage.clear()
-    const result = importUserData(json)
+    const result = await importUserData(json)
     expect(result.ok).toBe(true)
     expect(loadPreferences().stance).toBe('southpaw')
     expect(loadFavorites()).toEqual(['beg-01'])
     expect(loadCustomCombos()[0]?.id).toBe('custom-1')
-    expect(loadHistory()[0]?.id).toBe('export-1')
+    expect((await loadHistory())[0]?.id).toBe('export-1')
     expect(localStorage.getItem('strikecaller:preferences')).toBeTruthy()
     expect(localStorage.getItem('strikecaller:favorites')).toBeTruthy()
     expect(localStorage.getItem('strikecaller:custom-combos')).toBeTruthy()
-    expect(localStorage.getItem('strikecaller:history')).toBeTruthy()
+    expect(localStorage.getItem('strikecaller:history')).toBeNull()
   })
 
-  it('rolls back exact previous raw values when a middle import write fails', () => {
+  it('rolls back exact previous raw values when a middle import write fails', async () => {
     const rawPrefs =
       '{"theme":"dark","stance":"southpaw","extraLegacyField":true,"onboardingComplete":true}'
     const rawFavorites = '["old-fav"]'
@@ -353,7 +408,7 @@ describe('history load, export, import, and related stores', () => {
       original(key, value)
     })
 
-    const result = importUserData(
+    const result = await importUserData(
       JSON.stringify({
         version: 3,
         preferences: { ...DEFAULT_PREFERENCES, stance: 'orthodox', onboardingComplete: true },
@@ -372,7 +427,7 @@ describe('history load, export, import, and related stores', () => {
     expect(localStorage.getItem('strikecaller:daily-drill')).toBe(rawDaily)
   })
 
-  it('does not claim rollback succeeded when restoring previous values also fails', () => {
+  it('does not claim rollback succeeded when restoring previous values also fails', async () => {
     savePreferences({ ...DEFAULT_PREFERENCES, stance: 'southpaw' })
     saveFavorites(['old-fav'])
     let importFailed = false
@@ -384,7 +439,7 @@ describe('history load, export, import, and related stores', () => {
       if (importFailed) throw new Error('rollback blocked')
       original(key, value)
     })
-    const result = importUserData(
+    const result = await importUserData(
       JSON.stringify({
         version: 3,
         preferences: { ...DEFAULT_PREFERENCES, stance: 'orthodox' },
@@ -417,13 +472,22 @@ describe('AppContext persistence health and visible warning', () => {
     resetStorageAvailabilityCache()
   })
 
+  async function waitForHistoryReady() {
+    await waitFor(() => expect(screen.getByTestId('history-ready')).toHaveTextContent('yes'))
+  }
+
+  function blockNewSessionWrites() {
+    return spyIdbPut((value, original) => {
+      if (sessionIdOf(value) === 'new-session') throw quotaError()
+      return original(value)
+    })
+  }
+
   it('surfaces a storage issue after a completed workout fails to persist, without crashing', async () => {
     const user = userEvent.setup()
-    spySetItem((key, value, original) => {
-      if (key === 'strikecaller:history' && value.includes('new-session')) throw quotaError()
-      original(key, value)
-    })
+    blockNewSessionWrites()
     renderPersistenceApp('/')
+    await waitForHistoryReady()
 
     expect(screen.getByTestId('history-count')).toHaveTextContent('1')
     expect(screen.getByTestId('history-ids')).toHaveTextContent('existing-session')
@@ -435,7 +499,7 @@ describe('AppContext persistence health and visible warning', () => {
     })
     expect(screen.getByTestId('history-count')).toHaveTextContent('2')
     expect(screen.getByTestId('history-ids').textContent).toContain('new-session')
-    expect(loadHistory().map((h) => h.id)).toEqual(['existing-session'])
+    expect((await loadHistory()).map((h) => h.id)).toEqual(['existing-session'])
 
     const alert = screen.getByRole('alert')
     expect(alert).toHaveTextContent(HISTORY_QUOTA_MESSAGE)
@@ -447,19 +511,18 @@ describe('AppContext persistence health and visible warning', () => {
   it('does not clear a failed-history warning when an unrelated preference write succeeds', async () => {
     const user = userEvent.setup()
     let blockNewHistory = true
-    spySetItem((key, value, original) => {
-      if (blockNewHistory && key === 'strikecaller:history' && value.includes('new-session')) {
-        throw quotaError()
-      }
-      original(key, value)
+    spyIdbPut((value, original) => {
+      if (blockNewHistory && sessionIdOf(value) === 'new-session') throw quotaError()
+      return original(value)
     })
     renderPersistenceApp('/')
+    await waitForHistoryReady()
 
     await user.click(screen.getByRole('button', { name: 'complete-workout' }))
     await waitFor(() => expect(screen.getByTestId('issue-source')).toHaveTextContent('history'))
     expect(screen.getByRole('alert')).toHaveTextContent(HISTORY_QUOTA_MESSAGE)
     expect(screen.getByTestId('history-ids').textContent).toContain('new-session')
-    expect(loadHistory().map((h) => h.id)).toEqual(['existing-session'])
+    expect((await loadHistory()).map((h) => h.id)).toEqual(['existing-session'])
 
     await user.click(screen.getByRole('button', { name: 'set-theme' }))
     await waitFor(() => {
@@ -469,25 +532,27 @@ describe('AppContext persistence health and visible warning', () => {
     expect(screen.getByTestId('issue-reason')).toHaveTextContent('quota-exceeded')
     expect(screen.getByRole('alert')).toHaveTextContent(HISTORY_QUOTA_MESSAGE)
     expect(screen.getByTestId('history-ids').textContent).toContain('new-session')
-    expect(loadHistory().map((h) => h.id)).toEqual(['existing-session'])
+    expect((await loadHistory()).map((h) => h.id)).toEqual(['existing-session'])
 
     blockNewHistory = false
     await user.click(screen.getByRole('button', { name: 'add-second-workout' }))
     await waitFor(() => expect(screen.getByTestId('issue-reason')).toHaveTextContent('none'))
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-    expect(loadHistory().map((h) => h.id)).toEqual(['second-session', 'new-session', 'existing-session'])
+    expect(screen.getByTestId('history-ids').textContent).toContain('new-session')
+    expect((await loadHistory()).map((h) => h.id)).toEqual(['second-session', 'existing-session'])
   })
 
   it('hides the warning on dismiss and shows it again after a later new failure', async () => {
     const user = userEvent.setup()
+    blockNewSessionWrites()
     spySetItem((key, value, original) => {
-      if (key === 'strikecaller:history' && value.includes('new-session')) throw quotaError()
       if (key === 'strikecaller:preferences' && value.includes('"largeText":true')) {
         throw new Error('write exploded')
       }
       original(key, value)
     })
     renderPersistenceApp('/')
+    await waitForHistoryReady()
 
     await user.click(screen.getByRole('button', { name: 'complete-workout' }))
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())
@@ -509,11 +574,9 @@ describe('AppContext persistence health and visible warning', () => {
 
   it('does not show the persistence banner during an active /session route', async () => {
     const user = userEvent.setup()
-    spySetItem((key, value, original) => {
-      if (key === 'strikecaller:history' && value.includes('new-session')) throw quotaError()
-      original(key, value)
-    })
+    blockNewSessionWrites()
     const { router } = renderPersistenceApp('/')
+    await waitForHistoryReady()
     await user.click(screen.getByRole('button', { name: 'complete-workout' }))
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())
 
@@ -567,10 +630,7 @@ describe('AppContext persistence health and visible warning', () => {
 
   it('shows storage status in Settings and recovery copy for quota failures', async () => {
     const user = userEvent.setup()
-    spySetItem((key, value, original) => {
-      if (key === 'strikecaller:history' && value.includes('new-session')) throw quotaError()
-      original(key, value)
-    })
+    blockNewSessionWrites()
     const { router } = renderPersistenceApp('/')
     expect(screen.queryByText('Storage: Available')).not.toBeInTheDocument()
 
@@ -582,6 +642,7 @@ describe('AppContext persistence health and visible warning', () => {
     await act(async () => {
       await router.navigate('/')
     })
+    await waitForHistoryReady()
     await user.click(screen.getByRole('button', { name: 'complete-workout' }))
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())
 
@@ -597,10 +658,174 @@ describe('AppContext persistence health and visible warning', () => {
   it('does not show a warning when persistence succeeds', async () => {
     const user = userEvent.setup()
     renderPersistenceApp('/')
+    await waitForHistoryReady()
     await user.click(screen.getByRole('button', { name: 'complete-workout' }))
     await waitFor(() => expect(screen.getByTestId('history-count')).toHaveTextContent('2'))
     expect(screen.getByTestId('issue-reason')).toHaveTextContent('none')
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-    expect(loadHistory().map((h) => h.id)).toEqual(['new-session', 'existing-session'])
+    expect((await loadHistory()).map((h) => h.id)).toEqual(['new-session', 'existing-session'])
   })
 })
+
+function deferIndexedDbOpen() {
+  let release = () => {}
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const original = idb.openHistoryDb
+  vi.spyOn(idb, 'openHistoryDb').mockImplementation(async () => {
+    await gate
+    return original()
+  })
+  return { release: () => release() }
+}
+
+describe('history initialization races and fallback', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    resetStorageAvailabilityCache()
+    localStorage.setItem(
+      'strikecaller:preferences',
+      JSON.stringify({ ...DEFAULT_PREFERENCES, onboardingComplete: true }),
+    )
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    resetStorageAvailabilityCache()
+  })
+
+  it('keeps a workout completed during IndexedDB init and persists it once', async () => {
+    const user = userEvent.setup()
+    expect(await saveSession(session('A', { startedAt: 1_000 }))).toEqual({ ok: true })
+    resetHistoryDbConnection()
+    const { release } = deferIndexedDbOpen()
+    renderPersistenceApp('/')
+    expect(screen.getByTestId('history-ready')).toHaveTextContent('no')
+
+    await user.click(screen.getByRole('button', { name: 'add-B' }))
+    await waitFor(() => expect(screen.getByTestId('history-ids').textContent).toContain('B'))
+
+    release()
+    await waitFor(() => expect(screen.getByTestId('history-ready')).toHaveTextContent('yes'))
+    expect(screen.getByTestId('history-ids')).toHaveTextContent('B,A')
+    expect((await loadHistory()).map((h) => h.id)).toEqual(['B', 'A'])
+  })
+
+  it('keeps two workouts completed during init newest-first without duplicates', async () => {
+    const user = userEvent.setup()
+    expect(await saveSession(session('A', { startedAt: 1_000 }))).toEqual({ ok: true })
+    resetHistoryDbConnection()
+    const { release } = deferIndexedDbOpen()
+    renderPersistenceApp('/')
+
+    await user.click(screen.getByRole('button', { name: 'add-B' }))
+    await user.click(screen.getByRole('button', { name: 'add-C' }))
+    await waitFor(() => expect(screen.getByTestId('history-ids').textContent).toContain('C'))
+
+    release()
+    await waitFor(() => expect(screen.getByTestId('history-ready')).toHaveTextContent('yes'))
+    expect(screen.getByTestId('history-ids')).toHaveTextContent('C,B,A')
+    expect((await loadHistory()).map((h) => h.id)).toEqual(['C', 'B', 'A'])
+  })
+
+  it('keeps a queued workout in memory when its delayed save fails', async () => {
+    const user = userEvent.setup()
+    expect(await saveSession(session('A', { startedAt: 1_000 }))).toEqual({ ok: true })
+    resetHistoryDbConnection()
+    spyIdbPut((value, original) => {
+      if (sessionIdOf(value) === 'B') throw quotaError()
+      return original(value)
+    })
+    const { release } = deferIndexedDbOpen()
+    renderPersistenceApp('/')
+
+    await user.click(screen.getByRole('button', { name: 'add-B' }))
+    await waitFor(() => expect(screen.getByTestId('history-ids').textContent).toContain('B'))
+    release()
+
+    await waitFor(() => expect(screen.getByTestId('history-ready')).toHaveTextContent('yes'))
+    await waitFor(() => expect(screen.getByTestId('issue-reason')).toHaveTextContent('quota-exceeded'))
+    expect(screen.getByTestId('history-ids').textContent).toContain('B')
+    expect((await loadHistory()).map((h) => h.id)).toEqual(['A'])
+
+    await user.click(screen.getByRole('button', { name: 'add-C' }))
+    await waitFor(() => expect(screen.getByTestId('history-ids')).toHaveTextContent('C,B,A'))
+    expect((await loadHistory()).map((h) => h.id)).toEqual(['C', 'A'])
+    expect(screen.getByTestId('history-ids').textContent).toContain('B')
+  })
+
+  it('exports complete history even if export starts before historyReady', async () => {
+    const user = userEvent.setup()
+    expect(await saveSession(session('A', { startedAt: 1_000 }))).toEqual({ ok: true })
+    resetHistoryDbConnection()
+    const { release } = deferIndexedDbOpen()
+    renderPersistenceApp('/')
+    expect(screen.getByTestId('history-ready')).toHaveTextContent('no')
+
+    await user.click(screen.getByRole('button', { name: 'export-now' }))
+    expect(screen.getByTestId('export-payload')).toHaveTextContent('')
+    release()
+
+    await waitFor(() => expect(screen.getByTestId('export-payload').textContent).toContain('"id": "A"'))
+    const parsed = JSON.parse(screen.getByTestId('export-payload').textContent ?? '{}') as {
+      history: SessionSummary[]
+    }
+    expect(parsed.history.map((h) => h.id)).toEqual(['A'])
+  })
+
+  it('disables Settings export until history is ready', async () => {
+    expect(await saveSession(session('A', { startedAt: 1_000 }))).toEqual({ ok: true })
+    resetHistoryDbConnection()
+    const { release } = deferIndexedDbOpen()
+    const { router } = renderPersistenceApp('/')
+    await act(async () => {
+      await router.navigate('/settings')
+    })
+    expect(screen.getByRole('button', { name: 'Export JSON' })).toBeDisabled()
+    release()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Export JSON' })).toBeEnabled())
+  })
+
+  it('shows legacy history when IndexedDB is unavailable and never writes empty history', async () => {
+    localStorage.setItem(LEGACY_HISTORY_KEY, JSON.stringify([session('A'), session('B', { startedAt: 2 })]))
+    resetHistoryDbConnection()
+    Object.defineProperty(globalThis, 'indexedDB', { value: undefined, configurable: true, writable: true })
+    renderPersistenceApp('/')
+    await waitFor(() => expect(screen.getByTestId('history-ready')).toHaveTextContent('yes'))
+    expect(screen.getByTestId('history-ids').textContent).toContain('A')
+    expect(screen.getByTestId('history-ids').textContent).toContain('B')
+    expect(screen.getByTestId('issue-reason')).not.toHaveTextContent('none')
+    expect(loadLegacyHistory().map((h) => h.id)).toEqual(['A', 'B'])
+  })
+
+  it('stays usable for a new user when IndexedDB is unavailable', async () => {
+    const user = userEvent.setup()
+    resetHistoryDbConnection()
+    Object.defineProperty(globalThis, 'indexedDB', { value: undefined, configurable: true, writable: true })
+    renderPersistenceApp('/')
+    await waitFor(() => expect(screen.getByTestId('history-ready')).toHaveTextContent('yes'))
+    expect(screen.getByTestId('history-count')).toHaveTextContent('0')
+
+    await user.click(screen.getByRole('button', { name: 'add-B' }))
+    await waitFor(() => expect(screen.getByTestId('history-ids')).toHaveTextContent('B'))
+    await waitFor(() => expect(screen.getByTestId('issue-reason')).not.toHaveTextContent('none'))
+    expect(await loadHistory()).toEqual([])
+  })
+
+  it('does not destroy legacy-only history when Clear History fails because IndexedDB is unavailable', async () => {
+    const user = userEvent.setup()
+    localStorage.setItem(LEGACY_HISTORY_KEY, JSON.stringify([session('A'), session('B', { startedAt: 2 })]))
+    resetHistoryDbConnection()
+    Object.defineProperty(globalThis, 'indexedDB', { value: undefined, configurable: true, writable: true })
+    renderPersistenceApp('/')
+    await waitFor(() => expect(screen.getByTestId('history-ready')).toHaveTextContent('yes'))
+
+    await user.click(screen.getByRole('button', { name: 'clear-history' }))
+    await waitFor(() => expect(screen.getByTestId('issue-reason')).not.toHaveTextContent('none'))
+    expect(screen.getByTestId('history-ids').textContent).toContain('A')
+    expect(screen.getByTestId('history-ids').textContent).toContain('B')
+    expect(loadLegacyHistory().map((h) => h.id)).toEqual(['A', 'B'])
+  })
+})
+

@@ -1,0 +1,54 @@
+export type StorageWriteReason = 'unavailable' | 'quota-exceeded' | 'serialization' | 'write-failed'
+
+export type StorageWriteResult =
+  | { ok: true }
+  | { ok: false; reason: StorageWriteReason; message: string }
+
+export const STORAGE_WRITE_MESSAGES: Record<StorageWriteReason, string> = {
+  unavailable:
+    "StrikeCaller couldn't save your latest data. It may be lost after you close or reload this page.",
+  'quota-exceeded':
+    'StrikeCaller storage is full. Your latest change may not be saved. Export your data or clear older history before closing the app.',
+  serialization:
+    "StrikeCaller couldn't save your latest data. It may be lost after you close or reload this page.",
+  'write-failed':
+    "StrikeCaller couldn't save your latest data. It may be lost after you close or reload this page.",
+}
+
+export const HISTORY_QUOTA_MESSAGE =
+  'StrikeCaller storage is full. Your latest workout may not be saved. Export your data or clear older history before closing the app.'
+
+export function storageFail(reason: StorageWriteReason): Extract<StorageWriteResult, { ok: false }> {
+  return { ok: false, reason, message: STORAGE_WRITE_MESSAGES[reason] }
+}
+
+export function isQuotaExceededError(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false
+  const name = 'name' in error ? String(error.name) : ''
+  const code = 'code' in error && typeof error.code === 'number' ? error.code : undefined
+  return (
+    name === 'QuotaExceededError' ||
+    name === 'NS_ERROR_DOM_QUOTA_REACHED' ||
+    code === 22 ||
+    code === 1014
+  )
+}
+
+function isUnavailableError(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false
+  const name = 'name' in error ? String(error.name) : ''
+  return name === 'SecurityError' || name === 'NS_ERROR_DOM_SECURITY_ERR'
+}
+
+function isSerializationError(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false
+  const name = 'name' in error ? String(error.name) : ''
+  return name === 'DataCloneError'
+}
+
+export function classifyStorageError(error: unknown): Extract<StorageWriteResult, { ok: false }> {
+  if (isQuotaExceededError(error)) return storageFail('quota-exceeded')
+  if (isUnavailableError(error)) return storageFail('unavailable')
+  if (isSerializationError(error)) return storageFail('serialization')
+  return storageFail('write-failed')
+}

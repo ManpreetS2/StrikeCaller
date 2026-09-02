@@ -18,7 +18,7 @@ const COMING_SOON = ['Kickboxing', 'MMA Striking', 'Karate', 'Taekwondo'] as con
 
 export function HomePage() {
   const navigate = useNavigate()
-  const { preferences, updatePreferences, history, favorites, customCombos } = useApp()
+  const { preferences, updatePreferences, history, historyReady, favorites, customCombos } = useApp()
   const stats = getComboStats()
   const preview = computeStatsPreview(history)
   const recent = history.find(
@@ -262,6 +262,10 @@ export function HomePage() {
                 Train again <ArrowRight size={14} aria-hidden />
               </button>
             </div>
+          ) : !historyReady ? (
+            <p className="text-sm text-[var(--text-muted)]" aria-busy="true">
+              Loading sessions…
+            </p>
           ) : (
             <div className="flex items-start gap-3">
               <div className="icon-well" aria-hidden>
