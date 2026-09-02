@@ -1,5 +1,5 @@
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
-import { Moon, Sun, Monitor, Settings, Home, Dumbbell, Shield, BarChart3 } from 'lucide-react'
+import { Moon, Sun, Monitor, Settings, Home, Dumbbell, Shield, BarChart3, AlertTriangle, X } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import type { ThemePreference } from '../types'
 import { APP_VERSION } from '../data/defaults'
@@ -11,7 +11,7 @@ const themes: { id: ThemePreference; label: string; icon: typeof Moon }[] = [
 ]
 
 export function AppLayout() {
-  const { preferences, setTheme } = useApp()
+  const { preferences, setTheme, storageIssue, storageWarningVisible, dismissStorageIssue } = useApp()
   const location = useLocation()
   const sessionActive = location.pathname === '/session'
 
@@ -67,6 +67,31 @@ export function AppLayout() {
       </header>
 
       <main id="main" className="app-main mx-auto max-w-6xl px-4 py-6 pb-24 md:pb-10">
+        {!sessionActive && storageWarningVisible && storageIssue ? (
+          <div
+            role="alert"
+            className="storage-warning mb-4 flex max-w-full items-start gap-3 rounded-lg border border-[color-mix(in_srgb,var(--warning)_55%,var(--border))] bg-[color-mix(in_srgb,var(--warning)_12%,var(--bg-elevated))] p-3 text-sm text-[var(--text)]"
+          >
+            <AlertTriangle className="mt-0.5 shrink-0 text-[var(--warning)]" size={18} aria-hidden />
+            <div className="min-w-0 flex-1 space-y-1 overflow-hidden">
+              <p className="break-words [overflow-wrap:anywhere]">{storageIssue.message}</p>
+              <p className="text-[var(--text-muted)]">
+                <Link to="/settings" className="underline underline-offset-2">
+                  Open Settings
+                </Link>{' '}
+                to export your data or clear older history.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="btn btn-ghost !min-h-9 shrink-0 !px-2 !py-1"
+              onClick={dismissStorageIssue}
+              aria-label="Dismiss storage warning"
+            >
+              <X size={16} aria-hidden />
+            </button>
+          </div>
+        ) : null}
         <Outlet />
       </main>
 

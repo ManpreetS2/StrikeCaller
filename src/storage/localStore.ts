@@ -27,15 +27,82 @@ const MUSIC_RESULTS: MusicCompatibilityResult[] = [
   'voice-not-heard',
 ]
 
-function storageAvailable(): boolean {
+export type StorageWriteReason = 'unavailable' | 'quota-exceeded' | 'serialization' | 'write-failed'
+
+export type StorageWriteResult =
+  | { ok: true }
+  | { ok: false; reason: StorageWriteReason; message: string }
+
+export const STORAGE_WRITE_MESSAGES: Record<StorageWriteReason, string> = {
+  unavailable:
+    "StrikeCaller couldn't save your latest data. It may be lost after you close or reload this page.",
+  'quota-exceeded':
+    'StrikeCaller storage is full. Your latest change may not be saved. Export your data or clear older history before closing the app.',
+  serialization:
+    "StrikeCaller couldn't save your latest data. It may be lost after you close or reload this page.",
+  'write-failed':
+    "StrikeCaller couldn't save your latest data. It may be lost after you close or reload this page.",
+}
+
+export const HISTORY_QUOTA_MESSAGE =
+  'StrikeCaller storage is full. Your latest workout may not be saved. Export your data or clear older history before closing the app.'
+
+const PROBE_KEY = '__sc_test__'
+
+/** Cached probe for reads/UI only. Writes always classify from the real setItem exception. */
+let availabilityCache: boolean | null = null
+
+function fail(reason: StorageWriteReason): Extract<StorageWriteResult, { ok: false }> {
+  return { ok: false, reason, message: STORAGE_WRITE_MESSAGES[reason] }
+}
+
+function isQuotaExceeded(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false
+  const name = 'name' in error ? String(error.name) : ''
+  const code = 'code' in error && typeof error.code === 'number' ? error.code : undefined
+  return (
+    name === 'QuotaExceededError' ||
+    name === 'NS_ERROR_DOM_QUOTA_REACHED' ||
+    code === 22 ||
+    code === 1014
+  )
+}
+
+function isUnavailableError(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false
+  const name = 'name' in error ? String(error.name) : ''
+  return name === 'SecurityError' || name === 'NS_ERROR_DOM_SECURITY_ERR'
+}
+
+function classifyWriteError(error: unknown): Extract<StorageWriteResult, { ok: false }> {
+  if (isQuotaExceeded(error)) return fail('quota-exceeded')
+  if (isUnavailableError(error)) return fail('unavailable')
+  return fail('write-failed')
+}
+
+function probeStorage(): boolean {
+  if (typeof window === 'undefined') return false
   try {
-    const key = '__sc_test__'
-    window.localStorage.setItem(key, '1')
-    window.localStorage.removeItem(key)
+    const storage = window.localStorage
+    storage.setItem(PROBE_KEY, '1')
+    storage.removeItem(PROBE_KEY)
     return true
-  } catch {
-    return false
+  } catch (error) {
+    // Tiny probe can fail from quota even though localStorage itself exists.
+    return isQuotaExceeded(error)
   }
+}
+
+export function storageAvailable(): boolean {
+  if (typeof window === 'undefined') return false
+  if (availabilityCache != null) return availabilityCache
+  availabilityCache = probeStorage()
+  return availabilityCache
+}
+
+/** Test-only: drop the availability cache so mocks can change storage behavior. */
+export function resetStorageAvailabilityCache(): void {
+  availabilityCache = null
 }
 
 function readJSON<T>(key: string): unknown {
@@ -49,10 +116,42 @@ function readJSON<T>(key: string): unknown {
   }
 }
 
-function writeJSON(key: string, value: unknown): boolean {
-  if (typeof window === 'undefined' || !storageAvailable()) return false
+function writeJSON(key: string, value: unknown): StorageWriteResult {
+  if (typeof window === 'undefined') return fail('unavailable')
+
+  let serialized: string
   try {
-    window.localStorage.setItem(key, JSON.stringify(value))
+    serialized = JSON.stringify(value)
+  } catch {
+    return fail('serialization')
+  }
+  if (typeof serialized !== 'string') return fail('serialization')
+
+  try {
+    window.localStorage.setItem(key, serialized)
+    availabilityCache = true
+    return { ok: true }
+  } catch (error) {
+    // Classify from the actual setItem exception. Do not consult the probe cache —
+    // a stale "unavailable" result must not hide quota or other write failures.
+    return classifyWriteError(error)
+  }
+}
+
+function snapshotRaw(key: string): { ok: true; value: string | null } | Extract<StorageWriteResult, { ok: false }> {
+  if (typeof window === 'undefined') return fail('unavailable')
+  try {
+    return { ok: true, value: window.localStorage.getItem(key) }
+  } catch (error) {
+    return classifyWriteError(error)
+  }
+}
+
+function restoreRaw(key: string, value: string | null): boolean {
+  if (typeof window === 'undefined') return false
+  try {
+    if (value === null) window.localStorage.removeItem(key)
+    else window.localStorage.setItem(key, value)
     return true
   } catch {
     return false
@@ -187,14 +286,13 @@ export function loadPreferences(): UserPreferences {
   return validatePreferences(readJSON(KEYS.preferences))
 }
 
-export function savePreferences(prefs: UserPreferences): void {
-  writeJSON(KEYS.preferences, prefs)
+export function savePreferences(prefs: UserPreferences): StorageWriteResult {
+  return writeJSON(KEYS.preferences, prefs)
 }
 
-export function resetPreferences(): UserPreferences {
-  const next = { ...DEFAULT_PREFERENCES }
-  writeJSON(KEYS.preferences, next)
-  return next
+export function resetPreferences(): { preferences: UserPreferences; write: StorageWriteResult } {
+  const preferences = { ...DEFAULT_PREFERENCES }
+  return { preferences, write: writeJSON(KEYS.preferences, preferences) }
 }
 
 export function loadFavorites(): string[] {
@@ -202,8 +300,8 @@ export function loadFavorites(): string[] {
   return Array.isArray(raw) ? raw.filter((id) => typeof id === 'string') : []
 }
 
-export function saveFavorites(ids: string[]): void {
-  writeJSON(KEYS.favorites, ids)
+export function saveFavorites(ids: string[]): StorageWriteResult {
+  return writeJSON(KEYS.favorites, ids)
 }
 
 export function loadCustomCombos(): CustomCombo[] {
@@ -237,8 +335,11 @@ export function migrateCustomCombo(raw: unknown): CustomCombo | null {
   }
 }
 
-export function saveCustomCombos(combos: CustomCombo[]): void {
-  writeJSON(KEYS.customCombos, combos.map((c) => migrateCustomCombo(c)).filter(Boolean))
+export function saveCustomCombos(combos: CustomCombo[]): StorageWriteResult {
+  return writeJSON(
+    KEYS.customCombos,
+    combos.map((c) => migrateCustomCombo(c)).filter(Boolean),
+  )
 }
 
 export function validateSessionSummary(raw: unknown): SessionSummary | null {
@@ -305,16 +406,16 @@ export function loadHistory(): SessionSummary[] {
     .filter((item) => !item.excludeFromStats && !item.isDemo && item.mode !== 'demo')
 }
 
-export function saveHistory(history: SessionSummary[]): void {
+export function saveHistory(history: SessionSummary[]): StorageWriteResult {
   // No session cap — preserve full valid history
-  writeJSON(
+  return writeJSON(
     KEYS.history,
     history.filter((h) => !h.excludeFromStats && !h.isDemo && h.mode !== 'demo'),
   )
 }
 
-export function clearHistory(): void {
-  writeJSON(KEYS.history, [])
+export function clearHistory(): StorageWriteResult {
+  return writeJSON(KEYS.history, [])
 }
 
 export function loadDailyDrillMap(): DailyDrillMap {
@@ -334,16 +435,16 @@ export function loadDailyDrill(): DailyDrillState | null {
   return values[0] ?? null
 }
 
-export function saveDailyDrillMap(map: DailyDrillMap): void {
-  writeJSON(KEYS.daily, map)
+export function saveDailyDrillMap(map: DailyDrillMap): StorageWriteResult {
+  return writeJSON(KEYS.daily, map)
 }
 
-export function saveDailyDrill(state: DailyDrillState): void {
+export function saveDailyDrill(state: DailyDrillState): StorageWriteResult {
   const normalized = normalizeDailyDrillState(state)
-  if (!normalized) return
+  if (!normalized) return { ok: true }
   const map = loadDailyDrillMap()
   map[normalized.dateKey] = normalized
-  saveDailyDrillMap(map)
+  return saveDailyDrillMap(map)
 }
 
 export const EXPORT_VERSION = 3
@@ -442,7 +543,11 @@ function validateImportPayload(data: unknown): { ok: true; value: Record<string,
   return { ok: true, value: data }
 }
 
-export function importUserData(json: string): { ok: boolean; message: string } {
+export type ImportUserDataResult =
+  | { ok: true; message: string }
+  | { ok: false; message: string; write?: StorageWriteResult }
+
+export function importUserData(json: string): ImportUserDataResult {
   if (typeof json !== 'string') return { ok: false, message: 'Import payload must be text.' }
   if (new TextEncoder().encode(json).length > MAX_IMPORT_BYTES) {
     return { ok: false, message: 'Import file exceeds the 2 MB limit.' }
@@ -473,16 +578,45 @@ export function importUserData(json: string): { ok: boolean; message: string } {
       data.dailyDrill && isObject(data.dailyDrill) ? migrateDailyDrillMap(data.dailyDrill) : null
     const daily = dailyFromMap ?? dailyLegacy
 
-    if (prefs) savePreferences(prefs)
-    if (favorites) saveFavorites(favorites)
-    if (combos) saveCustomCombos(combos)
-    if (history) saveHistory(history)
-    if (daily) saveDailyDrillMap(daily)
+    const planned: { key: string; write: () => StorageWriteResult }[] = []
+    if (prefs) planned.push({ key: KEYS.preferences, write: () => savePreferences(prefs) })
+    if (favorites) planned.push({ key: KEYS.favorites, write: () => saveFavorites(favorites) })
+    if (combos) planned.push({ key: KEYS.customCombos, write: () => saveCustomCombos(combos) })
+    if (history) planned.push({ key: KEYS.history, write: () => saveHistory(history) })
+    if (daily) planned.push({ key: KEYS.daily, write: () => saveDailyDrillMap(daily) })
+
+    const snapshots: { key: string; value: string | null }[] = []
+    for (const item of planned) {
+      const snap = snapshotRaw(item.key)
+      if (!snap.ok) {
+        return {
+          ok: false,
+          message: 'Import could not be saved. Existing data was left unchanged.',
+          write: snap,
+        }
+      }
+      snapshots.push({ key: item.key, value: snap.value })
+    }
+
+    for (const item of planned) {
+      const result = item.write()
+      if (!result.ok) {
+        let restored = true
+        for (const snap of snapshots) {
+          if (!restoreRaw(snap.key, snap.value)) restored = false
+        }
+        return {
+          ok: false,
+          message: restored
+            ? 'Import could not be saved. Existing data was left unchanged.'
+            : 'Import could not be saved. StrikeCaller could not restore all previous data.',
+          write: result,
+        }
+      }
+    }
 
     return { ok: true, message: 'Import successful.' }
   } catch {
     return { ok: false, message: 'Could not parse JSON.' }
   }
 }
-
-export { storageAvailable }

@@ -1,11 +1,11 @@
 import { useState } from 'react'
-import { useApp } from '../context/AppContext'
+import { useApp, type StorageIssue } from '../context/AppContext'
 import { SafetyNotice } from '../components/SafetyNotice'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { createSpeechEngine } from '../engines/speechEngine'
 import { isAudioSessionSupported, prepareCoachingAudioSession } from '../engines/audioSession'
 import { DEFAULT_TIMING_MULTIPLIERS } from '../engines/timingEngine'
-import { MAX_IMPORT_BYTES } from '../storage/localStore'
+import { MAX_IMPORT_BYTES, storageAvailable } from '../storage/localStore'
 import type { CallStyle, MartialArt, MusicCompatibilityResult, SideTerminology, Stance } from '../types'
 
 const COMPAT_OPTIONS: { id: MusicCompatibilityResult; label: string }[] = [
@@ -25,6 +25,7 @@ export function SettingsPage() {
     exportData,
     importData,
     history,
+    storageIssue,
   } = useApp()
   const [importMessage, setImportMessage] = useState('')
   const [confirmClear, setConfirmClear] = useState(false)
@@ -280,6 +281,7 @@ export function SettingsPage() {
       <section className="panel space-y-3 p-5" aria-label="Data">
         <h2 className="text-xl font-semibold">Data</h2>
         <p className="text-sm text-[var(--text-muted)]">{history.length} saved sessions on this device.</p>
+        <StorageStatus issue={storageIssue} />
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
@@ -371,6 +373,29 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
     <div className="field">
       <label>{label}</label>
       {children}
+    </div>
+  )
+}
+
+function StorageStatus({ issue }: { issue: StorageIssue | null }) {
+  const available = storageAvailable()
+  let status = 'Storage: Available'
+  if (issue) {
+    if (issue.reason === 'quota-exceeded') status = 'Storage issue: Browser storage is full.'
+    else if (issue.reason === 'unavailable') status = 'Storage issue: Browser storage is unavailable.'
+    else status = 'Storage issue: StrikeCaller could not save your latest data.'
+  } else if (!available) {
+    status = 'Storage issue: Browser storage is unavailable.'
+  }
+
+  return (
+    <div className="space-y-1 text-sm">
+      <p role="status">{status}</p>
+      {issue?.reason === 'quota-exceeded' ? (
+        <p className="text-[var(--text-muted)]">
+          Export JSON or clear workout history to free space before closing the app.
+        </p>
+      ) : null}
     </div>
   )
 }
