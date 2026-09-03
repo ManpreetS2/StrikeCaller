@@ -20,5 +20,13 @@ export function readPngDimensions(filePath) {
   return {
     width: buf.readUInt32BE(16),
     height: buf.readUInt32BE(20),
+    bitDepth: buf[24],
+    colorType: buf[25],
+    fileSize: buf.length,
   }
+}
+
+/** PNG color type 2 is truecolor RGB with no alpha channel. */
+export function pngHasAlpha(info) {
+  return info.colorType === 4 || info.colorType === 6
 }

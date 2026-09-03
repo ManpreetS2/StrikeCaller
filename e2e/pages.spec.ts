@@ -69,4 +69,45 @@ test.describe('GitHub Pages base path', () => {
 
     expect(failed, `unexpected Pages asset failures:\n${failed.join('\n')}`).toEqual([])
   })
+
+  test('exposes production document metadata and a reachable social image', async ({ page }) => {
+    const pagesBase = test.info().project.use.baseURL ?? ''
+    await page.goto(new URL('.', pagesBase).href)
+
+    await expect(page).toHaveTitle('StrikeCaller — Boxing & Muay Thai Combo Coach')
+    expect(await page.title()).not.toMatch(/v\d|hotfix|GitHub Pages/i)
+
+    const description = page.locator('meta[name="description"]')
+    await expect(description).toHaveCount(1)
+    await expect(description).toHaveAttribute('content', /spoken/i)
+    await expect(description).toHaveAttribute('content', /Boxing|Muay Thai/i)
+
+    const canonical = page.locator('link[rel="canonical"]')
+    await expect(canonical).toHaveCount(1)
+    await expect(canonical).toHaveAttribute('href', 'https://manpreets2.github.io/StrikeCaller/')
+
+    await expect(page.locator('meta[property="og:title"]')).toHaveCount(1)
+    await expect(page.locator('meta[property="og:title"]')).toHaveAttribute(
+      'content',
+      'StrikeCaller — Boxing & Muay Thai Combo Coach',
+    )
+    await expect(page.locator('meta[property="og:description"]')).toHaveCount(1)
+    await expect(page.locator('meta[property="og:description"]')).toHaveAttribute('content', /spoken/i)
+    await expect(page.locator('meta[property="og:type"]')).toHaveAttribute('content', 'website')
+    await expect(page.locator('meta[property="og:image"]')).toHaveAttribute(
+      'content',
+      'https://manpreets2.github.io/StrikeCaller/og-image.png',
+    )
+
+    await expect(page.locator('meta[name="twitter:card"]')).toHaveAttribute('content', 'summary_large_image')
+    await expect(page.locator('meta[name="twitter:title"]')).toHaveCount(1)
+    await expect(page.locator('meta[name="twitter:image"]')).toHaveAttribute(
+      'content',
+      'https://manpreets2.github.io/StrikeCaller/og-image.png',
+    )
+
+    const image = await page.request.get(new URL('og-image.png', pagesBase).href)
+    expect(image.status(), 'Pages og-image.png should be HTTP 200').toBe(200)
+    expect(image.headers()['content-type'] ?? '').toMatch(/image\/png/i)
+  })
 })

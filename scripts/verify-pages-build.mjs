@@ -2,9 +2,8 @@
 //
 // This guards against the class of bug that took the public site down: an
 // index.html whose local asset URLs point at the wrong (mis-cased) Pages base,
-// leaving the deployed site as a blank page. It also checks that all referenced
-// local assets actually exist in the artifact and that the release title is
-// present.
+// leaving the deployed site as a blank page. It also checks product metadata
+// and that all referenced local assets actually exist in the artifact.
 //
 // Run locally with `npm run verify:pages` (uses the documented base fallback)
 // or in CI with PAGES_BASE_URL set to GitHub's canonical Pages URL.
@@ -13,9 +12,12 @@ import { readFileSync, existsSync } from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
 import { resolvePagesBase } from './pages-base.mjs'
-import { readPngDimensions } from './pngDimensions.mjs'
+import { pngHasAlpha, readPngDimensions } from './pngDimensions.mjs'
+import { documentTitle, uniqueLink, uniqueMeta } from './htmlMetadata.mjs'
 
-const EXPECTED_TITLE_FRAGMENT = 'StrikeCaller v1.2.2'
+const PRODUCTION_SITE_URL = 'https://manpreets2.github.io/StrikeCaller/'
+const PRODUCTION_OG_IMAGE_URL = `${PRODUCTION_SITE_URL}og-image.png`
+const DOCUMENT_TITLE = 'StrikeCaller — Boxing & Muay Thai Combo Coach'
 
 const distDir = path.resolve(process.cwd(), 'dist')
 const indexPath = path.join(distDir, 'index.html')
@@ -47,8 +49,55 @@ if (html.trim().length === 0) {
   fail('dist/index.html is empty')
 }
 
-if (!html.includes(EXPECTED_TITLE_FRAGMENT)) {
-  fail(`index.html title does not contain "${EXPECTED_TITLE_FRAGMENT}"`)
+const title = documentTitle(html)
+if (!title.includes('StrikeCaller')) {
+  fail(`index.html <title> does not contain StrikeCaller: "${title}"`)
+}
+if (/v\d|hotfix|GitHub Pages/i.test(title)) {
+  fail(`index.html <title> still looks like a version/hotfix string: "${title}"`)
+}
+if (title !== DOCUMENT_TITLE) {
+  fail(`index.html <title> is "${title}", expected "${DOCUMENT_TITLE}"`)
+}
+
+function requireUniqueMeta(key, value, expected) {
+  const result = uniqueMeta(html, key, value)
+  if (!result.ok) {
+    fail(`expected exactly one <meta ${key}="${value}">, found ${result.count}`)
+    return
+  }
+  if (!result.content) {
+    fail(`meta ${key}="${value}" is empty`)
+    return
+  }
+  if (expected != null && result.content !== expected) {
+    fail(`meta ${key}="${value}" is "${result.content}", expected "${expected}"`)
+  }
+}
+
+requireUniqueMeta('name', 'description')
+requireUniqueMeta('property', 'og:title', DOCUMENT_TITLE)
+requireUniqueMeta('property', 'og:description')
+requireUniqueMeta('property', 'og:type', 'website')
+requireUniqueMeta('property', 'og:site_name', 'StrikeCaller')
+requireUniqueMeta('property', 'og:image', PRODUCTION_OG_IMAGE_URL)
+requireUniqueMeta('name', 'twitter:card', 'summary_large_image')
+requireUniqueMeta('name', 'twitter:title', DOCUMENT_TITLE)
+requireUniqueMeta('name', 'twitter:description')
+requireUniqueMeta('name', 'twitter:image', PRODUCTION_OG_IMAGE_URL)
+
+const canonical = uniqueLink(html, 'canonical')
+if (!canonical.ok) {
+  fail(`expected exactly one canonical link, found ${canonical.count}`)
+} else if (canonical.href !== PRODUCTION_SITE_URL) {
+  fail(`canonical href is "${canonical.href}", expected "${PRODUCTION_SITE_URL}"`)
+}
+
+if (/localhost|127\.0\.0\.1/i.test(canonical.href ?? '')) {
+  fail('canonical URL must not point at localhost')
+}
+if (/\/strikecaller\//.test(html)) {
+  fail('Pages HTML contains lowercase /strikecaller/ (GitHub Pages paths are case-sensitive)')
 }
 
 // Collect every src/href reference in the document.
@@ -123,6 +172,7 @@ const requiredFiles = [
   'icon-192.png',
   'icon-512.png',
   'icon-maskable-512.png',
+  'og-image.png',
 ]
 for (const file of requiredFiles) {
   if (!existsSync(path.join(distDir, file))) {
@@ -236,6 +286,27 @@ if (existsSync(appleTouchPath)) {
   }
 }
 
+const ogImagePath = path.join(distDir, 'og-image.png')
+if (existsSync(ogImagePath)) {
+  try {
+    const info = readPngDimensions(ogImagePath)
+    if (info.width !== 1200 || info.height !== 630) {
+      fail(`og-image.png is ${info.width}×${info.height}, expected 1200×630`)
+    }
+    if (info.fileSize === 0) {
+      fail('og-image.png is empty')
+    }
+    if (pngHasAlpha(info)) {
+      fail('og-image.png has an alpha channel; social preview should be opaque RGB')
+    }
+    if (info.colorType !== 2 || info.bitDepth !== 8) {
+      fail(`og-image.png IHDR should be 8-bit RGB (color type 2), got bitDepth=${info.bitDepth} colorType=${info.colorType}`)
+    }
+  } catch (error) {
+    fail(`could not read og-image.png: ${error instanceof Error ? error.message : String(error)}`)
+  }
+}
+
 if (errors.length > 0) {
   console.error('\nPages artifact verification FAILED:')
   for (const err of errors) {
@@ -246,8 +317,10 @@ if (errors.length > 0) {
 
 console.log('\nPages artifact verification passed:')
 console.log(`  - index.html present and non-empty`)
-console.log(`  - title contains "${EXPECTED_TITLE_FRAGMENT}"`)
+console.log(`  - title is "${DOCUMENT_TITLE}"`)
+console.log(`  - description, canonical, Open Graph, and Twitter tags present`)
 console.log(`  - ${jsRefs.length} JS and ${cssRefs.length} CSS bundle(s) prefixed with ${expectedBase}`)
 console.log(`  - all local asset references exist in dist`)
-console.log(`  - favicon, manifest, PNG install icons, and apple-touch-icon present`)
+console.log(`  - favicon, manifest, PNG install icons, apple-touch-icon, and og-image present`)
 console.log(`  - manifest JSON parsed; 192/512/maskable PNG dimensions match`)
+console.log(`  - og-image.png is 1200×630 opaque RGB`)

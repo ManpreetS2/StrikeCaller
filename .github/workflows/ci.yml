@@ -182,8 +182,17 @@ jobs:
           fi
 
           # Confirm the StrikeCaller app shell, not a placeholder/404.
-          if ! printf '%s' "${html}" | grep -qi "StrikeCaller v"; then
-            echo "::error::Deployed HTML did not contain the expected StrikeCaller title"
+          title=$(printf '%s' "${html}" | grep -oiE '<title>[^<]*</title>' | head -n 1 || true)
+          if ! printf '%s' "${title}" | grep -q 'StrikeCaller'; then
+            echo "::error::Deployed HTML title did not contain StrikeCaller"
+            exit 1
+          fi
+          if printf '%s' "${title}" | grep -qiE 'hotfix|GitHub Pages'; then
+            echo "::error::Deployed HTML title still looks like a hotfix or Pages-debug title"
+            exit 1
+          fi
+          if ! printf '%s' "${html}" | grep -q 'id="root"'; then
+            echo "::error::Deployed HTML is missing the StrikeCaller app root"
             exit 1
           fi
 

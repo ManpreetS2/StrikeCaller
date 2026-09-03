@@ -1,4 +1,4 @@
-# StrikeCaller v1.2.2 — GitHub Pages Availability Hotfix
+# StrikeCaller
 
 **Hear the combo. Set the pace. Build the reaction.**
 
