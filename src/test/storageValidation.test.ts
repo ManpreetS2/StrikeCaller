@@ -18,6 +18,8 @@ import {
 } from '../storage/localStore'
 import {
   copyCountMap,
+  MAX_SESSION_ID_LENGTH,
+  parseSessionRouteId,
   validateCombo,
   validateSessionSummary,
   validateWorkoutConfig,
@@ -1035,5 +1037,20 @@ describe('P1 #7 session validator performance sanity', () => {
       expect(validateSessionSummary(sample)).not.toBeNull()
     }
     expect(Date.now() - started).toBeLessThan(4000)
+  })
+})
+
+describe('parseSessionRouteId', () => {
+  it('accepts engine-style ids and decoded route params', () => {
+    expect(parseSessionRouteId('session-1700000000000')).toBe('session-1700000000000')
+    expect(parseSessionRouteId(encodeURIComponent('session-1700000000000'))).toBe('session-1700000000000')
+  })
+
+  it('rejects empty, oversized, non-string, and malformed encoded values', () => {
+    expect(parseSessionRouteId('')).toBeNull()
+    expect(parseSessionRouteId('x'.repeat(MAX_SESSION_ID_LENGTH + 1))).toBeNull()
+    expect(parseSessionRouteId('%'.repeat(MAX_SESSION_ID_LENGTH * 3 + 1))).toBeNull()
+    expect(parseSessionRouteId('%E0%A4%A')).toBeNull()
+    expect(parseSessionRouteId(12)).toBeNull()
   })
 })

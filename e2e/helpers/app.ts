@@ -1,6 +1,7 @@
 import { expect, test, type Page } from './fixtures'
 
 export { expect, test }
+export type { Page }
 
 export function hashUrl(route = '/'): string {
   const baseURL = test.info().project.use.baseURL

@@ -58,6 +58,11 @@ export type StorageIssue = {
   source: StorageIssueSource
 }
 
+export type AddHistoryResult =
+  | { status: 'persisted' }
+  | { status: 'skipped' }
+  | { status: 'failed'; write: Extract<StorageWriteResult, { ok: false }> }
+
 interface AppContextValue {
   preferences: UserPreferences
   setPreferences: (next: UserPreferences | ((p: UserPreferences) => UserPreferences)) => void
@@ -71,7 +76,7 @@ interface AppContextValue {
   removeCustomCombo: (id: string) => void
   history: SessionSummary[]
   historyReady: boolean
-  addHistory: (summary: SessionSummary) => void
+  addHistory: (summary: SessionSummary) => Promise<AddHistoryResult>
   clearHistory: () => Promise<void>
   resetPreferences: () => void
   dailyDrills: DailyDrillMap
@@ -85,7 +90,17 @@ interface AppContextValue {
   dismissStorageIssue: () => void
 }
 
+type PendingSave = {
+  summary: SessionSummary
+  resolve: (result: AddHistoryResult) => void
+}
+
 const AppContext = createContext<AppContextValue | null>(null)
+
+function resultFromWrite(write: StorageWriteResult): AddHistoryResult {
+  if (write.ok) return { status: 'persisted' }
+  return { status: 'failed', write }
+}
 
 function resolveTheme(pref: ThemePreference): 'dark' | 'light' {
   if (pref === 'system') {
@@ -120,7 +135,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [dismissedIssueId, setDismissedIssueId] = useState<number | null>(null)
   const issueIdRef = useRef(0)
   const historyReadyRef = useRef(false)
-  const pendingSavesRef = useRef<SessionSummary[]>([])
+  const pendingSavesRef = useRef<PendingSave[]>([])
+  const inFlightRef = useRef(new Map<string, Promise<AddHistoryResult>>())
 
   const applyWrite = useCallback((result: StorageWriteResult, source: StorageIssueSource) => {
     if (result.ok) {
@@ -170,8 +186,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setHistory((prev) => {
         const byId = new Map<string, SessionSummary>()
         for (const session of loaded) byId.set(session.id, session)
-        for (const session of pending) {
-          if (!byId.has(session.id)) byId.set(session.id, session)
+        for (const item of pending) {
+          if (!byId.has(item.summary.id)) byId.set(item.summary.id, item.summary)
         }
         for (const session of prev) {
           if (!byId.has(session.id)) byId.set(session.id, session)
@@ -179,10 +195,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         return sortHistory([...byId.values()])
       })
 
-      for (const session of pending) {
-        const result = await saveSession(session)
-        if (cancelled) return
-        applyWrite(result, 'history')
+      for (const item of pending) {
+        const write = await saveSession(item.summary)
+        if (!cancelled) applyWrite(write, 'history')
+        item.resolve(resultFromWrite(write))
       }
     })()
 
@@ -256,22 +272,46 @@ export function AppProvider({ children }: { children: ReactNode }) {
       history,
       historyReady,
       addHistory: (summary) => {
-        if (!isPersistableHistoryEntry(summary)) return
+        if (!isPersistableHistoryEntry(summary)) {
+          return Promise.resolve({ status: 'skipped' })
+        }
+        const existing = inFlightRef.current.get(summary.id)
+        if (existing) return existing
+
         setHistory((prev) => {
           if (prev.some((h) => h.id === summary.id)) return prev
           return [summary, ...prev]
         })
-        if (!historyReadyRef.current) {
-          pendingSavesRef.current.push(summary)
-          return
+
+        let resolvePersist!: (result: AddHistoryResult) => void
+        const persist = new Promise<AddHistoryResult>((resolve) => {
+          resolvePersist = resolve
+        })
+        inFlightRef.current.set(summary.id, persist)
+
+        const finish = (result: AddHistoryResult) => {
+          inFlightRef.current.delete(summary.id)
+          resolvePersist(result)
         }
-        void saveSession(summary).then((result) => applyWrite(result, 'history'))
+        if (!historyReadyRef.current) {
+          pendingSavesRef.current.push({ summary, resolve: finish })
+          return persist
+        }
+        void saveSession(summary).then((write) => {
+          applyWrite(write, 'history')
+          finish(resultFromWrite(write))
+        })
+        return persist
       },
       clearHistory: async () => {
         const result = await clearHistoryStore()
         applyWrite(result, 'history')
         if (result.ok) {
+          const leftover = pendingSavesRef.current
           pendingSavesRef.current = []
+          for (const item of leftover) {
+            item.resolve({ status: 'skipped' })
+          }
           setHistory([])
         }
       },

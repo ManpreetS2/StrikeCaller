@@ -6,8 +6,19 @@ import {
   startShortCoachSession,
   test,
   waitForSessionActive,
+  type Page,
 } from './helpers/app'
 import { legacySession, readIndexedDbSessions, readLegacyHistoryKey, readThemePreference } from './helpers/storage'
+
+async function summaryIdentity(page: Page) {
+  const rounds = page.locator('.panel').filter({ has: page.getByText('Rounds', { exact: true }) })
+  const combos = page.locator('.panel').filter({ has: page.getByText('Combinations', { exact: true }) })
+  return {
+    artLine: (await page.locator('header p.capitalize').textContent())?.trim() ?? '',
+    rounds: ((await rounds.locator('p').nth(1).textContent()) ?? '').trim(),
+    combos: ((await combos.locator('p').nth(1).textContent()) ?? '').trim(),
+  }
+}
 
 test.describe('completed session persistence', () => {
   test('a finished workout appears in Stats and survives reload', async ({ page }) => {
@@ -15,14 +26,29 @@ test.describe('completed session persistence', () => {
     await startShortCoachSession(page)
     await waitForSessionActive(page)
     await expect(page.getByRole('heading', { name: 'Summary' })).toBeVisible({ timeout: 75_000 })
-    await expect(page.getByText('Session complete')).toBeVisible()
+    await expect(page).toHaveURL(/#\/summary\/[^/?#]+/)
 
+    const summaryUrl = page.url()
+    const sessionId = decodeURIComponent(summaryUrl.split('#/summary/')[1] ?? '').replace(/\/$/, '')
+    expect(sessionId).toMatch(/^session-\d+$/)
     await expect
-      .poll(async () => (await readIndexedDbSessions(page)).length, { timeout: 15_000 })
-      .toBe(1)
+      .poll(async () => (await readIndexedDbSessions(page)).map((row) => row.id), { timeout: 15_000 })
+      .toEqual([sessionId])
     const committed = await readIndexedDbSessions(page)
     expect(committed).toHaveLength(1)
-    expect(committed[0]?.id).toBeTruthy()
+    expect(committed[0]?.id).toBe(sessionId)
+
+    await expect(page.getByText('Session complete')).toBeVisible()
+    const identity = await summaryIdentity(page)
+    expect(identity.artLine).toMatch(/Muay Thai · coach/)
+    expect(identity.rounds).toMatch(/^\d+$/)
+    expect(identity.combos).toMatch(/^\d+$/)
+
+    await page.reload()
+    await expect(page.getByRole('heading', { name: 'Summary' })).toBeVisible()
+    await expect(page.getByText('Session complete')).toBeVisible()
+    await expect(page).toHaveURL(summaryUrl)
+    expect(await summaryIdentity(page)).toEqual(identity)
 
     await goToNav(page, 'Stats')
     await expect(page.getByRole('heading', { name: 'Training Stats' })).toBeVisible()
@@ -37,6 +63,15 @@ test.describe('completed session persistence', () => {
     const stored = await readIndexedDbSessions(page)
     expect(stored).toHaveLength(1)
     expect(stored[0]?.id).toBe(committed[0]?.id)
+
+    await goToNav(page, 'Home')
+    await expect(page.getByRole('heading', { name: 'StrikeCaller' })).toBeVisible()
+    await page.goto(summaryUrl)
+    await expect(page.getByRole('heading', { name: 'Summary' })).toBeVisible()
+    await expect(page.getByText('Session complete')).toBeVisible()
+    expect(await summaryIdentity(page)).toEqual(identity)
+    await expect(page).toHaveURL(/#\/summary\/[^/?#]+/)
+    expect(decodeURIComponent(page.url().split('#/summary/')[1] ?? '').replace(/\/$/, '')).toBe(sessionId)
   })
 })
 

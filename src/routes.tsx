@@ -80,6 +80,7 @@ export const appRoutes: RouteObject[] = [
         ),
       },
       { path: 'summary', element: <SummaryPage /> },
+      { path: 'summary/:sessionId', element: <SummaryPage /> },
       { path: 'stats', element: <StatsPage /> },
       { path: 'settings', element: <SettingsPage /> },
       { path: '*', element: <Navigate to="/" replace /> },

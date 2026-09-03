@@ -261,11 +261,14 @@ export function SessionPage() {
     summary = { ...summary, cancelled }
     summary = applyDailyPhase(summary, cancelled)
 
-    if (!isDemo && !summary.excludeFromStats) {
-      addHistory(summary)
-    }
-
-    navigate('/summary', { state: { summary }, replace: true })
+    void (async () => {
+      const result = await addHistory(summary)
+      if (result.status === 'persisted') {
+        navigate(`/summary/${encodeURIComponent(summary.id)}`, { state: { summary }, replace: true })
+        return
+      }
+      navigate('/summary', { state: { summary }, replace: true })
+    })()
   }
 
   const endSession = useCallback(() => {

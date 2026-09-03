@@ -8,7 +8,7 @@ import {
   transactSessions,
 } from './idb'
 import { loadLegacyHistory, removeLegacyHistory } from './localStore'
-import { isPersistableSession, validateSessionSummary } from './sessionValidation'
+import { isPersistableSession, parseSessionRouteId, validateSessionSummary } from './sessionValidation'
 import {
   classifyStorageError,
   STORAGE_WRITE_MESSAGES,
@@ -33,6 +33,48 @@ function persistable(summary: unknown): SessionSummary | null {
   const validated = validateSessionSummary(summary)
   if (!validated || !isPersistableSession(validated)) return null
   return validated
+}
+
+export type SessionByIdResult =
+  | { status: 'found'; session: SessionSummary }
+  | { status: 'not-found' }
+  | { status: 'unavailable' }
+  | { status: 'invalid-id' }
+
+/**
+ * Direct IndexedDB key lookup. Always runs history initialization/migration first.
+ * Does not scan the sessions store with getAll.
+ */
+export async function getSessionById(id: string): Promise<SessionByIdResult> {
+  const sessionId = parseSessionRouteId(id)
+  if (!sessionId) return { status: 'invalid-id' }
+
+  const initialized = await ensureHistoryInitialized()
+
+  if (!isIndexedDbAvailable()) {
+    const fromLegacy = initialized.history.find((session) => session.id === sessionId)
+    if (fromLegacy) return { status: 'found', session: fromLegacy }
+    return initialized.write.ok ? { status: 'not-found' } : { status: 'unavailable' }
+  }
+
+  try {
+    let raw: unknown
+    let sawResult = false
+    await transactSessions('readonly', (store) => {
+      const request = store.get(sessionId)
+      request.onsuccess = () => {
+        sawResult = true
+        raw = request.result
+      }
+    })
+    if (!sawResult || raw === undefined) return { status: 'not-found' }
+    const session = persistable(raw)
+    if (!session) return { status: 'not-found' }
+    return { status: 'found', session }
+  } catch {
+    if (!initialized.write.ok) return { status: 'unavailable' }
+    return { status: 'unavailable' }
+  }
 }
 
 /** LOAD salvage: skip rows that fail validateSessionSummary; do not delete them. */

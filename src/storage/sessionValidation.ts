@@ -139,6 +139,20 @@ const HISTORICAL_ROUNDS = { min: 0, max: 100 } as const
 const HISTORICAL_COMBO_LEN = { min: 1, max: 32 } as const
 
 export const MAX_SESSION_ID_LENGTH = 200
+
+/** Route params are untrusted. Reject empty, oversized, or undecodable IDs before IDB. */
+export function parseSessionRouteId(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null
+  if (raw.length === 0 || raw.length > MAX_SESSION_ID_LENGTH * 3) return null
+  let decoded = raw
+  try {
+    decoded = decodeURIComponent(raw)
+  } catch {
+    return null
+  }
+  return nonEmptyString(decoded, MAX_SESSION_ID_LENGTH) ?? null
+}
+
 export const MAX_SESSION_COMBO_IDS = 2000
 export const MAX_SESSION_QUEUED_COMBOS = 500
 export const MAX_COUNT_MAP_KEYS = 500

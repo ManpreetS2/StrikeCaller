@@ -61,6 +61,12 @@ test.describe('GitHub Pages base path', () => {
     await expect(page).toHaveURL(/#\/settings/)
     await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible()
 
+    await openApp(page, '/summary/session-pages-hash-route')
+    await expect(page).toHaveURL(/\/StrikeCaller\/(?:index\.html)?#\/summary\/session-pages-hash-route/)
+    await expect(page.getByRole('heading', { name: 'Workout summary not found.' })).toBeVisible()
+    await expect(page.getByRole('navigation', { name: 'Primary' })).toBeVisible()
+    await expect(page.locator('#main').getByRole('link', { name: 'Home' })).toBeVisible()
+
     expect(failed, `unexpected Pages asset failures:\n${failed.join('\n')}`).toEqual([])
   })
 })

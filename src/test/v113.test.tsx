@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import { AppProvider } from '../context/AppContext'
@@ -265,7 +265,7 @@ describe('v1.1.3 session navigation blocking', () => {
       equipment: ['shadowboxing' as const],
       martialArt: 'muay-thai' as const,
     }
-    renderApp({
+    const { router } = renderApp({
       pathname: '/session',
       state: {
         config: createDefaultWorkout({
@@ -305,9 +305,15 @@ describe('v1.1.3 session navigation blocking', () => {
       if (screen.queryByRole('heading', { name: /summary/i })) break
     }
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /summary/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /train again/i })).toBeInTheDocument()
     })
-    expect(within(document.body).getByRole('button', { name: /train again/i })).toBeInTheDocument()
+    expect(router.state.location.pathname).toMatch(/^\/summary\/session-\d+$/)
+    expect(router.state.location.state).toEqual(
+      expect.objectContaining({
+        summary: expect.objectContaining({ id: expect.stringMatching(/^session-\d+$/) }),
+      }),
+    )
+    expect(screen.getByRole('heading', { name: 'Summary' })).toBeInTheDocument()
     void user
   }, 20000)
 })

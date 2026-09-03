@@ -8,8 +8,11 @@ import {
   savePreferences,
 } from '../storage/localStore'
 import { exportUserData, importUserData } from '../storage/userData'
+import { transactSessions } from '../storage/idb'
 import {
   clearHistory,
+  ensureHistoryInitialized,
+  getSessionById,
   initHistory,
   loadHistory,
   replaceHistory,
@@ -481,6 +484,116 @@ describe('IndexedDB history store and legacy migration', () => {
     const saved = await saveSession(session('new'))
     expect(saved.ok).toBe(false)
     expect(await loadHistory()).toEqual([])
+  })
+})
+
+describe('getSessionById', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    vi.restoreAllMocks()
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    localStorage.clear()
+  })
+
+  it('returns a validated persistable session for a direct key lookup', async () => {
+    expect(await saveSession(session('found-row', { combinationsCompleted: 11 }))).toEqual({ ok: true })
+    const result = await getSessionById('found-row')
+    expect(result).toEqual({
+      status: 'found',
+      session: expect.objectContaining({ id: 'found-row', combinationsCompleted: 11 }),
+    })
+  })
+
+  it('returns not-found for a missing row', async () => {
+    expect(await saveSession(session('other'))).toEqual({ ok: true })
+    expect(await getSessionById('missing-row')).toEqual({ status: 'not-found' })
+  })
+
+  it('returns not-found for a corrupt row without deleting it', async () => {
+    await transactSessions('readwrite', (store) => {
+      store.put({ id: 'corrupt-row', garbage: true })
+    })
+    expect(await getSessionById('corrupt-row')).toEqual({ status: 'not-found' })
+
+    let raw: unknown
+    await transactSessions('readonly', (store) => {
+      const request = store.get('corrupt-row')
+      request.onsuccess = () => {
+        raw = request.result
+      }
+    })
+    expect(raw).toEqual({ id: 'corrupt-row', garbage: true })
+  })
+
+  it('returns unavailable when IndexedDB is missing', async () => {
+    resetHistoryDbConnection()
+    Object.defineProperty(globalThis, 'indexedDB', { value: undefined, configurable: true, writable: true })
+    expect(await getSessionById('any-id')).toEqual({ status: 'unavailable' })
+  })
+
+  it('migrates leftover localStorage history before looking up the requested id', async () => {
+    localStorage.setItem(LEGACY_HISTORY_KEY, JSON.stringify([session('legacy-only', { roundsCompleted: 7 })]))
+    const result = await getSessionById('legacy-only')
+    expect(result).toEqual({
+      status: 'found',
+      session: expect.objectContaining({ id: 'legacy-only', roundsCompleted: 7 }),
+    })
+    expect(localStorage.getItem(LEGACY_HISTORY_KEY)).toBeNull()
+    expect(ids(await loadHistory())).toEqual(['legacy-only'])
+  })
+
+  it('returns the exact requested id rather than the newest history row', async () => {
+    expect(await saveSession(session('A', { startedAt: 10, combinationsCompleted: 3 }))).toEqual({ ok: true })
+    expect(await saveSession(session('B', { startedAt: 20, combinationsCompleted: 9 }))).toEqual({ ok: true })
+    const result = await getSessionById('A')
+    expect(result.status).toBe('found')
+    if (result.status !== 'found') return
+    expect(result.session.id).toBe('A')
+    expect(result.session.combinationsCompleted).toBe(3)
+    expect(ids(await loadHistory())).toEqual(['B', 'A'])
+  })
+
+  it('rejects empty or oversized ids before touching the object store', async () => {
+    const get = vi.spyOn(IDBObjectStore.prototype, 'get')
+    expect(await getSessionById('')).toEqual({ status: 'invalid-id' })
+    expect(await getSessionById('x'.repeat(201))).toEqual({ status: 'invalid-id' })
+    expect(get).not.toHaveBeenCalled()
+  })
+
+  it('does not scan the sessions store with getAll after history is initialized', async () => {
+    expect(await saveSession(session('direct-key'))).toEqual({ ok: true })
+    await ensureHistoryInitialized()
+    const originalGetAll = IDBObjectStore.prototype.getAll
+    const originalGet = IDBObjectStore.prototype.get
+    const getAll = vi.spyOn(IDBObjectStore.prototype, 'getAll').mockImplementation(function (
+      this: IDBObjectStore,
+      query?: IDBValidKey | IDBKeyRange | null,
+      count?: number,
+    ) {
+      return originalGetAll.call(this, query, count)
+    })
+    const get = vi.spyOn(IDBObjectStore.prototype, 'get').mockImplementation(function (
+      this: IDBObjectStore,
+      query: IDBValidKey | IDBKeyRange,
+    ) {
+      return originalGet.call(this, query)
+    })
+    expect(await getSessionById('direct-key')).toEqual({
+      status: 'found',
+      session: expect.objectContaining({ id: 'direct-key' }),
+    })
+    expect(getAll).not.toHaveBeenCalled()
+    expect(get).toHaveBeenCalled()
+  })
+
+  it('does not persist demo sessions and cannot recover them by id', async () => {
+    const demo = session('demo-1', { isDemo: true, excludeFromStats: true, mode: 'demo' })
+    expect(await saveSession(demo)).toEqual({ ok: true })
+    expect(await loadHistory()).toEqual([])
+    expect(await getSessionById('demo-1')).toEqual({ status: 'not-found' })
   })
 })
 
