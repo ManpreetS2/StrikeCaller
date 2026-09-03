@@ -29,12 +29,13 @@ export function sortHistory(history: SessionSummary[]): SessionSummary[] {
   })
 }
 
-function persistable(summary: SessionSummary): SessionSummary | null {
+function persistable(summary: unknown): SessionSummary | null {
   const validated = validateSessionSummary(summary)
   if (!validated || !isPersistableSession(validated)) return null
   return validated
 }
 
+/** LOAD salvage: skip rows that fail validateSessionSummary; do not delete them. */
 export async function loadHistory(): Promise<SessionSummary[]> {
   if (!isIndexedDbAvailable()) return sortHistory(loadLegacyHistory())
   try {
@@ -48,7 +49,7 @@ export async function loadHistory(): Promise<SessionSummary[]> {
     })
     return sortHistory(
       rows
-        .map((row) => persistable(row as SessionSummary))
+        .map((row) => persistable(row))
         .filter((item): item is SessionSummary => item != null),
     )
   } catch {
@@ -156,7 +157,7 @@ async function loadHistoryFromDbOnly(): Promise<
       ok: true,
       history: sortHistory(
         rows
-          .map((row) => persistable(row as SessionSummary))
+          .map((row) => persistable(row))
           .filter((item): item is SessionSummary => item != null),
       ),
     }

@@ -1,5 +1,6 @@
-import type { CustomCombo, SessionSummary } from '../types'
+import type { CustomCombo, DailyDrillMap, SessionSummary, UserPreferences } from '../types'
 import { migrateDailyDrillMap, normalizeDailyDrillState } from '../utils/dailyDrill'
+import { MAX_COMBO_LENGTH } from '../engines/comboValidator'
 import {
   ensureHistoryInitialized,
   loadHistory,
@@ -16,6 +17,8 @@ import {
   loadFavorites,
   loadPreferences,
   migrateCustomCombo,
+  normalizeFavoriteIds,
+  parseImportedPreferences,
   removeLegacyHistory,
   restoreRaw,
   saveCustomCombos,
@@ -23,17 +26,21 @@ import {
   saveFavorites,
   savePreferences,
   snapshotRaw,
-  validatePreferences,
   type StorageWriteResult,
 } from './localStore'
+import { isPlainObject, hasOwn, nonNegativeInt } from './parseUnknown'
 import { isPersistableSession, validateSessionSummary } from './sessionValidation'
 
 export type ImportUserDataResult =
   | { ok: true; message: string }
   | { ok: false; message: string; write?: StorageWriteResult }
 
-function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
+type NormalizedImport = {
+  preferences?: UserPreferences
+  favorites?: string[]
+  customCombos?: CustomCombo[]
+  history?: SessionSummary[]
+  daily?: DailyDrillMap
 }
 
 export async function exportUserData(): Promise<string> {
@@ -56,16 +63,31 @@ export async function exportUserData(): Promise<string> {
   )
 }
 
-function validateImportPayload(data: unknown): { ok: true; value: Record<string, unknown> } | { ok: false; message: string } {
-  if (!isObject(data)) return { ok: false, message: 'Invalid JSON structure.' }
+/**
+ * IMPORT: every *provided* section must already be valid.
+ * One malformed supplied section fails the whole import.
+ * No localStorage / IndexedDB writes happen until this returns ok.
+ *
+ * LOAD (elsewhere): salvage valid records, skip malformed ones, default missing
+ * legacy-compatible preference fields.
+ */
+function validateImportPayload(
+  data: unknown,
+): { ok: true; value: NormalizedImport } | { ok: false; message: string } {
+  if (!isPlainObject(data)) return { ok: false, message: 'Invalid JSON structure.' }
   const version = data.version
   if (version !== 1 && version !== 2 && version !== 3 && version !== undefined) {
     return { ok: false, message: `Unsupported export version: ${String(version)}.` }
   }
 
-  if (data.preferences != null && !isObject(data.preferences)) {
-    return { ok: false, message: 'preferences must be an object.' }
+  const normalized: NormalizedImport = {}
+
+  if (data.preferences != null) {
+    const prefs = parseImportedPreferences(data.preferences)
+    if (!prefs.ok) return prefs
+    normalized.preferences = prefs.value
   }
+
   if (data.favorites != null) {
     if (!Array.isArray(data.favorites) || data.favorites.length > 2000) {
       return { ok: false, message: 'favorites array is invalid or too large.' }
@@ -73,59 +95,75 @@ function validateImportPayload(data: unknown): { ok: true; value: Record<string,
     if (!data.favorites.every((id) => typeof id === 'string')) {
       return { ok: false, message: 'favorites must be string IDs.' }
     }
+    normalized.favorites = normalizeFavoriteIds(data.favorites)
   }
+
   if (data.customCombos != null) {
     if (!Array.isArray(data.customCombos) || data.customCombos.length > MAX_IMPORT_CUSTOM_COMBOS) {
       return { ok: false, message: 'customCombos array is invalid or too large.' }
     }
+    const combos: CustomCombo[] = []
     for (const raw of data.customCombos) {
-      if (!isObject(raw) || !Array.isArray(raw.techniqueIds)) {
+      if (!isPlainObject(raw) || !Array.isArray(raw.techniqueIds)) {
         return { ok: false, message: 'One or more custom combos are invalid.' }
       }
-      const rawIds = raw.techniqueIds.filter((id) => typeof id === 'string')
-      if (rawIds.length < 1 || rawIds.length > 8) {
+      if (
+        raw.techniqueIds.length < 1 ||
+        raw.techniqueIds.length > MAX_COMBO_LENGTH ||
+        !raw.techniqueIds.every((id) => typeof id === 'string' && id.length > 0)
+      ) {
         return { ok: false, message: 'Custom combos must contain 1–8 techniques.' }
+      }
+      if (hasOwn(raw, 'repeatCount')) {
+        const n = nonNegativeInt(raw.repeatCount)
+        if (n === undefined || n < 1 || n > 20) {
+          return { ok: false, message: 'Custom combo repeatCount must be 1–20.' }
+        }
       }
       const combo = migrateCustomCombo(raw)
       if (!combo) return { ok: false, message: 'One or more custom combos are invalid.' }
       if (combo.repeatCount < 1 || combo.repeatCount > 20) {
         return { ok: false, message: 'Custom combo repeatCount must be 1–20.' }
       }
+      combos.push(combo)
     }
+    normalized.customCombos = combos
   }
+
   if (data.history != null) {
     if (!Array.isArray(data.history) || data.history.length > MAX_IMPORT_HISTORY) {
       return { ok: false, message: 'history array is invalid or too large.' }
     }
+    const history: SessionSummary[] = []
     for (const raw of data.history) {
       const summary = validateSessionSummary(raw)
       if (!summary) return { ok: false, message: 'One or more history records are invalid.' }
-      if (!Number.isFinite(summary.startedAt) || summary.startedAt < 0) {
-        return { ok: false, message: 'History timestamps must be finite and nonnegative.' }
-      }
-      if (!Number.isFinite(summary.totalTrainingMs) || summary.totalTrainingMs < 0) {
-        return { ok: false, message: 'History counters must be finite and nonnegative.' }
-      }
-      if (summary.martialArt !== 'muay-thai' && summary.martialArt !== 'boxing') {
-        return { ok: false, message: 'Unknown martial art in history.' }
-      }
+      if (isPersistableSession(summary)) history.push(summary)
     }
+    normalized.history = history
   }
+
   if (data.dailyDrill != null) {
-    if (!isObject(data.dailyDrill)) return { ok: false, message: 'dailyDrill must be an object.' }
-    if (typeof data.dailyDrill.dateKey !== 'string' || typeof data.dailyDrill.comboId !== 'string') {
+    if (!isPlainObject(data.dailyDrill)) return { ok: false, message: 'dailyDrill must be an object.' }
+    if (!normalizeDailyDrillState(data.dailyDrill)) {
       return { ok: false, message: 'dailyDrill is missing required fields.' }
     }
   }
   if (data.dailyDrills != null) {
-    if (!isObject(data.dailyDrills)) return { ok: false, message: 'dailyDrills must be an object.' }
+    if (!isPlainObject(data.dailyDrills)) return { ok: false, message: 'dailyDrills must be an object.' }
     for (const value of Object.values(data.dailyDrills)) {
       if (!normalizeDailyDrillState(value)) {
         return { ok: false, message: 'One or more dailyDrills records are invalid.' }
       }
     }
   }
-  return { ok: true, value: data }
+  if (data.dailyDrills != null && isPlainObject(data.dailyDrills)) {
+    normalized.daily = migrateDailyDrillMap(data.dailyDrills)
+  } else if (data.dailyDrill != null && isPlainObject(data.dailyDrill)) {
+    normalized.daily = migrateDailyDrillMap(data.dailyDrill)
+  }
+
+  return { ok: true, value: normalized }
 }
 
 export async function importUserData(json: string): Promise<ImportUserDataResult> {
@@ -134,29 +172,11 @@ export async function importUserData(json: string): Promise<ImportUserDataResult
     return { ok: false, message: 'Import file exceeds the 2 MB limit.' }
   }
   try {
-    const parsed = JSON.parse(json) as unknown
+    const parsed: unknown = JSON.parse(json)
     const validated = validateImportPayload(parsed)
     if (!validated.ok) return validated
 
-    const data = validated.value
-    const prefs = data.preferences ? validatePreferences(data.preferences) : null
-    const favorites = Array.isArray(data.favorites)
-      ? data.favorites.filter((x): x is string => typeof x === 'string')
-      : null
-    const combos = Array.isArray(data.customCombos)
-      ? data.customCombos.map(migrateCustomCombo).filter((c): c is CustomCombo => c != null)
-      : null
-    const history = Array.isArray(data.history)
-      ? data.history
-          .map(validateSessionSummary)
-          .filter((h): h is SessionSummary => h != null)
-          .filter(isPersistableSession)
-      : null
-    const dailyFromMap =
-      data.dailyDrills && isObject(data.dailyDrills) ? migrateDailyDrillMap(data.dailyDrills) : null
-    const dailyLegacy =
-      data.dailyDrill && isObject(data.dailyDrill) ? migrateDailyDrillMap(data.dailyDrill) : null
-    const daily = dailyFromMap ?? dailyLegacy
+    const { preferences: prefs, favorites, customCombos: combos, history, daily } = validated.value
 
     const planned: { key: string; write: () => StorageWriteResult }[] = []
     if (prefs) planned.push({ key: STORAGE_KEYS.preferences, write: () => savePreferences(prefs) })

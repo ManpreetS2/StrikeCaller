@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest'
-import { DEFAULT_PREFERENCES } from '../data/defaults'
+import { DEFAULT_PREFERENCES, createDefaultWorkout } from '../data/defaults'
 import {
   EXPORT_VERSION,
   LEGACY_HISTORY_KEY,
@@ -17,13 +17,13 @@ import {
   saveSession,
   sortHistory,
 } from '../storage/historyStore'
-import type { SessionSummary } from '../types'
+import type { Combo, SessionSummary } from '../types'
 
 function session(id: string, extra: Partial<SessionSummary> = {}): SessionSummary {
+  const startedAt = extra.startedAt ?? 1_700_000_000_000
+  const endedAt = extra.endedAt ?? startedAt + 60_000
   return {
     id,
-    startedAt: 1_700_000_000_000,
-    endedAt: 1_700_000_060_000,
     martialArt: 'muay-thai',
     mode: 'coach',
     stance: 'orthodox',
@@ -43,11 +43,13 @@ function session(id: string, extra: Partial<SessionSummary> = {}): SessionSummar
     favoriteComboIds: [],
     usedCustomCombo: false,
     ...extra,
+    startedAt,
+    endedAt,
   }
 }
 
-function fatSession(index: number): SessionSummary {
-  const combo = {
+function fatCombo(index: number): Combo {
+  return {
     id: `snap-${index}`,
     title: `Combo ${index}`,
     difficulty: 'beginner',
@@ -55,17 +57,27 @@ function fatSession(index: number): SessionSummary {
     trainingModes: ['coach'],
     purpose: 'establish-jab',
     techniques: [{ techniqueId: 'jab' }, { techniqueId: 'cross' }],
-    notes: 'x'.repeat(80),
+    recommendedPace: 'technical',
+    setupExplanation: 't',
+    endingPosition: 'base',
+    safeExit: 'reset',
+    coachingNotes: 'x'.repeat(80),
+    tags: [],
+    equipment: ['shadowboxing'],
+    martialArt: 'muay-thai',
   }
+}
+
+function fatSession(index: number): SessionSummary {
+  const combo = fatCombo(index)
   return session(`s-${String(index).padStart(3, '0')}`, {
     startedAt: 1_700_000_000_000 + index,
-    comboSnapshots: [combo] as unknown as SessionSummary['comboSnapshots'],
-    queuedCombos: [combo] as unknown as SessionSummary['queuedCombos'],
-    workoutConfig: {
+    comboSnapshots: [combo],
+    queuedCombos: [combo],
+    workoutConfig: createDefaultWorkout({
       martialArt: 'muay-thai',
       mode: 'coach',
-      notes: `workout-${index}-${'y'.repeat(40)}`,
-    } as unknown as SessionSummary['workoutConfig'],
+    }),
     techniqueCounts: { jab: index + 1, cross: index + 2 },
   })
 }

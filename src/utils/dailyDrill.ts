@@ -1,4 +1,6 @@
 import type { DailyDrillMap, DailyDrillState, MartialArt } from '../types'
+import { booleanOr, defineOwn, hasOwn, isForbiddenKey, isPlainObject, nonEmptyString, oneOf, readBoolean } from '../storage/parseUnknown'
+import { MARTIAL_ARTS } from '../storage/sessionValidation'
 import { localDateKey } from './localDate'
 
 /** Storage / lookup key: local civil date + martial art. Never shown in UI. */
@@ -41,53 +43,56 @@ export function emptyDailyDrill(
 }
 
 export function isDailyDrillState(value: unknown): value is DailyDrillState {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
-  const raw = value as Record<string, unknown>
-  return typeof raw.dateKey === 'string' && typeof raw.comboId === 'string'
+  if (!isPlainObject(value)) return false
+  return typeof value.dateKey === 'string' && typeof value.comboId === 'string'
 }
 
 export function normalizeDailyDrillState(raw: unknown): DailyDrillState | null {
-  if (!isDailyDrillState(raw)) return null
+  if (!isPlainObject(raw)) return null
+  const dateKey = nonEmptyString(raw.dateKey, 80)
+  const comboId = nonEmptyString(raw.comboId, 200)
+  if (!dateKey || !comboId) return null
+  if (hasOwn(raw, 'slowDone') && readBoolean(raw.slowDone) === undefined) return null
+  if (hasOwn(raw, 'normalDone') && readBoolean(raw.normalDone) === undefined) return null
+  if (hasOwn(raw, 'fightDone') && readBoolean(raw.fightDone) === undefined) return null
+  if (hasOwn(raw, 'completed') && readBoolean(raw.completed) === undefined) return null
+  if (hasOwn(raw, 'martialArt') && raw.martialArt != null && oneOf(raw.martialArt, MARTIAL_ARTS) === undefined) {
+    return null
+  }
+
   const martialArt: MartialArt =
-    raw.martialArt === 'boxing'
-      ? 'boxing'
-      : raw.martialArt === 'muay-thai'
-        ? 'muay-thai'
-        : raw.dateKey.includes(':boxing')
-          ? 'boxing'
-          : 'muay-thai'
-  const key = dailyDrillKey(raw.dateKey, martialArt)
+    oneOf(raw.martialArt, MARTIAL_ARTS) ?? (dateKey.includes(':boxing') ? 'boxing' : 'muay-thai')
+  const key = dailyDrillKey(dateKey, martialArt)
   return {
     dateKey: key,
-    comboId: raw.comboId,
+    comboId,
     martialArt,
-    slowDone: Boolean(raw.slowDone),
-    normalDone: Boolean(raw.normalDone),
-    fightDone: Boolean(raw.fightDone),
-    completed: Boolean(raw.completed),
+    slowDone: booleanOr(raw.slowDone, false),
+    normalDone: booleanOr(raw.normalDone, false),
+    fightDone: booleanOr(raw.fightDone, false),
+    completed: booleanOr(raw.completed, false),
   }
 }
 
 /** Migrate legacy single-record DailyDrillState into a map. */
 export function migrateDailyDrillMap(raw: unknown): DailyDrillMap {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {}
-
-  const obj = raw as Record<string, unknown>
+  if (!isPlainObject(raw)) return {}
 
   // Legacy single record
-  if (typeof obj.dateKey === 'string' && typeof obj.comboId === 'string') {
-    const state = normalizeDailyDrillState(obj)
+  if (typeof raw.dateKey === 'string' && typeof raw.comboId === 'string') {
+    const state = normalizeDailyDrillState(raw)
     if (!state) return {}
     return { [state.dateKey]: state }
   }
 
   const map: DailyDrillMap = {}
-  for (const [key, value] of Object.entries(obj)) {
+  for (const [key, value] of Object.entries(raw)) {
+    if (isForbiddenKey(key)) continue
     const state = normalizeDailyDrillState(value)
     if (!state) continue
     const storageKey = dailyDrillKey(state.dateKey, state.martialArt)
-    map[storageKey] = { ...state, dateKey: storageKey }
-    void key
+    if (isForbiddenKey(storageKey)) continue
+    defineOwn(map, storageKey, { ...state, dateKey: storageKey })
   }
   return map
 }

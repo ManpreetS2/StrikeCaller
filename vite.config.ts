@@ -28,5 +28,10 @@ export default defineConfig({
     setupFiles: './src/test/setup.ts',
     css: true,
     exclude: ['**/node_modules/**', '**/dist/**', '**/dist-pages/**', '**/e2e/**'],
+    // Each file gets its own process so fake timers / IDB setup cannot leak
+    // across AppProvider tests that share a 5s timeout.
+    pool: 'forks',
+    isolate: true,
+    testTimeout: 15_000,
   },
 })

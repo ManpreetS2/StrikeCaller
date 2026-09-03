@@ -19,6 +19,7 @@ import {
   resetStorageAvailabilityCache,
   STORAGE_WRITE_MESSAGES,
   HISTORY_QUOTA_MESSAGE,
+  classifyStorageError,
   loadLegacyHistory,
   LEGACY_HISTORY_KEY,
 } from '../storage/localStore'
@@ -28,10 +29,10 @@ import * as idb from '../storage/idb'
 import type { CustomCombo, DailyDrillMap, SessionSummary } from '../types'
 
 function session(id: string, extra: Partial<SessionSummary> = {}): SessionSummary {
+  const startedAt = extra.startedAt ?? 1_700_000_000_000
+  const endedAt = extra.endedAt ?? startedAt + 60_000
   return {
     id,
-    startedAt: 1_700_000_000_000,
-    endedAt: 1_700_000_060_000,
     martialArt: 'muay-thai',
     mode: 'coach',
     stance: 'orthodox',
@@ -51,6 +52,8 @@ function session(id: string, extra: Partial<SessionSummary> = {}): SessionSummar
     favoriteComboIds: [],
     usedCustomCombo: false,
     ...extra,
+    startedAt,
+    endedAt,
   }
 }
 
@@ -284,11 +287,18 @@ describe('storage write results', () => {
     expect(result.message).toBe(STORAGE_WRITE_MESSAGES.serialization)
   })
 
-  it('classifies a non-cloneable session as an IndexedDB serialization failure', async () => {
+  it('does not persist a session whose workoutConfig is not a valid config', async () => {
     const result = await saveSession({
       ...session('cyclic'),
       workoutConfig: { boom: () => 'nope' } as unknown as SessionSummary['workoutConfig'],
     })
+    expect(result).toEqual({ ok: true })
+    expect(await loadHistory()).toEqual([])
+  })
+
+  it('classifies a DataCloneError as a serialization failure', () => {
+    const error = new DOMException('The object could not be cloned.', 'DataCloneError')
+    const result = classifyStorageError(error)
     expect(result.ok).toBe(false)
     if (result.ok) return
     expect(result.reason).toBe('serialization')

@@ -1,4 +1,5 @@
 import { DEFAULT_PREFERENCES } from '../data/defaults'
+import { MAX_COMBO_LENGTH } from '../engines/comboValidator'
 import type {
   CustomCombo,
   DailyDrillMap,
@@ -6,10 +7,41 @@ import type {
   MusicCompatibilityRecord,
   MusicCompatibilityResult,
   SessionSummary,
+  ThemePreference,
   UserPreferences,
 } from '../types'
 import { migrateDailyDrillMap, normalizeDailyDrillState } from '../utils/dailyDrill'
-import { isPersistableSession, validateSessionSummary } from './sessionValidation'
+import { WORKOUT_LIMITS } from '../utils/workoutValidation'
+import {
+  booleanOr,
+  finiteInRange,
+  hasOwn,
+  isPlainObject,
+  nonEmptyString,
+  nonNegativeFinite,
+  nonNegativeInt,
+  oneOf,
+  readBoolean,
+  stringValue,
+} from './parseUnknown'
+import {
+  CALL_STYLES,
+  DIFFICULTIES,
+  EQUIPMENT,
+  MARTIAL_ARTS,
+  MAX_FAVORITE_IDS,
+  MAX_SESSION_ID_LENGTH,
+  MAX_STRING_FIELD,
+  PACE_PRESETS,
+  RESUME_BEHAVIORS,
+  SIDE_TERMINOLOGY,
+  STANCES,
+  isPersistableSession,
+  validateSessionSummary,
+  validateSoundSettings,
+  validateSpeechSettings,
+  validateTimingMultipliers,
+} from './sessionValidation'
 import {
   classifyStorageError,
   HISTORY_QUOTA_MESSAGE,
@@ -87,12 +119,12 @@ export function resetStorageAvailabilityCache(): void {
   availabilityCache = null
 }
 
-function readJSON<T>(key: string): unknown {
+function readJSON(key: string): unknown {
   if (typeof window === 'undefined' || !storageAvailable()) return null
   try {
     const raw = window.localStorage.getItem(key)
     if (!raw) return null
-    return JSON.parse(raw) as T
+    return JSON.parse(raw)
   } catch {
     return null
   }
@@ -140,37 +172,43 @@ export function restoreRaw(key: string, value: string | null): boolean {
   }
 }
 
+const THEMES = ['dark', 'light', 'system'] as const satisfies readonly ThemePreference[]
+
 function isObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
+  return isPlainObject(value)
 }
 
+function presentInvalidEnum<T extends string>(
+  raw: Record<string, unknown>,
+  key: string,
+  allowed: readonly T[],
+): boolean {
+  if (!hasOwn(raw, key)) return false
+  return oneOf(raw[key], allowed) === undefined
+}
+
+function presentInvalidBoolean(raw: Record<string, unknown>, key: string): boolean {
+  if (!hasOwn(raw, key)) return false
+  return readBoolean(raw[key]) === undefined
+}
+
+/**
+ * LOAD salvage for preferences: missing fields receive product defaults;
+ * present-but-invalid enums/ranges fall back; `"false"` is not a boolean.
+ */
 export function validatePreferences(raw: unknown): UserPreferences {
   if (!isObject(raw)) return { ...DEFAULT_PREFERENCES }
 
-  const theme = raw.theme === 'dark' || raw.theme === 'light' || raw.theme === 'system' ? raw.theme : DEFAULT_PREFERENCES.theme
-  const stance = raw.stance === 'orthodox' || raw.stance === 'southpaw' ? raw.stance : DEFAULT_PREFERENCES.stance
-  const experience =
-    raw.experience === 'beginner' || raw.experience === 'intermediate' || raw.experience === 'advanced'
-      ? raw.experience
-      : DEFAULT_PREFERENCES.experience
-  const callStyle =
-    raw.callStyle === 'names' || raw.callStyle === 'numbers' || raw.callStyle === 'hybrid'
-      ? raw.callStyle
-      : DEFAULT_PREFERENCES.callStyle
-  const resumeBehavior =
-    raw.resumeBehavior === 'restart-combo' || raw.resumeBehavior === 'next-combo'
-      ? raw.resumeBehavior
-      : DEFAULT_PREFERENCES.resumeBehavior
-  const martialArt = raw.martialArt === 'boxing' || raw.martialArt === 'muay-thai' ? raw.martialArt : 'muay-thai'
-
-  const speechRaw = isObject(raw.speech) ? raw.speech : {}
-  const musicCompatibility = validateMusicCompatibility(raw.musicCompatibility)
-
-  // Legacy voice/rate/pitch/volume fields are accepted but normalized to safe defaults for runtime.
-  void speechRaw.voiceURI
-  void speechRaw.rate
-  void speechRaw.pitch
-  void speechRaw.volume
+  const theme = oneOf(raw.theme, THEMES) ?? DEFAULT_PREFERENCES.theme
+  const stance = oneOf(raw.stance, STANCES) ?? DEFAULT_PREFERENCES.stance
+  const experience = oneOf(raw.experience, DIFFICULTIES) ?? DEFAULT_PREFERENCES.experience
+  const callStyle = oneOf(raw.callStyle, CALL_STYLES) ?? DEFAULT_PREFERENCES.callStyle
+  const resumeBehavior = oneOf(raw.resumeBehavior, RESUME_BEHAVIORS) ?? DEFAULT_PREFERENCES.resumeBehavior
+  const martialArt = oneOf(raw.martialArt, MARTIAL_ARTS) ?? DEFAULT_PREFERENCES.martialArt
+  const equipment = oneOf(raw.equipment, EQUIPMENT) ?? DEFAULT_PREFERENCES.equipment
+  const pace = oneOf(raw.pace, PACE_PRESETS) ?? DEFAULT_PREFERENCES.pace
+  const sideTerminology = oneOf(raw.sideTerminology, SIDE_TERMINOLOGY) ?? DEFAULT_PREFERENCES.sideTerminology
+  const speechFallback = { ...DEFAULT_PREFERENCES.speech, callStyle }
 
   return {
     ...DEFAULT_PREFERENCES,
@@ -180,90 +218,166 @@ export function validatePreferences(raw: unknown): UserPreferences {
     callStyle,
     resumeBehavior,
     martialArt,
-    musicCompatibility,
-    equipment:
-      raw.equipment === 'shadowboxing' ||
-      raw.equipment === 'heavy-bag' ||
-      raw.equipment === 'pads' ||
-      raw.equipment === 'partner' ||
-      raw.equipment === 'open-space' ||
-      raw.equipment === 'limited-space'
-        ? raw.equipment
-        : DEFAULT_PREFERENCES.equipment,
-    pace:
-      raw.pace === 'learn' ||
-      raw.pace === 'slow' ||
-      raw.pace === 'technical' ||
-      raw.pace === 'normal' ||
-      raw.pace === 'fast' ||
-      raw.pace === 'fight' ||
-      raw.pace === 'custom'
-        ? raw.pace
-        : DEFAULT_PREFERENCES.pace,
-    sideTerminology: raw.sideTerminology === 'left-right' ? 'left-right' : 'lead-rear',
-    largeText: Boolean(raw.largeText),
+    equipment,
+    pace,
+    sideTerminology,
+    musicCompatibility: validateMusicCompatibility(raw.musicCompatibility),
+    largeText: booleanOr(raw.largeText, DEFAULT_PREFERENCES.largeText),
     customPaceMultiplier:
-      typeof raw.customPaceMultiplier === 'number' ? raw.customPaceMultiplier : DEFAULT_PREFERENCES.customPaceMultiplier,
-    wakeLock: raw.wakeLock !== false,
-    customComboMigrationNoticeShown: Boolean(raw.customComboMigrationNoticeShown),
-    preferMinimalMode: Boolean(raw.preferMinimalMode),
-    wakeLockNoticeDismissed: Boolean(raw.wakeLockNoticeDismissed),
-    speech: {
-      ...DEFAULT_PREFERENCES.speech,
-      voiceURI: null,
-      rate: 1,
-      pitch: 1,
-      volume: 1,
-      callStyle:
-        speechRaw.callStyle === 'names' ||
-        speechRaw.callStyle === 'numbers' ||
-        speechRaw.callStyle === 'hybrid'
-          ? speechRaw.callStyle
-          : callStyle,
-      musicFriendly:
-        typeof speechRaw.musicFriendly === 'boolean'
-          ? speechRaw.musicFriendly
-          : DEFAULT_PREFERENCES.speech.musicFriendly,
-      captionsEnabled:
-        typeof speechRaw.captionsEnabled === 'boolean'
-          ? speechRaw.captionsEnabled
-          : DEFAULT_PREFERENCES.speech.captionsEnabled,
-      spokenCallsEnabled:
-        typeof speechRaw.spokenCallsEnabled === 'boolean'
-          ? speechRaw.spokenCallsEnabled
-          : DEFAULT_PREFERENCES.speech.spokenCallsEnabled,
-      coachingCuesEnabled: speechRaw.coachingCuesEnabled !== false,
-      countdownEnabled: speechRaw.countdownEnabled !== false,
-      roundCallsEnabled: speechRaw.roundCallsEnabled !== false,
-    },
-    sound: {
-      ...DEFAULT_PREFERENCES.sound,
-      ...(isObject(raw.sound) ? raw.sound : {}),
-    },
-    timingMultipliers: {
-      ...DEFAULT_PREFERENCES.timingMultipliers,
-      ...(isObject(raw.timingMultipliers) ? raw.timingMultipliers : {}),
-    },
-    onboardingComplete: Boolean(raw.onboardingComplete),
-    includeDefense: raw.includeDefense !== false,
-    includeMovement: raw.includeMovement !== false,
+      finiteInRange(
+        raw.customPaceMultiplier,
+        WORKOUT_LIMITS.customPaceMultiplier.min,
+        WORKOUT_LIMITS.customPaceMultiplier.max,
+      ) ?? DEFAULT_PREFERENCES.customPaceMultiplier,
+    wakeLock: booleanOr(raw.wakeLock, DEFAULT_PREFERENCES.wakeLock),
+    customComboMigrationNoticeShown: booleanOr(
+      raw.customComboMigrationNoticeShown,
+      DEFAULT_PREFERENCES.customComboMigrationNoticeShown,
+    ),
+    preferMinimalMode: booleanOr(raw.preferMinimalMode, DEFAULT_PREFERENCES.preferMinimalMode),
+    wakeLockNoticeDismissed: booleanOr(raw.wakeLockNoticeDismissed, DEFAULT_PREFERENCES.wakeLockNoticeDismissed),
+    speech: validateSpeechSettings(raw.speech, speechFallback),
+    sound: validateSoundSettings(raw.sound, DEFAULT_PREFERENCES.sound),
+    timingMultipliers: validateTimingMultipliers(raw.timingMultipliers, DEFAULT_PREFERENCES.timingMultipliers),
+    onboardingComplete: booleanOr(raw.onboardingComplete, DEFAULT_PREFERENCES.onboardingComplete),
+    includeDefense: booleanOr(raw.includeDefense, DEFAULT_PREFERENCES.includeDefense),
+    includeMovement: booleanOr(raw.includeMovement, DEFAULT_PREFERENCES.includeMovement),
   }
+}
+
+export type PreferencesImportResult =
+  | { ok: true; value: UserPreferences }
+  | { ok: false; message: string }
+
+/**
+ * Import-only: provided fields must already be valid. Missing fields still
+ * fall back through {@link validatePreferences}. Wrong types fail the import
+ * instead of silently rewriting a backup.
+ */
+export function parseImportedPreferences(raw: unknown): PreferencesImportResult {
+  if (!isObject(raw)) return { ok: false, message: 'preferences must be an object.' }
+
+  if (presentInvalidEnum(raw, 'theme', THEMES)) return { ok: false, message: 'preferences.theme is invalid.' }
+  if (presentInvalidEnum(raw, 'stance', STANCES)) return { ok: false, message: 'preferences.stance is invalid.' }
+  if (presentInvalidEnum(raw, 'experience', DIFFICULTIES)) {
+    return { ok: false, message: 'preferences.experience is invalid.' }
+  }
+  if (presentInvalidEnum(raw, 'callStyle', CALL_STYLES)) {
+    return { ok: false, message: 'preferences.callStyle is invalid.' }
+  }
+  if (presentInvalidEnum(raw, 'resumeBehavior', RESUME_BEHAVIORS)) {
+    return { ok: false, message: 'preferences.resumeBehavior is invalid.' }
+  }
+  if (presentInvalidEnum(raw, 'martialArt', MARTIAL_ARTS)) {
+    return { ok: false, message: 'preferences.martialArt is invalid.' }
+  }
+  if (presentInvalidEnum(raw, 'equipment', EQUIPMENT)) {
+    return { ok: false, message: 'preferences.equipment is invalid.' }
+  }
+  if (presentInvalidEnum(raw, 'pace', PACE_PRESETS)) return { ok: false, message: 'preferences.pace is invalid.' }
+  if (presentInvalidEnum(raw, 'sideTerminology', SIDE_TERMINOLOGY)) {
+    return { ok: false, message: 'preferences.sideTerminology is invalid.' }
+  }
+
+  for (const key of [
+    'largeText',
+    'wakeLock',
+    'customComboMigrationNoticeShown',
+    'preferMinimalMode',
+    'wakeLockNoticeDismissed',
+    'onboardingComplete',
+    'includeDefense',
+    'includeMovement',
+  ] as const) {
+    if (presentInvalidBoolean(raw, key)) {
+      return { ok: false, message: `preferences.${key} must be a boolean.` }
+    }
+  }
+
+  if (hasOwn(raw, 'customPaceMultiplier')) {
+    if (
+      finiteInRange(
+        raw.customPaceMultiplier,
+        WORKOUT_LIMITS.customPaceMultiplier.min,
+        WORKOUT_LIMITS.customPaceMultiplier.max,
+      ) === undefined
+    ) {
+      return { ok: false, message: 'preferences.customPaceMultiplier is invalid.' }
+    }
+  }
+
+  if (hasOwn(raw, 'sound')) {
+    if (!isObject(raw.sound)) return { ok: false, message: 'preferences.sound is invalid.' }
+    if (presentInvalidBoolean(raw.sound, 'bellsEnabled')) {
+      return { ok: false, message: 'preferences.sound.bellsEnabled must be a boolean.' }
+    }
+    if (presentInvalidBoolean(raw.sound, 'tonesEnabled')) {
+      return { ok: false, message: 'preferences.sound.tonesEnabled must be a boolean.' }
+    }
+    if (presentInvalidBoolean(raw.sound, 'vibrationEnabled')) {
+      return { ok: false, message: 'preferences.sound.vibrationEnabled must be a boolean.' }
+    }
+    if (hasOwn(raw.sound, 'masterVolume') && finiteInRange(raw.sound.masterVolume, 0, 1) === undefined) {
+      return { ok: false, message: 'preferences.sound.masterVolume is invalid.' }
+    }
+  }
+
+  if (hasOwn(raw, 'timingMultipliers')) {
+    if (!isObject(raw.timingMultipliers)) return { ok: false, message: 'preferences.timingMultipliers is invalid.' }
+    const categoryKeys = ['punch', 'kick', 'knee', 'elbow', 'defense', 'movement', 'teep', 'counter', 'clinch'] as const
+    for (const key of categoryKeys) {
+      if (hasOwn(raw.timingMultipliers, key) && finiteInRange(raw.timingMultipliers[key], 0.7, 1.8) === undefined) {
+        return { ok: false, message: `preferences.timingMultipliers.${key} is invalid.` }
+      }
+    }
+    for (const key of ['pauseBetweenCombosMs', 'pauseBeforeRepeatMs'] as const) {
+      if (hasOwn(raw.timingMultipliers, key) && finiteInRange(raw.timingMultipliers[key], 0, 60_000) === undefined) {
+        return { ok: false, message: `preferences.timingMultipliers.${key} is invalid.` }
+      }
+    }
+  }
+
+  if (hasOwn(raw, 'speech')) {
+    if (!isObject(raw.speech)) return { ok: false, message: 'preferences.speech is invalid.' }
+    if (presentInvalidEnum(raw.speech, 'callStyle', CALL_STYLES)) {
+      return { ok: false, message: 'preferences.speech.callStyle is invalid.' }
+    }
+    for (const key of [
+      'coachingCuesEnabled',
+      'countdownEnabled',
+      'roundCallsEnabled',
+      'musicFriendly',
+      'captionsEnabled',
+      'spokenCallsEnabled',
+    ] as const) {
+      if (presentInvalidBoolean(raw.speech, key)) {
+        return { ok: false, message: `preferences.speech.${key} must be a boolean.` }
+      }
+    }
+  }
+
+  if (hasOwn(raw, 'musicCompatibility') && raw.musicCompatibility != null) {
+    if (!validateMusicCompatibility(raw.musicCompatibility)) {
+      return { ok: false, message: 'preferences.musicCompatibility is invalid.' }
+    }
+  }
+
+  return { ok: true, value: validatePreferences(raw) }
 }
 
 export function validateMusicCompatibility(raw: unknown): MusicCompatibilityRecord | null {
   if (!isObject(raw)) return null
-  if (typeof raw.result !== 'string' || !MUSIC_RESULTS.includes(raw.result as MusicCompatibilityResult)) {
+  const result = oneOf(raw.result, MUSIC_RESULTS)
+  const testedAt = nonNegativeFinite(raw.testedAt)
+  const userAgent = stringValue(raw.userAgent, MAX_STRING_FIELD)
+  const audioSessionSupported = readBoolean(raw.audioSessionSupported)
+  if (!result || testedAt === undefined || userAgent === undefined || audioSessionSupported === undefined) {
     return null
   }
-  if (typeof raw.testedAt !== 'number' || typeof raw.userAgent !== 'string') return null
-  return {
-    result: raw.result as MusicCompatibilityResult,
-    testedAt: raw.testedAt,
-    userAgent: raw.userAgent,
-    audioSessionSupported: Boolean(raw.audioSessionSupported),
-  }
+  return { result, testedAt, userAgent, audioSessionSupported }
 }
 
+/** LOAD salvage: missing fields default; malformed JSON becomes DEFAULT_PREFERENCES. */
 export function loadPreferences(): UserPreferences {
   return validatePreferences(readJSON(KEYS.preferences))
 }
@@ -277,15 +391,31 @@ export function resetPreferences(): { preferences: UserPreferences; write: Stora
   return { preferences, write: writeJSON(KEYS.preferences, preferences) }
 }
 
+export function normalizeFavoriteIds(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return []
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const item of raw) {
+    if (typeof item !== 'string') continue
+    const id = item.trim()
+    if (!id || id.length > MAX_SESSION_ID_LENGTH || seen.has(id)) continue
+    seen.add(id)
+    out.push(id)
+    if (out.length >= MAX_FAVORITE_IDS) break
+  }
+  return out
+}
+
+/** LOAD salvage: drop blanks, duplicates, and non-strings. */
 export function loadFavorites(): string[] {
-  const raw = readJSON<string[]>(KEYS.favorites)
-  return Array.isArray(raw) ? raw.filter((id) => typeof id === 'string') : []
+  return normalizeFavoriteIds(readJSON(KEYS.favorites))
 }
 
 export function saveFavorites(ids: string[]): StorageWriteResult {
   return writeJSON(KEYS.favorites, ids)
 }
 
+/** LOAD salvage: drop malformed combos; truncate >8 techniques and mark migrated. */
 export function loadCustomCombos(): CustomCombo[] {
   const raw = readJSON(KEYS.customCombos)
   if (!Array.isArray(raw)) return []
@@ -296,24 +426,37 @@ export function loadCustomCombos(): CustomCombo[] {
 
 export function migrateCustomCombo(raw: unknown): CustomCombo | null {
   if (!isObject(raw)) return null
-  if (typeof raw.id !== 'string' || typeof raw.title !== 'string' || !Array.isArray(raw.techniqueIds)) {
+  const id = nonEmptyString(raw.id, MAX_SESSION_ID_LENGTH)
+  const title = nonEmptyString(raw.title, MAX_STRING_FIELD)
+  if (!id || !title || !Array.isArray(raw.techniqueIds)) return null
+  const ids = raw.techniqueIds.filter((item): item is string => typeof item === 'string' && item.length > 0)
+  if (ids.length < 1) return null
+  const migrated = ids.length > MAX_COMBO_LENGTH
+  const createdAt = hasOwn(raw, 'createdAt') ? nonNegativeFinite(raw.createdAt) : Date.now()
+  const updatedAt = hasOwn(raw, 'updatedAt') ? nonNegativeFinite(raw.updatedAt) : Date.now()
+  if (createdAt === undefined || updatedAt === undefined) return null
+  if (hasOwn(raw, 'favorite') && readBoolean(raw.favorite) === undefined) return null
+  if (hasOwn(raw, 'migrated') && readBoolean(raw.migrated) === undefined) return null
+  if (hasOwn(raw, 'martialArt') && raw.martialArt != null && oneOf(raw.martialArt, MARTIAL_ARTS) === undefined) {
     return null
   }
-  const ids = raw.techniqueIds.filter((id): id is string => typeof id === 'string')
-  const migrated = ids.length > 8
+  if (hasOwn(raw, 'repeatCount')) {
+    const n = nonNegativeInt(raw.repeatCount)
+    if (n === undefined) return null
+  }
   return {
-    id: raw.id,
-    title: raw.title,
-    techniqueIds: ids.slice(0, 8),
-    createdAt: typeof raw.createdAt === 'number' ? raw.createdAt : Date.now(),
-    updatedAt: typeof raw.updatedAt === 'number' ? raw.updatedAt : Date.now(),
-    favorite: Boolean(raw.favorite),
+    id,
+    title,
+    techniqueIds: ids.slice(0, MAX_COMBO_LENGTH),
+    createdAt,
+    updatedAt,
+    favorite: booleanOr(raw.favorite, false),
     repeatCount:
       typeof raw.repeatCount === 'number' && Number.isFinite(raw.repeatCount)
         ? Math.min(20, Math.max(1, Math.round(raw.repeatCount)))
         : 1,
-    martialArt: raw.martialArt === 'boxing' ? 'boxing' : 'muay-thai',
-    migrated: migrated || Boolean(raw.migrated),
+    martialArt: oneOf(raw.martialArt, MARTIAL_ARTS) ?? 'muay-thai',
+    migrated: migrated || booleanOr(raw.migrated, false),
   }
 }
 
@@ -345,6 +488,7 @@ export function removeLegacyHistory(): StorageWriteResult {
   }
 }
 
+/** LOAD salvage: skip malformed map entries; migrate a legacy single record in place. */
 export function loadDailyDrillMap(): DailyDrillMap {
   const raw = readJSON(KEYS.daily)
   const map = migrateDailyDrillMap(raw)
