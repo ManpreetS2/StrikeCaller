@@ -839,4 +839,3 @@ describe('history initialization races and fallback', () => {
     expect(loadLegacyHistory().map((h) => h.id)).toEqual(['A', 'B'])
   })
 })
-

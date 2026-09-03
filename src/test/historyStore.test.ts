@@ -596,4 +596,3 @@ describe('getSessionById', () => {
     expect(await getSessionById('demo-1')).toEqual({ status: 'not-found' })
   })
 })
-
