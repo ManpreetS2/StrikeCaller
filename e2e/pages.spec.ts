@@ -30,10 +30,24 @@ test.describe('GitHub Pages base path', () => {
     const home = await page.request.get(new URL('.', test.info().project.use.baseURL ?? '').href)
     expect(home.status(), 'Pages index should be HTTP 200').toBe(200)
 
-    const manifest = await page.request.get(
-      new URL('manifest.webmanifest', test.info().project.use.baseURL ?? '').href,
-    )
+    const pagesBase = test.info().project.use.baseURL ?? ''
+    const manifest = await page.request.get(new URL('manifest.webmanifest', pagesBase).href)
     expect(manifest.status(), 'manifest.webmanifest should be HTTP 200').toBe(200)
+    expect(manifest.headers()['content-type'] ?? '').toMatch(/json|manifest|webmanifest/i)
+
+    const manifestBody = (await manifest.json()) as {
+      icons?: { src: string; type?: string }[]
+    }
+    expect(Array.isArray(manifestBody.icons) && manifestBody.icons.length > 0).toBe(true)
+
+    const iconUrls = (manifestBody.icons ?? []).map((icon) => new URL(icon.src, manifest.url()).href)
+    iconUrls.push(new URL('apple-touch-icon.png', pagesBase).href)
+
+    for (const iconUrl of iconUrls) {
+      const iconResponse = await page.request.get(iconUrl)
+      expect(iconResponse.status(), `${iconUrl} should be HTTP 200`).toBe(200)
+      expect(iconResponse.headers()['content-type'] ?? '', `${iconUrl} content-type`).toMatch(/image\/(png|svg\+xml)/i)
+    }
 
     await openApp(page)
     await expect(page).toHaveURL(/\/StrikeCaller\/(?:index\.html)?#\//)

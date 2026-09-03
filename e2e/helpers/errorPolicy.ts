@@ -17,7 +17,7 @@ const GOOGLE_FONT_IN_TEXT = /fonts\.googleapis\.com|fonts\.gstatic\.com/i
 const EXHAUSTION_TOKEN = /net::ERR_NO_BUFFER_SPACE|net::ERR_INSUFFICIENT_RESOURCES/i
 const FAILED_RESOURCE_PREFIX = /^Failed to load resource:\s*net::ERR_/i
 const APP_ASSET_IN_TEXT = /\/StrikeCaller\/|\/assets\/index-|manifest\.webmanifest/i
-const REQUIRED_PATH = /\.(js|mjs|css|webmanifest|html|svg|ico)(\?|$)/i
+const REQUIRED_PATH = /\.(js|mjs|css|webmanifest|html|svg|ico|png)(\?|$)/i
 const ABORTED = /ERR_ABORTED|NS_BINDING_ABORTED|NS_BINDING_CANCELLED/i
 
 export function extractUrls(text: string): string[] {

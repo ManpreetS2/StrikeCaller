@@ -59,6 +59,13 @@ describe('E2E console / request failure policy', () => {
       shouldFailAppRequest({ url: manifest, resourceType: 'manifest', status: 404 }),
     ).toBe(true)
     expect(
+      shouldFailAppRequest({
+        url: 'http://127.0.0.1:4174/StrikeCaller/icon-192.png',
+        resourceType: 'image',
+        status: 404,
+      }),
+    ).toBe(true)
+    expect(
       isIgnorableConsoleError({
         text: `Failed to load resource: net::ERR_INSUFFICIENT_RESOURCES`,
         urls: [css],

@@ -13,6 +13,7 @@ import { readFileSync, existsSync } from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
 import { resolvePagesBase } from './pages-base.mjs'
+import { readPngDimensions } from './pngDimensions.mjs'
 
 const EXPECTED_TITLE_FRAGMENT = 'StrikeCaller v1.2.2'
 
@@ -116,12 +117,122 @@ for (const ref of [...jsRefs, ...cssRefs]) {
 const requiredFiles = [
   'index.html',
   'favicon.svg',
+  'favicon-32.png',
   'manifest.webmanifest',
-  'apple-touch-icon.svg',
+  'apple-touch-icon.png',
+  'icon-192.png',
+  'icon-512.png',
+  'icon-maskable-512.png',
 ]
 for (const file of requiredFiles) {
   if (!existsSync(path.join(distDir, file))) {
     fail(`required file missing from dist: ${file}`)
+  }
+}
+
+if (!html.includes('apple-touch-icon.png')) {
+  fail('index.html does not reference apple-touch-icon.png')
+}
+if (html.includes('apple-touch-icon.svg')) {
+  fail('index.html still references the SVG apple-touch-icon (use PNG)')
+}
+
+const manifestPath = path.join(distDir, 'manifest.webmanifest')
+if (existsSync(manifestPath)) {
+  let manifest
+  try {
+    manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
+  } catch (error) {
+    fail(`manifest.webmanifest is not valid JSON: ${error instanceof Error ? error.message : String(error)}`)
+    manifest = null
+  }
+
+  if (manifest && typeof manifest === 'object') {
+    for (const field of ['name', 'short_name', 'start_url', 'scope', 'display', 'background_color', 'theme_color', 'icons']) {
+      if (manifest[field] == null || manifest[field] === '') {
+        fail(`manifest is missing required field: ${field}`)
+      }
+    }
+
+    if (typeof manifest.start_url === 'string' && manifest.start_url.startsWith('/')) {
+      fail(`manifest start_url "${manifest.start_url}" is root-absolute (must stay relative for Pages)`)
+    }
+    if (typeof manifest.scope === 'string' && manifest.scope.startsWith('/')) {
+      fail(`manifest scope "${manifest.scope}" is root-absolute (must stay relative for Pages)`)
+    }
+
+    const icons = Array.isArray(manifest.icons) ? manifest.icons : []
+    if (icons.length === 0) {
+      fail('manifest has no icons')
+    }
+
+    const pngIcons = []
+    for (const icon of icons) {
+      if (!icon || typeof icon.src !== 'string') {
+        fail('manifest icon is missing src')
+        continue
+      }
+      if (icon.src.startsWith('/') || /^https?:/i.test(icon.src)) {
+        fail(`manifest icon src "${icon.src}" must be a relative path`)
+      }
+      if (/\.svg(\?|$)/i.test(icon.src)) {
+        fail(`manifest still lists an SVG icon (${icon.src}); install icons must be PNG`)
+      }
+
+      const iconFile = path.join(distDir, icon.src.replace(/^\.\//, ''))
+      if (!existsSync(iconFile)) {
+        fail(`manifest icon does not exist in dist: ${icon.src}`)
+        continue
+      }
+
+      if (icon.type === 'image/png' || /\.png(\?|$)/i.test(icon.src)) {
+        try {
+          const { width, height } = readPngDimensions(iconFile)
+          pngIcons.push({ ...icon, width, height, file: iconFile })
+          if (typeof icon.sizes === 'string' && /^\d+x\d+$/.test(icon.sizes)) {
+            const [declaredW, declaredH] = icon.sizes.split('x').map(Number)
+            if (width !== declaredW || height !== declaredH) {
+              fail(
+                `manifest icon ${icon.src} declares ${icon.sizes} but PNG is ${width}×${height}`,
+              )
+            }
+          }
+        } catch (error) {
+          fail(`could not read PNG dimensions for ${icon.src}: ${error instanceof Error ? error.message : String(error)}`)
+        }
+      }
+    }
+
+    const has192 = pngIcons.some((icon) => icon.sizes === '192x192' && icon.width === 192 && icon.height === 192)
+    const has512 = pngIcons.some(
+      (icon) =>
+        icon.sizes === '512x512' &&
+        icon.width === 512 &&
+        icon.height === 512 &&
+        String(icon.purpose ?? 'any').split(/\s+/).includes('any'),
+    )
+    const hasMaskable = pngIcons.some(
+      (icon) =>
+        icon.sizes === '512x512' &&
+        icon.width === 512 &&
+        icon.height === 512 &&
+        String(icon.purpose ?? '').split(/\s+/).includes('maskable'),
+    )
+    if (!has192) fail('manifest is missing a 192×192 PNG icon')
+    if (!has512) fail('manifest is missing a 512×512 PNG icon with purpose "any"')
+    if (!hasMaskable) fail('manifest is missing a 512×512 maskable PNG icon')
+  }
+}
+
+const appleTouchPath = path.join(distDir, 'apple-touch-icon.png')
+if (existsSync(appleTouchPath)) {
+  try {
+    const { width, height } = readPngDimensions(appleTouchPath)
+    if (width !== 180 || height !== 180) {
+      fail(`apple-touch-icon.png is ${width}×${height}, expected 180×180`)
+    }
+  } catch (error) {
+    fail(`could not read apple-touch-icon.png: ${error instanceof Error ? error.message : String(error)}`)
   }
 }
 
@@ -138,4 +249,5 @@ console.log(`  - index.html present and non-empty`)
 console.log(`  - title contains "${EXPECTED_TITLE_FRAGMENT}"`)
 console.log(`  - ${jsRefs.length} JS and ${cssRefs.length} CSS bundle(s) prefixed with ${expectedBase}`)
 console.log(`  - all local asset references exist in dist`)
-console.log(`  - favicon, manifest, and apple-touch-icon present`)
+console.log(`  - favicon, manifest, PNG install icons, and apple-touch-icon present`)
+console.log(`  - manifest JSON parsed; 192/512/maskable PNG dimensions match`)
