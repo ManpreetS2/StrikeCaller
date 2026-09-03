@@ -13,7 +13,7 @@ import { ComboDisplay } from '../components/ComboDisplay'
 import { InteractiveCard } from '../components/InteractiveCard'
 import { SportVisual, ModeVisual, HeroVisual, MetricVisual } from '../components/visual'
 import { useCountUp } from '../hooks/useCountUp'
-import { DEFAULT_PREFERENCES, DEFAULT_SPEECH, createDefaultWorkout, APP_VERSION } from '../data/defaults'
+import { DEFAULT_PREFERENCES, DEFAULT_SPEECH, createDefaultWorkout } from '../data/defaults'
 import type { Combo } from '../types'
 
 function seedCompletedOnboarding() {
@@ -115,10 +115,6 @@ describe('v1.2.0 visual polish', () => {
   beforeEach(() => {
     localStorage.clear()
     matchReducedMotion(false)
-  })
-
-  it('reports APP_VERSION in the 1.2 line', () => {
-    expect(APP_VERSION.startsWith('1.2')).toBe(true)
   })
 
   it('InteractiveCard exposes pressed semantics when selected', async () => {

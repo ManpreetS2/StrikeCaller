@@ -48,7 +48,7 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   wakeLockNoticeDismissed: false,
 }
 
-export const APP_VERSION = '1.2.2'
+export const APP_VERSION = '1.3.0'
 
 /** Keep only own properties whose values are not undefined. */
 export function definedPartial<T extends object>(partial?: Partial<T>): Partial<T> {

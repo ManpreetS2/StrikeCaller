@@ -3,7 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import { AppProvider } from '../context/AppContext'
 import { appRoutes } from '../routes'
-import { DEFAULT_PREFERENCES, DEFAULT_SPEECH, createDefaultWorkout, APP_VERSION } from '../data/defaults'
+import { DEFAULT_PREFERENCES, DEFAULT_SPEECH, createDefaultWorkout } from '../data/defaults'
 import { resolvePagesBase } from '../../scripts/pages-base.mjs'
 import indexHtml from '../../index.html?raw'
 import manifestRaw from '../../public/manifest.webmanifest?raw'
@@ -33,10 +33,6 @@ function seedCompletedOnboarding() {
 describe('v1.2.2 GitHub Pages availability hotfix', () => {
   beforeEach(() => {
     localStorage.clear()
-  })
-
-  it('reports APP_VERSION 1.2.2', () => {
-    expect(APP_VERSION).toBe('1.2.2')
   })
 
   it('index.html uses a production document title without the hotfix version string', () => {
