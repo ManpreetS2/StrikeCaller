@@ -2,9 +2,13 @@ import type { CustomCombo, DailyDrillMap, SessionSummary, UserPreferences } from
 import { migrateDailyDrillMap, normalizeDailyDrillState } from '../utils/dailyDrill'
 import { MAX_COMBO_LENGTH } from '../engines/comboValidator'
 import {
+  abandonHistoryInitialization,
+  clearSessionsStore,
   ensureHistoryInitialized,
+  invalidateHistoryWrites,
   loadHistory,
   replaceHistory,
+  waitForInFlightHistoryWrites,
 } from './historyStore'
 import {
   EXPORT_VERSION,
@@ -19,6 +23,7 @@ import {
   migrateCustomCombo,
   normalizeFavoriteIds,
   parseImportedPreferences,
+  removeAllUserDataKeys,
   removeLegacyHistory,
   restoreRaw,
   saveCustomCombos,
@@ -30,6 +35,21 @@ import {
 } from './localStore'
 import { isPlainObject, hasOwn, nonNegativeInt } from './parseUnknown'
 import { isPersistableSession, validateSessionSummary } from './sessionValidation'
+import { DELETE_ALL_PARTIAL_MESSAGE } from './storageTypes'
+
+export type DeleteAllUserDataFailureClass = 'localStorage' | 'indexedDB'
+
+export type DeleteAllUserDataResult =
+  | { ok: true }
+  | {
+      ok: false
+      message: string
+      localStorage: StorageWriteResult
+      indexedDB: StorageWriteResult
+      failed: DeleteAllUserDataFailureClass[]
+    }
+
+let inFlightDelete: Promise<DeleteAllUserDataResult> | null = null
 
 export type ImportUserDataResult =
   | { ok: true; message: string }
@@ -240,4 +260,41 @@ export async function importUserData(json: string): Promise<ImportUserDataResult
   } catch {
     return { ok: false, message: 'Could not parse JSON.' }
   }
+}
+
+async function performDeleteAllUserData(): Promise<DeleteAllUserDataResult> {
+  invalidateHistoryWrites()
+  await waitForInFlightHistoryWrites()
+
+  const indexedDB = await clearSessionsStore()
+  const localStorageResult = removeAllUserDataKeys()
+  abandonHistoryInitialization()
+
+  const failed: DeleteAllUserDataFailureClass[] = []
+  if (!localStorageResult.ok) failed.push('localStorage')
+  if (!indexedDB.ok) failed.push('indexedDB')
+
+  if (failed.length === 0) return { ok: true }
+
+  return {
+    ok: false,
+    message: DELETE_ALL_PARTIAL_MESSAGE,
+    localStorage: localStorageResult.ok ? { ok: true } : localStorageResult.result,
+    indexedDB,
+    failed,
+  }
+}
+
+/**
+ * Delete every StrikeCaller-owned user-data record on this device.
+ *
+ * Not atomic across localStorage and IndexedDB. Partial success is reported
+ * truthfully; already-removed data is not restored.
+ */
+export function deleteAllUserData(): Promise<DeleteAllUserDataResult> {
+  if (inFlightDelete) return inFlightDelete
+  inFlightDelete = performDeleteAllUserData().finally(() => {
+    inFlightDelete = null
+  })
+  return inFlightDelete
 }

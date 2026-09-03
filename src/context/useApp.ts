@@ -1,6 +1,6 @@
 import { createContext, useContext } from 'react'
 import type { StorageWriteResult } from '../storage/localStore'
-import type { ImportUserDataResult } from '../storage/userData'
+import type { DeleteAllUserDataResult, ImportUserDataResult } from '../storage/userData'
 import type {
   CustomCombo,
   DailyDrillMap,
@@ -18,6 +18,7 @@ export type StorageIssueSource =
   | 'daily-drill'
   | 'import'
   | 'migration'
+  | 'delete'
 
 export type StorageIssue = {
   id: number
@@ -53,6 +54,7 @@ export interface AppContextValue {
   getDailyDrill: (dateKey: string) => DailyDrillState | null
   exportData: () => Promise<string>
   importData: (json: string) => Promise<ImportUserDataResult>
+  deleteAllUserData: () => Promise<DeleteAllUserDataResult>
   storageIssue: StorageIssue | null
   storageWarningVisible: boolean
   dismissStorageIssue: () => void

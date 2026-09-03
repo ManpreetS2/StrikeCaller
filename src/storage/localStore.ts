@@ -73,6 +73,16 @@ export const STORAGE_KEYS = {
 
 const KEYS = STORAGE_KEYS
 
+/** Every StrikeCaller-owned localStorage key. Never pass this list to localStorage.clear(). */
+export const USER_DATA_STORAGE_KEYS = [
+  KEYS.preferences,
+  KEYS.favorites,
+  KEYS.customCombos,
+  KEYS.history,
+  KEYS.daily,
+  KEYS.musicCompatibility,
+] as const
+
 const MUSIC_RESULTS: MusicCompatibilityResult[] = [
   'music-lowered',
   'music-continued',
@@ -478,14 +488,37 @@ export function loadLegacyHistory(): SessionSummary[] {
     .filter(isPersistableSession)
 }
 
-export function removeLegacyHistory(): StorageWriteResult {
+export function removeUserDataKey(key: string): StorageWriteResult {
   if (typeof window === 'undefined') return fail('unavailable')
   try {
-    window.localStorage.removeItem(KEYS.history)
+    window.localStorage.removeItem(key)
     return { ok: true }
   } catch (error) {
     return classifyStorageError(error)
   }
+}
+
+export function removeLegacyHistory(): StorageWriteResult {
+  return removeUserDataKey(KEYS.history)
+}
+
+export type RemoveUserDataKeysResult =
+  | { ok: true }
+  | { ok: false; failedKeys: string[]; result: Extract<StorageWriteResult, { ok: false }> }
+
+/** Remove known StrikeCaller keys only. Never calls localStorage.clear(). */
+export function removeAllUserDataKeys(): RemoveUserDataKeysResult {
+  const failedKeys: string[] = []
+  let firstFailure: Extract<StorageWriteResult, { ok: false }> | null = null
+  for (const key of USER_DATA_STORAGE_KEYS) {
+    const result = removeUserDataKey(key)
+    if (!result.ok) {
+      failedKeys.push(key)
+      if (!firstFailure) firstFailure = result
+    }
+  }
+  if (firstFailure) return { ok: false, failedKeys, result: firstFailure }
+  return { ok: true }
 }
 
 /** LOAD salvage: skip malformed map entries; migrate a legacy single record in place. */

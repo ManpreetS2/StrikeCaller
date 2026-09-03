@@ -18,6 +18,11 @@ export const STORAGE_WRITE_MESSAGES: Record<StorageWriteReason, string> = {
 export const HISTORY_QUOTA_MESSAGE =
   'StrikeCaller storage is full. Your latest workout may not be saved. Export your data or clear older history before closing the app.'
 
+export const DELETE_ALL_PARTIAL_MESSAGE =
+  'Some StrikeCaller data could not be deleted. Data already removed cannot be restored.'
+
+export const DELETE_ALL_SUCCESS_MESSAGE = 'All StrikeCaller data on this device was deleted.'
+
 export function storageFail(reason: StorageWriteReason): Extract<StorageWriteResult, { ok: false }> {
   return { ok: false, reason, message: STORAGE_WRITE_MESSAGES[reason] }
 }

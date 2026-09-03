@@ -194,3 +194,15 @@ export async function readThemePreference(page: Page): Promise<string | null> {
     }
   })
 }
+
+export async function readLocalStorageItem(page: Page, key: string): Promise<string | null> {
+  return page.evaluate((storageKey) => window.localStorage.getItem(storageKey), key)
+}
+
+export async function readStrikeCallerKeys(page: Page): Promise<string[]> {
+  return page.evaluate(() =>
+    Object.keys(window.localStorage)
+      .filter((key) => key.startsWith('strikecaller:'))
+      .sort(),
+  )
+}

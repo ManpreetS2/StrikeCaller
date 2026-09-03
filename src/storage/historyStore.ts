@@ -16,10 +16,54 @@ import {
 } from './storageTypes'
 
 let initPromise: Promise<{ history: SessionSummary[]; write: StorageWriteResult }> | null = null
+let historyWriteGeneration = 0
+const inFlightWrites = new Set<Promise<unknown>>()
+
+function trackInFlight<T>(promise: Promise<T>): Promise<T> {
+  inFlightWrites.add(promise)
+  void promise.finally(() => {
+    inFlightWrites.delete(promise)
+  })
+  return promise
+}
+
+function isCurrentGeneration(generation: number): boolean {
+  return historyWriteGeneration === generation
+}
 
 export function resetHistoryDbConnection(): void {
   initPromise = null
+  historyWriteGeneration = 0
+  inFlightWrites.clear()
   resetIdbConnection()
+}
+
+/** Invalidate queued/in-flight history writes so they cannot commit after Delete All Data. */
+export function invalidateHistoryWrites(): number {
+  historyWriteGeneration += 1
+  return historyWriteGeneration
+}
+
+export async function waitForInFlightHistoryWrites(): Promise<void> {
+  while (inFlightWrites.size > 0) {
+    await Promise.allSettled([...inFlightWrites])
+  }
+}
+
+export function abandonHistoryInitialization(): void {
+  initPromise = null
+}
+
+export async function clearSessionsStore(): Promise<StorageWriteResult> {
+  if (!isIndexedDbAvailable()) return indexedDbUnavailableResult()
+  try {
+    await transactSessions('readwrite', (store) => {
+      store.clear()
+    })
+    return { ok: true }
+  } catch (error) {
+    return classifyIdbError(error)
+  }
 }
 
 export function sortHistory(history: SessionSummary[]): SessionSummary[] {
@@ -102,29 +146,45 @@ export async function loadHistory(): Promise<SessionSummary[]> {
 export async function saveSession(summary: SessionSummary): Promise<StorageWriteResult> {
   const next = persistable(summary)
   if (!next) return { ok: true }
+  const generation = historyWriteGeneration
+  if (!isCurrentGeneration(generation)) return { ok: true }
   if (!isIndexedDbAvailable()) return indexedDbUnavailableResult()
-  try {
-    await transactSessions('readwrite', (store) => {
-      store.put(next)
-    })
-    return { ok: true }
-  } catch (error) {
-    return classifyIdbError(error)
-  }
+  return trackInFlight(
+    (async () => {
+      if (!isCurrentGeneration(generation)) return { ok: true }
+      try {
+        await transactSessions('readwrite', (store) => {
+          if (!isCurrentGeneration(generation)) return
+          store.put(next)
+        })
+        return { ok: true }
+      } catch (error) {
+        return classifyIdbError(error)
+      }
+    })(),
+  )
 }
 
 export async function replaceHistory(history: SessionSummary[]): Promise<StorageWriteResult> {
   const sessions = history.map(persistable).filter((item): item is SessionSummary => item != null)
+  const generation = historyWriteGeneration
+  if (!isCurrentGeneration(generation)) return { ok: true }
   if (!isIndexedDbAvailable()) return indexedDbUnavailableResult()
-  try {
-    await transactSessions('readwrite', (store) => {
-      store.clear()
-      for (const session of sessions) store.put(session)
-    })
-    return { ok: true }
-  } catch (error) {
-    return classifyIdbError(error)
-  }
+  return trackInFlight(
+    (async () => {
+      if (!isCurrentGeneration(generation)) return { ok: true }
+      try {
+        await transactSessions('readwrite', (store) => {
+          if (!isCurrentGeneration(generation)) return
+          store.clear()
+          for (const session of sessions) store.put(session)
+        })
+        return { ok: true }
+      } catch (error) {
+        return classifyIdbError(error)
+      }
+    })(),
+  )
 }
 
 /**
@@ -216,7 +276,12 @@ async function loadHistoryFromDbOnly(): Promise<
  * every legacy session id is present in IndexedDB.
  */
 export async function initHistory(): Promise<{ history: SessionSummary[]; write: StorageWriteResult }> {
+  const generation = historyWriteGeneration
   const legacy = loadLegacyHistory()
+
+  if (!isCurrentGeneration(generation)) {
+    return { history: [], write: { ok: true } }
+  }
 
   if (!isIndexedDbAvailable()) {
     return {
@@ -244,6 +309,9 @@ export async function initHistory(): Promise<{ history: SessionSummary[]; write:
   const toInsert = legacy.filter((session) => !existingIds.has(session.id))
 
   if (toInsert.length > 0) {
+    if (!isCurrentGeneration(generation)) {
+      return { history: [], write: { ok: true } }
+    }
     const putResult = await replaceOrPut(toInsert)
     if (!putResult.ok) {
       return {
@@ -264,21 +332,36 @@ export async function initHistory(): Promise<{ history: SessionSummary[]; write:
 
 export function ensureHistoryInitialized(): Promise<{ history: SessionSummary[]; write: StorageWriteResult }> {
   if (!initPromise) {
-    initPromise = initHistory().then((result) => {
-      if (!result.write.ok) initPromise = null
-      return result
-    })
+    const generation = historyWriteGeneration
+    initPromise = trackInFlight(
+      initHistory().then((result) => {
+        if (!isCurrentGeneration(generation)) {
+          initPromise = null
+        } else if (!result.write.ok) {
+          initPromise = null
+        }
+        return result
+      }),
+    )
   }
   return initPromise
 }
 
 async function replaceOrPut(sessions: SessionSummary[]): Promise<StorageWriteResult> {
-  try {
-    await transactSessions('readwrite', (store) => {
-      for (const session of sessions) store.put(session)
-    })
-    return { ok: true }
-  } catch (error) {
-    return classifyIdbError(error)
-  }
+  const generation = historyWriteGeneration
+  if (!isCurrentGeneration(generation)) return { ok: true }
+  return trackInFlight(
+    (async () => {
+      if (!isCurrentGeneration(generation)) return { ok: true }
+      try {
+        await transactSessions('readwrite', (store) => {
+          if (!isCurrentGeneration(generation)) return
+          for (const session of sessions) store.put(session)
+        })
+        return { ok: true }
+      } catch (error) {
+        return classifyIdbError(error)
+      }
+    })(),
+  )
 }

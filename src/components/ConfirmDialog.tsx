@@ -7,6 +7,8 @@ interface ConfirmDialogProps {
   confirmLabel: string
   cancelLabel?: string
   danger?: boolean
+  confirmDisabled?: boolean
+  cancelDisabled?: boolean
   onConfirm: () => void
   onCancel: () => void
   initialFocus?: 'confirm' | 'cancel'
@@ -18,6 +20,8 @@ export function ConfirmDialog({
   confirmLabel,
   cancelLabel = 'Cancel',
   danger = false,
+  confirmDisabled = false,
+  cancelDisabled = false,
   onConfirm,
   onCancel,
   initialFocus,
@@ -76,6 +80,7 @@ export function ConfirmDialog({
       role="dialog"
       aria-modal="true"
       aria-labelledby={titleId}
+      aria-busy={confirmDisabled || cancelDisabled || undefined}
     >
       <div ref={panelRef} className="panel dialog-scroll max-w-md space-y-4 p-5">
         <h2 id={titleId} className="text-xl font-semibold">
@@ -87,11 +92,12 @@ export function ConfirmDialog({
             ref={confirmRef}
             type="button"
             className={danger ? 'btn btn-danger' : 'btn btn-primary'}
+            disabled={confirmDisabled}
             onClick={onConfirm}
           >
             {confirmLabel}
           </button>
-          <button ref={cancelRef} type="button" className="btn" onClick={onCancel}>
+          <button ref={cancelRef} type="button" className="btn" disabled={cancelDisabled} onClick={onCancel}>
             {cancelLabel}
           </button>
         </div>

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useApp, type StorageIssue } from '../context/useApp'
 import { SafetyNotice } from '../components/SafetyNotice'
 import { ConfirmDialog } from '../components/ConfirmDialog'
@@ -6,6 +6,7 @@ import { createSpeechEngine } from '../engines/speechEngine'
 import { isAudioSessionSupported, prepareCoachingAudioSession } from '../engines/audioSession'
 import { DEFAULT_TIMING_MULTIPLIERS } from '../engines/timingEngine'
 import { MAX_IMPORT_BYTES, storageAvailable } from '../storage/localStore'
+import { DELETE_ALL_PARTIAL_MESSAGE, DELETE_ALL_SUCCESS_MESSAGE } from '../storage/storageTypes'
 import type { CallStyle, MartialArt, MusicCompatibilityResult, SideTerminology, Stance } from '../types'
 
 const COMPAT_OPTIONS: { id: MusicCompatibilityResult; label: string }[] = [
@@ -24,6 +25,7 @@ export function SettingsPage() {
     clearHistory,
     exportData,
     importData,
+    deleteAllUserData,
     history,
     historyReady,
     storageIssue,
@@ -31,6 +33,12 @@ export function SettingsPage() {
   const [importMessage, setImportMessage] = useState('')
   const [confirmClear, setConfirmClear] = useState(false)
   const [confirmReset, setConfirmReset] = useState(false)
+  const [confirmDeleteAll, setConfirmDeleteAll] = useState(false)
+  const [deleteAllPending, setDeleteAllPending] = useState(false)
+  const [deleteAllMessage, setDeleteAllMessage] = useState<{ tone: 'success' | 'error'; text: string } | null>(
+    null,
+  )
+  const deleteAllPendingRef = useRef(false)
 
   return (
     <div className="space-y-6">
@@ -342,6 +350,32 @@ export function SettingsPage() {
         )}
       </section>
 
+      <section className="panel space-y-3 p-5" aria-label="Delete all local data">
+        <h2 className="text-xl font-semibold">Delete all local data</h2>
+        <p className="text-sm text-[var(--text-muted)]">
+          Permanently removes workout history, preferences, favorites, custom combos, and daily drills stored on
+          this device. This cannot be undone.
+        </p>
+        <button
+          type="button"
+          className="btn btn-danger"
+          onClick={() => {
+            setDeleteAllMessage(null)
+            setConfirmDeleteAll(true)
+          }}
+        >
+          Delete all data
+        </button>
+        {deleteAllMessage && (
+          <p
+            className="text-sm"
+            role={deleteAllMessage.tone === 'error' ? 'alert' : 'status'}
+          >
+            {deleteAllMessage.text}
+          </p>
+        )}
+      </section>
+
       {confirmClear && (
         <ConfirmDialog
           title="Clear workout history?"
@@ -374,6 +408,38 @@ export function SettingsPage() {
         </ConfirmDialog>
       )}
 
+      {confirmDeleteAll && (
+        <ConfirmDialog
+          title="Delete all local data?"
+          confirmLabel="Delete permanently"
+          danger
+          confirmDisabled={deleteAllPending}
+          cancelDisabled={deleteAllPending}
+          onConfirm={() => {
+            if (deleteAllPendingRef.current) return
+            deleteAllPendingRef.current = true
+            setDeleteAllPending(true)
+            void (async () => {
+              const result = await deleteAllUserData()
+              deleteAllPendingRef.current = false
+              setDeleteAllPending(false)
+              setConfirmDeleteAll(false)
+              if (result.ok) {
+                setDeleteAllMessage({ tone: 'success', text: DELETE_ALL_SUCCESS_MESSAGE })
+              } else {
+                setDeleteAllMessage({ tone: 'error', text: DELETE_ALL_PARTIAL_MESSAGE })
+              }
+            })()
+          }}
+          onCancel={() => {
+            if (deleteAllPendingRef.current) return
+            setConfirmDeleteAll(false)
+          }}
+        >
+          This permanently deletes all StrikeCaller data stored on this device. This cannot be undone.
+        </ConfirmDialog>
+      )}
+
       <SafetyNotice />
     </div>
   )
@@ -392,7 +458,8 @@ function StorageStatus({ issue }: { issue: StorageIssue | null }) {
   const available = storageAvailable()
   let status = 'Storage: Available'
   if (issue) {
-    if (issue.reason === 'quota-exceeded') status = 'Storage issue: Browser storage is full.'
+    if (issue.source === 'delete') status = 'Storage issue: Some StrikeCaller data could not be deleted.'
+    else if (issue.reason === 'quota-exceeded') status = 'Storage issue: Browser storage is full.'
     else if (issue.reason === 'unavailable') status = 'Storage issue: Browser storage is unavailable.'
     else status = 'Storage issue: StrikeCaller could not save your latest data.'
   } else if (!available) {
