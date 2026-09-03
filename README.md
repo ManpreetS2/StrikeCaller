@@ -105,6 +105,7 @@ npm run dev
 Other scripts:
 
 ```bash
+npm run lint
 npm run typecheck
 npm test
 npm run build
@@ -114,10 +115,11 @@ npm run verify:release
 npm run preview
 ```
 
+- `npm run lint` — Oxlint with `--deny-warnings` across source, tests, E2E, and committed tooling
 - `npm run build` — production build with base `/` for local or root hosting
 - `npm run build:pages` — production build for GitHub Pages; the base path is derived from GitHub's canonical Pages URL via `PAGES_BASE_URL` (falling back to `/StrikeCaller/` locally)
 - `npm run verify:pages` — validate the generated `dist/` artifact (correct base, existing local assets, expected title) before deploy
-- `npm run verify:release` — typecheck, tests, Pages build, and Pages artifact verification (the local equivalent of the production gates)
+- `npm run verify:release` — lint, typecheck, tests, Pages build, and Pages artifact verification (the local equivalent of the production gates)
 
 Requirements: Node.js 20+ (22 LTS recommended) and a modern browser.
 
@@ -127,7 +129,7 @@ The public site is published to GitHub Pages at the canonical URL **https://manp
 
 There is exactly one authoritative deployment path:
 
-- **CI** (`.github/workflows/ci.yml`) — typecheck, test, Pages build, and `verify:pages` on pull requests, pushes to `main`, and manual `workflow_dispatch`. Production artifact upload and deploy run only for `refs/heads/main` (never a PR, never a feature-branch dispatch). A `verify-live` job then fails unless the public URL and its JS/CSS assets return HTTP 200.
+- **CI** (`.github/workflows/ci.yml`) — lint, typecheck, test, Pages build, and `verify:pages` on pull requests, pushes to `main`, and manual `workflow_dispatch`. Production artifact upload and deploy run only for `refs/heads/main` (never a PR, never a feature-branch dispatch). A `verify-live` job then fails unless the public URL and its JS/CSS assets return HTTP 200.
 - **Pages Diagnostics** (`.github/workflows/pages-diagnostics.yml`) — a manual (`workflow_dispatch`), read-only workflow that inspects the live Pages configuration and asset availability without rebuilding.
 
 Pages source must be **Settings → Pages → Build and deployment → Source → GitHub Actions**. Do not publish from a `gh-pages` branch; that would create a second, competing publication system.

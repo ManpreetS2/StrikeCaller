@@ -1,14 +1,4 @@
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-} from 'react'
-import { DEFAULT_PREFERENCES } from '../data/defaults'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   loadPreferences,
   savePreferences,
@@ -31,71 +21,23 @@ import {
   saveSession,
   sortHistory,
 } from '../storage/historyStore'
-import { exportUserData, importUserData, type ImportUserDataResult } from '../storage/userData'
-import type {
-  CustomCombo,
-  DailyDrillMap,
-  DailyDrillState,
-  SessionSummary,
-  ThemePreference,
-  UserPreferences,
-} from '../types'
+import { exportUserData, importUserData } from '../storage/userData'
+import type { CustomCombo, DailyDrillMap, SessionSummary, ThemePreference, UserPreferences } from '../types'
 import { normalizeDailyDrillState } from '../utils/dailyDrill'
+import {
+  AppReactContext,
+  type AddHistoryResult,
+  type AppContextValue,
+  type StorageIssue,
+  type StorageIssueSource,
+} from './useApp'
 
-export type StorageIssueSource =
-  | 'preferences'
-  | 'favorites'
-  | 'custom-combos'
-  | 'history'
-  | 'daily-drill'
-  | 'import'
-  | 'migration'
-
-export type StorageIssue = {
-  id: number
-  reason: Exclude<StorageWriteResult, { ok: true }>['reason']
-  message: string
-  source: StorageIssueSource
-}
-
-export type AddHistoryResult =
-  | { status: 'persisted' }
-  | { status: 'skipped' }
-  | { status: 'failed'; write: Extract<StorageWriteResult, { ok: false }> }
-
-interface AppContextValue {
-  preferences: UserPreferences
-  setPreferences: (next: UserPreferences | ((p: UserPreferences) => UserPreferences)) => void
-  updatePreferences: (partial: Partial<UserPreferences>) => void
-  resolvedTheme: 'dark' | 'light'
-  setTheme: (theme: ThemePreference) => void
-  favorites: string[]
-  toggleFavorite: (comboId: string) => void
-  customCombos: CustomCombo[]
-  upsertCustomCombo: (combo: CustomCombo) => void
-  removeCustomCombo: (id: string) => void
-  history: SessionSummary[]
-  historyReady: boolean
-  addHistory: (summary: SessionSummary) => Promise<AddHistoryResult>
-  clearHistory: () => Promise<void>
-  resetPreferences: () => void
-  dailyDrills: DailyDrillMap
-  /** Upsert one sport/date record into the daily drill map */
-  setDailyDrill: (state: DailyDrillState) => void
-  getDailyDrill: (dateKey: string) => DailyDrillState | null
-  exportData: () => Promise<string>
-  importData: (json: string) => Promise<ImportUserDataResult>
-  storageIssue: StorageIssue | null
-  storageWarningVisible: boolean
-  dismissStorageIssue: () => void
-}
+export type { AddHistoryResult, StorageIssue, StorageIssueSource }
 
 type PendingSave = {
   summary: SessionSummary
   resolve: (result: AddHistoryResult) => void
 }
-
-const AppContext = createContext<AppContextValue | null>(null)
 
 function resultFromWrite(write: StorageWriteResult): AddHistoryResult {
   if (write.ok) return { status: 'persisted' }
@@ -212,8 +154,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true
     }
-    // intentionally once after initial load
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Hydrate IndexedDB history once after mount. Re-running would duplicate
+    // pending-save drains and reset historyReady around an in-flight session.
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
@@ -366,13 +309,5 @@ export function AppProvider({ children }: { children: ReactNode }) {
     ],
   )
 
-  return <AppContext.Provider value={value}>{children}</AppContext.Provider>
+  return <AppReactContext.Provider value={value}>{children}</AppReactContext.Provider>
 }
-
-export function useApp(): AppContextValue {
-  const ctx = useContext(AppContext)
-  if (!ctx) throw new Error('useApp must be used within AppProvider')
-  return ctx
-}
-
-export { DEFAULT_PREFERENCES }

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { getTechnique } from '../data/techniques'
-import { useApp } from '../context/AppContext'
+import { useApp } from '../context/useApp'
 import { getSessionById } from '../storage/historyStore'
 import { parseSessionRouteId, validateSessionSummary } from '../storage/sessionValidation'
 import { buildTrainAgainPayload } from '../utils/trainAgain'

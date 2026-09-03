@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useApp, type StorageIssue } from '../context/AppContext'
+import { useApp, type StorageIssue } from '../context/useApp'
 import { SafetyNotice } from '../components/SafetyNotice'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { createSpeechEngine } from '../engines/speechEngine'

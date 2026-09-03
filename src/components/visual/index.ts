@@ -1,4 +1,4 @@
-export { DimensionalIcon, resolveIconSize } from './DimensionalIcon'
+export { DimensionalIcon } from './DimensionalIcon'
 export { SportVisual } from './SportVisual'
 export { ModeVisual } from './ModeVisual'
 export type { ModeVisualId } from './ModeVisual'

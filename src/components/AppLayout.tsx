@@ -1,6 +1,6 @@
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
 import { Moon, Sun, Monitor, Settings, Home, Dumbbell, Shield, BarChart3, AlertTriangle, X } from 'lucide-react'
-import { useApp } from '../context/AppContext'
+import { useApp } from '../context/useApp'
 import type { ThemePreference } from '../types'
 import { APP_VERSION } from '../data/defaults'
 

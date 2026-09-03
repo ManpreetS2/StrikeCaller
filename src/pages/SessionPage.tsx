@@ -3,12 +3,13 @@ import { useBlocker, useLocation, useNavigate } from 'react-router-dom'
 import { Maximize, Minimize } from 'lucide-react'
 import { SessionEngine, type SessionSnapshot } from '../engines/sessionEngine'
 import { createDefaultWorkout } from '../data/defaults'
-import { useApp } from '../context/AppContext'
+import { useApp } from '../context/useApp'
 import { ComboDisplay } from '../components/ComboDisplay'
 import { CompactComboPath } from '../components/CompactComboPath'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { SessionControlDock } from '../components/SessionControlDock'
-import { SessionTimer, resolveTimerState } from '../components/SessionTimer'
+import { SessionTimer } from '../components/SessionTimer'
+import { resolveTimerState } from '../components/sessionTimerState'
 import { primeTrainingAudio } from '../utils/primeAudio'
 import { localDateKey } from '../utils/localDate'
 import { dailyDrillKey } from '../utils/dailyDrill'
@@ -112,6 +113,7 @@ export function SessionPage() {
   const lastUiKey = useRef('')
   const lastCaptionRef = useRef<string | null>(null)
   const lastTimerAnnounce = useRef('')
+  const finalizeRef = useRef<(cancelled: boolean) => void>(() => {})
 
   const [preparing, setPreparing] = useState(true)
   const [audioUnavailable, setAudioUnavailable] = useState(false)
@@ -154,7 +156,7 @@ export function SessionPage() {
         setUi(rest)
       }
       if (next.phase === 'summary' && !endedRef.current) {
-        finalize(false)
+        finalizeRef.current(false)
       }
     })
 
@@ -183,23 +185,30 @@ export function SessionPage() {
       unsub()
       engine.dispose()
     }
-    // intentionally once on mount
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Create the engine once for this mount. Restarting would dispose audio,
+    // reset round progress, and double-start speech. Latest finalize is read
+    // from finalizeRef so session-complete still sees current addHistory.
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  const captionFlashKey = ui
+    ? `${ui.currentCombo?.id ?? ''}:${ui.currentStepIndex}:${ui.caption}`
+    : null
+  const wakeLockActive = ui?.wakeLockActive
+  const sessionPhase = ui?.phase
+
   useEffect(() => {
-    if (!ui) return
-    const key = `${ui.currentCombo?.id ?? ''}:${ui.currentStepIndex}:${ui.caption}`
+    if (captionFlashKey === null) return
     if (lastCaptionRef.current === null) {
-      lastCaptionRef.current = key
+      lastCaptionRef.current = captionFlashKey
       return
     }
-    if (lastCaptionRef.current === key) return
-    lastCaptionRef.current = key
+    if (lastCaptionRef.current === captionFlashKey) return
+    lastCaptionRef.current = captionFlashKey
     setCallFlash(true)
     const t = window.setTimeout(() => setCallFlash(false), 420)
     return () => window.clearTimeout(t)
-  }, [ui?.caption, ui?.currentStepIndex, ui?.currentCombo?.id])
+  }, [captionFlashKey])
 
   useEffect(() => {
     if (!ui) return
@@ -212,11 +221,11 @@ export function SessionPage() {
   }, [ui, timerMs])
 
   useEffect(() => {
-    if (!ui || preferences.wakeLockNoticeDismissed) return
-    if (preferences.wakeLock && !ui.wakeLockActive && ui.phase !== 'idle' && ui.phase !== 'countdown') {
+    if (sessionPhase === undefined || preferences.wakeLockNoticeDismissed) return
+    if (preferences.wakeLock && !wakeLockActive && sessionPhase !== 'idle' && sessionPhase !== 'countdown') {
       setShowWakeTip(true)
     }
-  }, [ui?.wakeLockActive, ui?.phase, preferences.wakeLock, preferences.wakeLockNoticeDismissed])
+  }, [wakeLockActive, sessionPhase, preferences.wakeLock, preferences.wakeLockNoticeDismissed])
 
   useEffect(() => {
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
@@ -270,10 +279,11 @@ export function SessionPage() {
       navigate('/summary', { state: { summary }, replace: true })
     })()
   }
+  finalizeRef.current = finalize
 
   const endSession = useCallback(() => {
     setConfirmEnd(false)
-    finalize(true)
+    finalizeRef.current(true)
   }, [])
 
   const toggleMinimal = useCallback(() => {

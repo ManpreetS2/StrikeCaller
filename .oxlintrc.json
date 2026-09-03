@@ -1,8 +1,56 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "plugins": ["react", "typescript", "oxc"],
+  "ignorePatterns": [
+    "dist",
+    "dist-pages",
+    "playwright-report",
+    "test-results",
+    "node_modules",
+    "coverage",
+    "public"
+  ],
   "rules": {
     "react/rules-of-hooks": "error",
     "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
+  },
+  "overrides": [
+    {
+      "files": ["src/test/**"],
+      "plugins": ["react", "typescript", "oxc", "vitest"],
+      "rules": {
+        "vitest/no-focused-tests": "error",
+        "vitest/require-mock-type-parameters": "off",
+        "vitest/no-conditional-expect": "off",
+        "vitest/expect-expect": "off",
+        "vitest/valid-expect": "off",
+        "vitest/no-standalone-expect": "off"
+      }
+    },
+    {
+      "files": ["e2e/**"],
+      "plugins": ["typescript", "oxc", "vitest"],
+      "env": {
+        "node": true
+      },
+      "rules": {
+        "react/rules-of-hooks": "off",
+        "react/only-export-components": "off",
+        "no-empty-pattern": "off",
+        "vitest/no-focused-tests": "error",
+        "vitest/require-mock-type-parameters": "off",
+        "vitest/no-conditional-expect": "off",
+        "vitest/expect-expect": "off",
+        "vitest/valid-expect": "off",
+        "vitest/no-standalone-expect": "off"
+      }
+    },
+    {
+      "files": ["scripts/**", "vite.config.ts", "playwright.config.ts"],
+      "plugins": ["typescript", "oxc"],
+      "env": {
+        "node": true
+      }
+    }
+  ]
 }

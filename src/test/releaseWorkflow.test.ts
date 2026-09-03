@@ -56,10 +56,19 @@ describe('production release workflow gates', () => {
     const deploy = jobBlock(ciYml, 'deploy')
 
     expect(verify).toMatch(/npm ci/)
+    expect(verify).toMatch(/npm run lint/)
     expect(verify).toMatch(/npm run typecheck/)
     expect(verify).toMatch(/npm test/)
     expect(verify).not.toMatch(/npm install(?:\s|$)/)
     expect(verify).not.toMatch(/playwright/)
+    expect(verify).not.toMatch(/continue-on-error/)
+
+    const lintAt = verify.indexOf('npm run lint')
+    const typecheckAt = verify.indexOf('npm run typecheck')
+    const testAt = verify.indexOf('npm test')
+    expect(lintAt).toBeGreaterThan(-1)
+    expect(typecheckAt).toBeGreaterThan(lintAt)
+    expect(testAt).toBeGreaterThan(typecheckAt)
 
     expect(e2e).toMatch(/needs:\s*verify/)
     expect(e2e).toMatch(/npx playwright install --with-deps chromium firefox webkit/)
@@ -140,9 +149,12 @@ describe('production release workflow gates', () => {
     expect(scripts['build:pages']).not.toMatch(/GITHUB_PAGES=true/)
     expect(scripts['preview:pages']).toBe('node scripts/run-pages.mjs preview')
     expect(scripts['verify:release']).toBe(
-      'npm run typecheck && npm test && npm run build:pages && npm run verify:pages',
+      'npm run lint && npm run typecheck && npm test && npm run build:pages && npm run verify:pages',
     )
+    expect(scripts['verify:release']).toMatch(/^npm run lint &&/)
     expect(scripts['verify:release']).not.toMatch(/test:e2e|playwright/)
+    expect(scripts.lint).toBe('oxlint --deny-warnings .')
+    expect(scripts.lint).not.toMatch(/verify:release/)
     expect(scripts['test:e2e']).toBe('playwright test')
   })
 })

@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { createDefaultWorkout } from '../data/defaults'
-import { useApp } from '../context/AppContext'
+import { useApp } from '../context/useApp'
 import { SafetyNotice } from '../components/SafetyNotice'
 import { Sparkles } from 'lucide-react'
 import { primeTrainingAudio } from '../utils/primeAudio'
