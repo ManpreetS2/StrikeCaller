@@ -9,13 +9,12 @@ import {
 
 test.describe('delete all data', () => {
   test.use({ seedOptions: { seedOnboardingIfMissing: false } })
+  // Evaluate before the `page` fixture so Firefox/WebKit/mobile do not open a context for this Chromium-only flow.
+  test.skip(({ browserName }) => browserName !== 'chromium', 'Chromium is sufficient for this destructive Settings flow')
 
   test('removes StrikeCaller user data in a real browser and keeps unrelated keys', async ({
     page,
-    browserName,
   }) => {
-    test.skip(browserName !== 'chromium', 'Chromium is sufficient for this destructive Settings flow')
-
     const seeded = legacySession('delete-e2e-session')
     await page.addInitScript(
       ({ session, prefs, favorite, combo, daily }) => {
