@@ -1,4 +1,5 @@
-import { DimensionalIcon, IconPlate, useDimIds, type IconSize } from './DimensionalIcon'
+import { DimensionalIcon, IconPlate, type IconSize } from './DimensionalIcon'
+import { useDimIds } from './dimIds'
 import type { TechniqueCategory } from '../../types'
 
 export function CategoryVisual({

@@ -2,7 +2,7 @@ import { resolveCombo } from '../utils/resolveCombo'
 import { buildTrainAgainPayload } from '../utils/trainAgain'
 import { Link, useNavigate } from 'react-router-dom'
 import { ArrowRight, Play, Sparkles, Lock, Check, SlidersHorizontal } from 'lucide-react'
-import { useApp } from '../context/AppContext'
+import { useApp } from '../context/useApp'
 import { SafetyNotice } from '../components/SafetyNotice'
 import { InteractiveCard } from '../components/InteractiveCard'
 import { getComboStats } from '../data/combos'
@@ -18,7 +18,7 @@ const COMING_SOON = ['Kickboxing', 'MMA Striking', 'Karate', 'Taekwondo'] as con
 
 export function HomePage() {
   const navigate = useNavigate()
-  const { preferences, updatePreferences, history, favorites, customCombos } = useApp()
+  const { preferences, updatePreferences, history, historyReady, favorites, customCombos } = useApp()
   const stats = getComboStats()
   const preview = computeStatsPreview(history)
   const recent = history.find(
@@ -43,12 +43,12 @@ export function HomePage() {
       navigate('/daily')
       return
     }
-    await primeTrainingAudio({ musicFriendly: preferences.speech.musicFriendly })
+    const primed = await primeTrainingAudio({ musicFriendly: preferences.speech.musicFriendly })
     const built = preset.build(preferences)
     navigate('/session', {
       state: {
         config: { ...built, minimalMode: preferences.preferMinimalMode || built.minimalMode },
-        audioPrimed: true,
+        audioPrimed: primed.ok,
       },
     })
   })
@@ -56,9 +56,9 @@ export function HomePage() {
   const trainAgain = useOnceAction(async () => {
     if (recent) {
       const payload = buildTrainAgainPayload(recent, customCombos)
-      await primeTrainingAudio({ musicFriendly: preferences.speech.musicFriendly })
+      const primed = await primeTrainingAudio({ musicFriendly: preferences.speech.musicFriendly })
       navigate('/session', {
-        state: { config: payload.config, comboQueue: payload.comboQueue, audioPrimed: true },
+        state: { config: payload.config, comboQueue: payload.comboQueue, audioPrimed: primed.ok },
       })
       return
     }
@@ -262,6 +262,10 @@ export function HomePage() {
                 Train again <ArrowRight size={14} aria-hidden />
               </button>
             </div>
+          ) : !historyReady ? (
+            <p className="text-sm text-[var(--text-muted)]" aria-busy="true">
+              Loading sessions…
+            </p>
           ) : (
             <div className="flex items-start gap-3">
               <div className="icon-well" aria-hidden>

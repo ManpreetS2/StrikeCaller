@@ -9,14 +9,12 @@ import { generateRuleBasedCombo, getDemoCombos, nextCombo } from '../engines/com
 import { BOXING_COMBOS } from '../data/boxing'
 import { validateTechniqueSequence, MAX_COMBO_LENGTH } from '../engines/comboValidator'
 import {
-  importUserData,
   migrateCustomCombo,
-  saveHistory,
-  loadHistory,
-  clearHistory,
   MAX_IMPORT_BYTES,
   validateSessionSummary,
 } from '../storage/localStore'
+import { importUserData } from '../storage/userData'
+import { clearHistory, loadHistory, replaceHistory } from '../storage/historyStore'
 import { computeStreaks, computeTrainingStats, filterHistory } from '../engines/statsEngine'
 import { customComboToRuntime, clampRepeatCount } from '../utils/customCombo'
 import { addLocalDays, localDateKey, startOfLocalDay } from '../utils/localDate'
@@ -165,12 +163,12 @@ describe('v1.1.1 learn/daily handoff and demo isolation', () => {
 })
 
 describe('v1.1.1 history and stats', () => {
-  beforeEach(() => {
-    clearHistory()
+  beforeEach(async () => {
     localStorage.clear()
+    await clearHistory()
   })
 
-  it('keeps more than 200 history entries for All Time stats', () => {
+  it('keeps more than 200 history entries for All Time stats', async () => {
     const many: SessionSummary[] = Array.from({ length: 250 }, (_, i) => ({
       id: `s-${i}`,
       startedAt: Date.now() - i * 1000,
@@ -194,9 +192,9 @@ describe('v1.1.1 history and stats', () => {
       favoriteComboIds: [],
       usedCustomCombo: false,
     }))
-    saveHistory(many)
-    expect(loadHistory().length).toBe(250)
-    expect(computeTrainingStats(loadHistory(), { range: 'all' }).totalSessions).toBe(250)
+    await replaceHistory(many)
+    expect((await loadHistory()).length).toBe(250)
+    expect(computeTrainingStats(await loadHistory(), { range: 'all' }).totalSessions).toBe(250)
   })
 
   it('skip does not increment completed combos', async () => {
@@ -316,27 +314,27 @@ describe('v1.1.1 history and stats', () => {
 })
 
 describe('v1.1.1 JSON import', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     localStorage.clear()
-    clearHistory()
+    await clearHistory()
   })
 
-  it('rejects oversized and invalid imports without partial writes', () => {
+  it('rejects oversized and invalid imports without partial writes', async () => {
     const huge = 'x'.repeat(MAX_IMPORT_BYTES + 10)
-    expect(importUserData(huge).ok).toBe(false)
+    expect((await importUserData(huge)).ok).toBe(false)
 
-    saveHistory([])
-    const historyBefore = loadHistory().length
+    await replaceHistory([])
+    const historyBefore = (await loadHistory()).length
     const bad = JSON.stringify({
       version: 99,
       preferences: { stance: 'orthodox' },
       history: [{ id: 'bad' }],
     })
-    expect(importUserData(bad).ok).toBe(false)
-    expect(loadHistory().length).toBe(historyBefore)
+    expect((await importUserData(bad)).ok).toBe(false)
+    expect((await loadHistory()).length).toBe(historyBefore)
   })
 
-  it('migrates valid older exports and preserves Muay Thai history', () => {
+  it('migrates valid older exports and preserves Muay Thai history', async () => {
     const payload = {
       version: 1,
       preferences: { ...DEFAULT_PREFERENCES, onboardingComplete: true },
@@ -364,14 +362,14 @@ describe('v1.1.1 JSON import', () => {
       ],
       dailyDrill: null,
     }
-    const result = importUserData(JSON.stringify(payload))
+    const result = await importUserData(JSON.stringify(payload))
     expect(result.ok).toBe(true)
-    const history = loadHistory()
+    const history = await loadHistory()
     expect(history[0]?.martialArt).toBe('muay-thai')
     expect(history[0]?.id).toBe('legacy-mt')
   })
 
-  it('rejects custom combos longer than eight on import', () => {
+  it('rejects custom combos longer than eight on import', async () => {
     const payload = {
       version: 2,
       customCombos: [
@@ -386,7 +384,7 @@ describe('v1.1.1 JSON import', () => {
         },
       ],
     }
-    expect(importUserData(JSON.stringify(payload)).ok).toBe(false)
+    expect((await importUserData(JSON.stringify(payload))).ok).toBe(false)
   })
 })
 

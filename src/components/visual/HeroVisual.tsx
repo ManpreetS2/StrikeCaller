@@ -1,5 +1,6 @@
 import { useId } from 'react'
-import { DimensionalIcon, useDimIds, type IconSize } from './DimensionalIcon'
+import { DimensionalIcon, type IconSize } from './DimensionalIcon'
+import { useDimIds } from './dimIds'
 
 /**
  * Decorative home hero: a clean, premium pair of boxing gloves hanging together

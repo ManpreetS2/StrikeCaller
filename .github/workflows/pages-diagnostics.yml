@@ -3,7 +3,7 @@ name: Pages Diagnostics
 # Manual, read-only diagnostics for the published GitHub Pages site.
 # Does NOT rebuild or redeploy the application — it inspects the live state so
 # availability issues (wrong base path, mis-cased URL, generic 404) can be
-# triaged quickly. The authoritative deploy path remains deploy-pages.yml.
+# triaged quickly. The authoritative deploy path is the CI workflow (ci.yml).
 
 on:
   workflow_dispatch:

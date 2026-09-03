@@ -1,10 +1,10 @@
-# StrikeCaller v1.2.2 — GitHub Pages Availability Hotfix
+# StrikeCaller
 
 **Hear the combo. Set the pace. Build the reaction.**
 
 StrikeCaller is a browser-based striking coach for **Muay Thai** and **Boxing**. It speaks realistic combinations during shadowboxing, bag work, pad work, or solo drills, with adaptive pacing, timed rounds, and local training stats.
 
-Version **1.2.2** is an availability hotfix: the GitHub Pages base path is now derived from GitHub's canonical, case-sensitive Pages URL so the published app's JavaScript and CSS load correctly (no more blank page or generic 404). Workout, Session, audio, routing, stats, storage, and onboarding behavior are unchanged.
+Current release: **1.3.0**. See [CHANGELOG.md](./CHANGELOG.md) for what’s new.
 
 225+ realistic combinations across Muay Thai and Boxing. Free. No account. No download.
 
@@ -105,16 +105,21 @@ npm run dev
 Other scripts:
 
 ```bash
+npm run lint
 npm run typecheck
 npm test
 npm run build
 npm run build:pages
+npm run verify:pages
+npm run verify:release
 npm run preview
 ```
 
+- `npm run lint` — Oxlint with `--deny-warnings` across source, tests, E2E, and committed tooling
 - `npm run build` — production build with base `/` for local or root hosting
 - `npm run build:pages` — production build for GitHub Pages; the base path is derived from GitHub's canonical Pages URL via `PAGES_BASE_URL` (falling back to `/StrikeCaller/` locally)
 - `npm run verify:pages` — validate the generated `dist/` artifact (correct base, existing local assets, expected title) before deploy
+- `npm run verify:release` — lint, typecheck, tests, Pages build, and Pages artifact verification (the local equivalent of the production gates)
 
 Requirements: Node.js 20+ (22 LTS recommended) and a modern browser.
 
@@ -124,8 +129,7 @@ The public site is published to GitHub Pages at the canonical URL **https://manp
 
 There is exactly one authoritative deployment path:
 
-- **Deploy GitHub Pages** (`.github/workflows/deploy-pages.yml`) — configures Pages first, passes GitHub's canonical Pages URL to the Vite build via `PAGES_BASE_URL`, verifies the artifact (`npm run verify:pages`), publishes the `dist` artifact via Actions, and then runs a `verify-live` job that fails unless the public URL and its JS/CSS assets return HTTP 200.
-- **CI** (`.github/workflows/ci.yml`) — typecheck, test, and build on pushes and pull requests to `main`.
+- **CI** (`.github/workflows/ci.yml`) — lint, typecheck, test, Pages build, and `verify:pages` on pull requests, pushes to `main`, and manual `workflow_dispatch`. Production artifact upload and deploy run only for `refs/heads/main` (never a PR, never a feature-branch dispatch). A `verify-live` job then fails unless the public URL and its JS/CSS assets return HTTP 200.
 - **Pages Diagnostics** (`.github/workflows/pages-diagnostics.yml`) — a manual (`workflow_dispatch`), read-only workflow that inspects the live Pages configuration and asset availability without rebuilding.
 
 Pages source must be **Settings → Pages → Build and deployment → Source → GitHub Actions**. Do not publish from a `gh-pages` branch; that would create a second, competing publication system.

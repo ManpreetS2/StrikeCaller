@@ -3,7 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import { AppProvider } from '../context/AppContext'
 import { appRoutes } from '../routes'
-import { DEFAULT_PREFERENCES, DEFAULT_SPEECH, createDefaultWorkout, APP_VERSION, APP_RELEASE_TITLE } from '../data/defaults'
+import { DEFAULT_PREFERENCES, DEFAULT_SPEECH, createDefaultWorkout } from '../data/defaults'
 import { resolvePagesBase } from '../../scripts/pages-base.mjs'
 import indexHtml from '../../index.html?raw'
 import manifestRaw from '../../public/manifest.webmanifest?raw'
@@ -35,14 +35,10 @@ describe('v1.2.2 GitHub Pages availability hotfix', () => {
     localStorage.clear()
   })
 
-  it('reports APP_VERSION 1.2.2 and the hotfix release title', () => {
-    expect(APP_VERSION).toBe('1.2.2')
-    expect(APP_RELEASE_TITLE).toContain('v1.2.2')
-    expect(APP_RELEASE_TITLE).toMatch(/GitHub Pages Availability Hotfix/i)
-  })
-
-  it('index.html document title contains the v1.2.2 release', () => {
-    expect(indexHtml).toMatch(/<title>[^<]*StrikeCaller v1\.2\.2[^<]*<\/title>/)
+  it('index.html uses a production document title without the hotfix version string', () => {
+    expect(indexHtml).toMatch(/<title>StrikeCaller — Boxing & Muay Thai Combo Coach<\/title>/)
+    expect(indexHtml).not.toMatch(/<title>[^<]*v1\.2\.2[^<]*<\/title>/)
+    expect(indexHtml).not.toMatch(/<title>[^<]*Hotfix[^<]*<\/title>/i)
   })
 
   it('manifest start_url and scope resolve under the project base, not the domain root', () => {

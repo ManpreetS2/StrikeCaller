@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { useApp } from '../context/AppContext'
+import { useApp } from '../context/useApp'
 import {
   computeTrainingStats,
   formatDuration,
@@ -10,7 +10,7 @@ import { useCountUp } from '../hooks/useCountUp'
 import type { MartialArt, StatsRange } from '../types'
 
 export function StatsPage() {
-  const { history, favorites, customCombos } = useApp()
+  const { history, historyReady, favorites, customCombos } = useApp()
   const [range, setRange] = useState<StatsRange>('30d')
   const [sport, setSport] = useState<MartialArt | 'all'>('all')
   const seenMilestones = useRef<Set<string>>(new Set())
@@ -23,6 +23,7 @@ export function StatsPage() {
   )
 
   useEffect(() => {
+    if (!historyReady) return
     if (!milestonesPrimed.current) {
       for (const m of stats.milestones) seenMilestones.current.add(m.id)
       milestonesPrimed.current = true
@@ -36,9 +37,10 @@ export function StatsPage() {
       }
     }
     if (next.size) setFreshUnlocks(next)
-  }, [stats.milestones])
+  }, [stats.milestones, historyReady])
 
-  const empty = stats.totalSessions === 0
+  const empty = historyReady && stats.totalSessions === 0
+  const awaitingHistory = !historyReady && history.length === 0
 
   return (
     <div className="space-y-8">
@@ -87,7 +89,9 @@ export function StatsPage() {
         ))}
       </div>
 
-      {empty ? (
+      {awaitingHistory ? (
+        <div className="panel p-8" aria-busy="true" />
+      ) : empty ? (
         <div className="panel flex flex-col items-center gap-3 p-8 text-center">
           <div className="icon-well" aria-hidden>
             <MetricVisual kind="empty" size="lg" />

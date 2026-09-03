@@ -1,4 +1,5 @@
-import { DimensionalIcon, IconPlate, useDimIds, type IconSize } from './DimensionalIcon'
+import { DimensionalIcon, IconPlate, type IconSize } from './DimensionalIcon'
+import { useDimIds } from './dimIds'
 import type { MartialArt } from '../../types'
 
 export function SportVisual({

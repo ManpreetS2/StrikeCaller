@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { BEGINNER_COMBOS, INTERMEDIATE_COMBOS, BOXING_COMBOS, getCombo } from '../data/combos'
 import { BOXING_BEGINNER, BOXING_INTERMEDIATE } from '../data/boxing'
 import { ComboDisplay } from '../components/ComboDisplay'
-import { useApp } from '../context/AppContext'
+import { useApp } from '../context/useApp'
 import { createDefaultWorkout, definedPartial } from '../data/defaults'
 import { localDateKey } from '../utils/localDate'
 import {

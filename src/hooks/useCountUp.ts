@@ -44,7 +44,9 @@ export function useCountUp(value: number, durationMs = 420): number {
 
     frame = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(frame)
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- animate only when value changes
+    // Snap/animate from the value at the start of this change; `display` is the
+    // in-flight number and must not restart the interpolation on every frame.
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [value, reduced, durationMs])
 
   return display

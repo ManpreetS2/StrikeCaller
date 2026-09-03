@@ -11,7 +11,7 @@ import { TrainPage } from '../pages/TrainPage'
 import { SessionEngine } from '../engines/sessionEngine'
 import { audioEngine } from '../engines/audioEngine'
 import { primeTrainingAudio } from '../utils/primeAudio'
-import { DEFAULT_PREFERENCES, DEFAULT_SPEECH, createDefaultWorkout, APP_VERSION } from '../data/defaults'
+import { DEFAULT_PREFERENCES, DEFAULT_SPEECH, createDefaultWorkout } from '../data/defaults'
 import type { Combo } from '../types'
 
 function seedCompletedOnboarding() {
@@ -107,10 +107,6 @@ describe('v1.2.1 mobile gym experience', () => {
   beforeEach(() => {
     localStorage.clear()
     mockSpeechEnvironment()
-  })
-
-  it('reports an APP_VERSION on the 1.2 line', () => {
-    expect(APP_VERSION.startsWith('1.2')).toBe(true)
   })
 
   it('Session control dock exposes Pause/Resume, Repeat, Skip, End labels', async () => {
@@ -229,7 +225,7 @@ describe('v1.2.1 mobile gym experience', () => {
 
   it('primeTrainingAudio does not throw when AudioContext is unavailable', async () => {
     const spy = vi.spyOn(audioEngine, 'prepare').mockResolvedValue(false)
-    await expect(primeTrainingAudio({ timeoutMs: 50 })).resolves.toMatchObject({ ok: expect.any(Boolean) })
+    await expect(primeTrainingAudio({ timeoutMs: 50 })).resolves.toEqual({ ok: false, timedOut: false })
     spy.mockRestore()
   })
 

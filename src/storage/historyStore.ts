@@ -1,0 +1,367 @@
+import type { SessionSummary } from '../types'
+import {
+  classifyIdbError,
+  indexedDbUnavailableResult,
+  isIndexedDbAvailable,
+  openHistoryDb,
+  resetHistoryDbConnection as resetIdbConnection,
+  transactSessions,
+} from './idb'
+import { loadLegacyHistory, removeLegacyHistory } from './localStore'
+import { isPersistableSession, parseSessionRouteId, validateSessionSummary } from './sessionValidation'
+import {
+  classifyStorageError,
+  STORAGE_WRITE_MESSAGES,
+  type StorageWriteResult,
+} from './storageTypes'
+
+let initPromise: Promise<{ history: SessionSummary[]; write: StorageWriteResult }> | null = null
+let historyWriteGeneration = 0
+const inFlightWrites = new Set<Promise<unknown>>()
+
+function trackInFlight<T>(promise: Promise<T>): Promise<T> {
+  inFlightWrites.add(promise)
+  void promise.finally(() => {
+    inFlightWrites.delete(promise)
+  })
+  return promise
+}
+
+function isCurrentGeneration(generation: number): boolean {
+  return historyWriteGeneration === generation
+}
+
+export function resetHistoryDbConnection(): void {
+  initPromise = null
+  historyWriteGeneration = 0
+  inFlightWrites.clear()
+  resetIdbConnection()
+}
+
+/** Invalidate queued/in-flight history writes so they cannot commit after Delete All Data. */
+export function invalidateHistoryWrites(): number {
+  historyWriteGeneration += 1
+  return historyWriteGeneration
+}
+
+export async function waitForInFlightHistoryWrites(): Promise<void> {
+  while (inFlightWrites.size > 0) {
+    await Promise.allSettled([...inFlightWrites])
+  }
+}
+
+export function abandonHistoryInitialization(): void {
+  initPromise = null
+}
+
+export async function clearSessionsStore(): Promise<StorageWriteResult> {
+  if (!isIndexedDbAvailable()) return indexedDbUnavailableResult()
+  try {
+    await transactSessions('readwrite', (store) => {
+      store.clear()
+    })
+    return { ok: true }
+  } catch (error) {
+    return classifyIdbError(error)
+  }
+}
+
+export function sortHistory(history: SessionSummary[]): SessionSummary[] {
+  return [...history].sort((a, b) => {
+    if (b.startedAt !== a.startedAt) return b.startedAt - a.startedAt
+    return a.id < b.id ? 1 : a.id > b.id ? -1 : 0
+  })
+}
+
+function persistable(summary: unknown): SessionSummary | null {
+  const validated = validateSessionSummary(summary)
+  if (!validated || !isPersistableSession(validated)) return null
+  return validated
+}
+
+export type SessionByIdResult =
+  | { status: 'found'; session: SessionSummary }
+  | { status: 'not-found' }
+  | { status: 'unavailable' }
+  | { status: 'invalid-id' }
+
+/**
+ * Direct IndexedDB key lookup. Always runs history initialization/migration first.
+ * Does not scan the sessions store with getAll.
+ */
+export async function getSessionById(id: string): Promise<SessionByIdResult> {
+  const sessionId = parseSessionRouteId(id)
+  if (!sessionId) return { status: 'invalid-id' }
+
+  const initialized = await ensureHistoryInitialized()
+
+  if (!isIndexedDbAvailable()) {
+    const fromLegacy = initialized.history.find((session) => session.id === sessionId)
+    if (fromLegacy) return { status: 'found', session: fromLegacy }
+    return initialized.write.ok ? { status: 'not-found' } : { status: 'unavailable' }
+  }
+
+  try {
+    let raw: unknown
+    let sawResult = false
+    await transactSessions('readonly', (store) => {
+      const request = store.get(sessionId)
+      request.onsuccess = () => {
+        sawResult = true
+        raw = request.result
+      }
+    })
+    if (!sawResult || raw === undefined) return { status: 'not-found' }
+    const session = persistable(raw)
+    if (!session) return { status: 'not-found' }
+    return { status: 'found', session }
+  } catch {
+    if (!initialized.write.ok) return { status: 'unavailable' }
+    return { status: 'unavailable' }
+  }
+}
+
+/** LOAD salvage: skip rows that fail validateSessionSummary; do not delete them. */
+export async function loadHistory(): Promise<SessionSummary[]> {
+  if (!isIndexedDbAvailable()) return sortHistory(loadLegacyHistory())
+  try {
+    await openHistoryDb()
+    let rows: unknown[] = []
+    await transactSessions('readonly', (store) => {
+      const request = store.getAll()
+      request.onsuccess = () => {
+        rows = request.result as unknown[]
+      }
+    })
+    return sortHistory(
+      rows
+        .map((row) => persistable(row))
+        .filter((item): item is SessionSummary => item != null),
+    )
+  } catch {
+    return sortHistory(loadLegacyHistory())
+  }
+}
+
+export async function saveSession(summary: SessionSummary): Promise<StorageWriteResult> {
+  const next = persistable(summary)
+  if (!next) return { ok: true }
+  const generation = historyWriteGeneration
+  if (!isCurrentGeneration(generation)) return { ok: true }
+  if (!isIndexedDbAvailable()) return indexedDbUnavailableResult()
+  return trackInFlight(
+    (async () => {
+      if (!isCurrentGeneration(generation)) return { ok: true }
+      try {
+        await transactSessions('readwrite', (store) => {
+          if (!isCurrentGeneration(generation)) return
+          store.put(next)
+        })
+        return { ok: true }
+      } catch (error) {
+        return classifyIdbError(error)
+      }
+    })(),
+  )
+}
+
+export async function replaceHistory(history: SessionSummary[]): Promise<StorageWriteResult> {
+  const sessions = history.map(persistable).filter((item): item is SessionSummary => item != null)
+  const generation = historyWriteGeneration
+  if (!isCurrentGeneration(generation)) return { ok: true }
+  if (!isIndexedDbAvailable()) return indexedDbUnavailableResult()
+  return trackInFlight(
+    (async () => {
+      if (!isCurrentGeneration(generation)) return { ok: true }
+      try {
+        await transactSessions('readwrite', (store) => {
+          if (!isCurrentGeneration(generation)) return
+          store.clear()
+          for (const session of sessions) store.put(session)
+        })
+        return { ok: true }
+      } catch (error) {
+        return classifyIdbError(error)
+      }
+    })(),
+  )
+}
+
+/**
+ * Clear durable history only after the canonical IndexedDB store can be opened
+ * and cleared. Legacy localStorage is removed only after that commit succeeds,
+ * so a failed clear cannot destroy the only remaining copy.
+ */
+export async function clearHistory(): Promise<StorageWriteResult> {
+  if (!isIndexedDbAvailable()) return indexedDbUnavailableResult()
+
+  let existing: SessionSummary[]
+  try {
+    const loaded = await loadHistoryFromDbOnly()
+    if (!loaded.ok) return loaded
+    existing = loaded.history
+  } catch (error) {
+    return classifyIdbError(error)
+  }
+
+  try {
+    await transactSessions('readwrite', (store) => {
+      store.clear()
+    })
+  } catch (error) {
+    return classifyIdbError(error)
+  }
+
+  const legacyRemoved = removeLegacyHistory()
+  if (!legacyRemoved.ok) {
+    const restored = await replaceHistory(existing)
+    if (!restored.ok) return restored
+    return legacyRemoved
+  }
+  return { ok: true }
+}
+
+function mergePreferIndexedDb(existing: SessionSummary[], legacy: SessionSummary[]): SessionSummary[] {
+  const byId = new Map<string, SessionSummary>()
+  for (const session of existing) byId.set(session.id, session)
+  for (const session of legacy) {
+    if (!byId.has(session.id)) byId.set(session.id, session)
+  }
+  return sortHistory([...byId.values()])
+}
+
+async function verifyContainsLegacy(
+  legacy: SessionSummary[],
+): Promise<{ ok: true; history: SessionSummary[] } | Extract<StorageWriteResult, { ok: false }>> {
+  const verified = await loadHistoryFromDbOnly()
+  if (!verified.ok) return verified
+  const ids = new Set(verified.history.map((session) => session.id))
+  const missing = legacy.some((session) => !ids.has(session.id))
+  if (missing) {
+    return { ok: false, reason: 'write-failed', message: STORAGE_WRITE_MESSAGES['write-failed'] }
+  }
+  return { ok: true, history: verified.history }
+}
+
+async function loadHistoryFromDbOnly(): Promise<
+  { ok: true; history: SessionSummary[] } | Extract<StorageWriteResult, { ok: false }>
+> {
+  try {
+    await openHistoryDb()
+    let rows: unknown[] = []
+    await transactSessions('readonly', (store) => {
+      const request = store.getAll()
+      request.onsuccess = () => {
+        rows = request.result as unknown[]
+      }
+    })
+    return {
+      ok: true,
+      history: sortHistory(
+        rows
+          .map((row) => persistable(row))
+          .filter((item): item is SessionSummary => item != null),
+      ),
+    }
+  } catch (error) {
+    return classifyIdbError(error)
+  }
+}
+
+/**
+ * Load canonical history, migrating leftover localStorage records into IndexedDB.
+ *
+ * Conflict rule: if the same session id exists in both stores, the IndexedDB copy wins.
+ * Legacy localStorage is removed only after the IndexedDB transaction completes and
+ * every legacy session id is present in IndexedDB.
+ */
+export async function initHistory(): Promise<{ history: SessionSummary[]; write: StorageWriteResult }> {
+  const generation = historyWriteGeneration
+  const legacy = loadLegacyHistory()
+
+  if (!isCurrentGeneration(generation)) {
+    return { history: [], write: { ok: true } }
+  }
+
+  if (!isIndexedDbAvailable()) {
+    return {
+      history: sortHistory(legacy),
+      write: indexedDbUnavailableResult(),
+    }
+  }
+
+  let existing: SessionSummary[]
+  try {
+    const loaded = await loadHistoryFromDbOnly()
+    if (!loaded.ok) {
+      return { history: sortHistory(mergePreferIndexedDb([], legacy)), write: loaded }
+    }
+    existing = loaded.history
+  } catch (error) {
+    return { history: sortHistory(legacy), write: classifyStorageError(error) }
+  }
+
+  if (legacy.length === 0) {
+    return { history: existing, write: { ok: true } }
+  }
+
+  const existingIds = new Set(existing.map((session) => session.id))
+  const toInsert = legacy.filter((session) => !existingIds.has(session.id))
+
+  if (toInsert.length > 0) {
+    if (!isCurrentGeneration(generation)) {
+      return { history: [], write: { ok: true } }
+    }
+    const putResult = await replaceOrPut(toInsert)
+    if (!putResult.ok) {
+      return {
+        history: mergePreferIndexedDb(existing, legacy),
+        write: putResult,
+      }
+    }
+  }
+
+  const verified = await verifyContainsLegacy(legacy)
+  if (!verified.ok) {
+    return { history: mergePreferIndexedDb(existing, legacy), write: verified }
+  }
+
+  removeLegacyHistory()
+  return { history: verified.history, write: { ok: true } }
+}
+
+export function ensureHistoryInitialized(): Promise<{ history: SessionSummary[]; write: StorageWriteResult }> {
+  if (!initPromise) {
+    const generation = historyWriteGeneration
+    initPromise = trackInFlight(
+      initHistory().then((result) => {
+        if (!isCurrentGeneration(generation)) {
+          initPromise = null
+        } else if (!result.write.ok) {
+          initPromise = null
+        }
+        return result
+      }),
+    )
+  }
+  return initPromise
+}
+
+async function replaceOrPut(sessions: SessionSummary[]): Promise<StorageWriteResult> {
+  const generation = historyWriteGeneration
+  if (!isCurrentGeneration(generation)) return { ok: true }
+  return trackInFlight(
+    (async () => {
+      if (!isCurrentGeneration(generation)) return { ok: true }
+      try {
+        await transactSessions('readwrite', (store) => {
+          if (!isCurrentGeneration(generation)) return
+          for (const session of sessions) store.put(session)
+        })
+        return { ok: true }
+      } catch (error) {
+        return classifyIdbError(error)
+      }
+    })(),
+  )
+}

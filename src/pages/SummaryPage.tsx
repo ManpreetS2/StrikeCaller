@@ -1,27 +1,122 @@
-import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { getTechnique } from '../data/techniques'
-import { useApp } from '../context/AppContext'
+import { useApp } from '../context/useApp'
+import { getSessionById } from '../storage/historyStore'
+import { parseSessionRouteId, validateSessionSummary } from '../storage/sessionValidation'
 import { buildTrainAgainPayload } from '../utils/trainAgain'
 import type { SessionSummary } from '../types'
 
+type SummaryView =
+  | { kind: 'loading' }
+  | { kind: 'found'; summary: SessionSummary }
+  | { kind: 'not-found' }
+
+function isDisplayableSummary(raw: unknown): raw is SessionSummary {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return false
+  const value = raw as Record<string, unknown>
+  if (!parseSessionRouteId(value.id)) return false
+  if (typeof value.martialArt !== 'string' || typeof value.mode !== 'string') return false
+  if (typeof value.stance !== 'string' || typeof value.pace !== 'string') return false
+  if (typeof value.roundsCompleted !== 'number' || typeof value.combinationsCompleted !== 'number') return false
+  if (typeof value.totalTrainingMs !== 'number' || typeof value.techniquesCalled !== 'number') return false
+  if (typeof value.techniqueCounts !== 'object' || value.techniqueCounts === null) return false
+  return true
+}
+
+function stateSummary(raw: unknown): SessionSummary | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw) || !('summary' in raw)) return null
+  const candidate = (raw as { summary?: unknown }).summary
+  return validateSessionSummary(candidate) ?? (isDisplayableSummary(candidate) ? candidate : null)
+}
+
+function martialArtLabel(art: SessionSummary['martialArt']): string {
+  return art === 'boxing' ? 'Boxing' : 'Muay Thai'
+}
+
 export function SummaryPage() {
+  const { sessionId: routeParam } = useParams<{ sessionId?: string }>()
   const location = useLocation()
   const navigate = useNavigate()
   const { customCombos } = useApp()
-  const summary = (location.state as { summary?: SessionSummary } | null)?.summary
 
-  if (!summary) {
+  const routeId = routeParam === undefined ? null : parseSessionRouteId(routeParam)
+  const fromState = stateSummary(location.state)
+  const matchingState =
+    routeParam === undefined
+      ? fromState
+      : routeId != null && fromState?.id === routeId
+        ? fromState
+        : null
+  const matchingStateId = matchingState?.id ?? null
+
+  const [resolved, setResolved] = useState<{ lookupId: string; view: SummaryView } | null>(null)
+
+  useEffect(() => {
+    if (matchingStateId) {
+      return
+    }
+    if (routeParam === undefined || routeId === null) {
+      setResolved({ lookupId: routeParam ?? '', view: { kind: 'not-found' } })
+      return
+    }
+
+    let cancelled = false
+    setResolved({ lookupId: routeId, view: { kind: 'loading' } })
+    void getSessionById(routeId).then((result) => {
+      if (cancelled) return
+      setResolved({
+        lookupId: routeId,
+        view: result.status === 'found' ? { kind: 'found', summary: result.session } : { kind: 'not-found' },
+      })
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [matchingStateId, routeId, routeParam])
+
+  const view: SummaryView = matchingState
+    ? { kind: 'found', summary: matchingState }
+    : routeParam === undefined || routeId === null
+      ? { kind: 'not-found' }
+      : resolved?.lookupId === routeId
+        ? resolved.view
+        : { kind: 'loading' }
+
+  if (view.kind === 'loading') {
     return (
       <div className="space-y-4">
-        <h1 className="display text-5xl">Session summary</h1>
-        <p className="text-[var(--text-muted)]">No summary available.</p>
-        <Link to="/train" className="btn btn-primary">
-          Customize Workout
-        </Link>
+        <h1 className="display text-5xl">Summary</h1>
+        <p className="text-[var(--text-muted)]" role="status">
+          Loading workout summary…
+        </p>
       </div>
     )
   }
 
+  if (view.kind === 'not-found') {
+    return (
+      <div className="space-y-4">
+        <h1 className="display text-5xl">Workout summary not found.</h1>
+        <p className="text-[var(--text-muted)]">
+          This workout is not available. It may not have been saved, or it may have been removed.
+        </p>
+        <div className="flex flex-wrap gap-3">
+          <Link to="/stats" className="btn btn-primary">
+            Training Stats
+          </Link>
+          <Link to="/" className="btn">
+            Home
+          </Link>
+          <Link to="/train" className="btn">
+            Start workout
+          </Link>
+        </div>
+      </div>
+    )
+  }
+
+  const summary = view.summary
   const topTechniques = Object.entries(summary.techniqueCounts)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 8)
@@ -46,6 +141,9 @@ export function SummaryPage() {
         <h1 className="display mt-2 text-5xl">Summary</h1>
         <p className="mt-2 text-[var(--text-muted)]">
           StrikeCaller tracks what was called — not technique quality, power, speed, accuracy, or calories.
+        </p>
+        <p className="mt-2 text-sm capitalize text-[var(--text-muted)]">
+          {martialArtLabel(summary.martialArt)} · {summary.mode} · {summary.stance} · {summary.pace}
         </p>
       </header>
 

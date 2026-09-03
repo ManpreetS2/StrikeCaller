@@ -173,6 +173,12 @@ textarea {
   box-shadow: var(--shadow);
 }
 
+.storage-warning {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .btn {
   display: inline-flex;
   align-items: center;

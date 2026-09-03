@@ -1,13 +1,5 @@
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from 'react'
-import { DEFAULT_PREFERENCES } from '../data/defaults'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { DELETE_ALL_PARTIAL_MESSAGE, HISTORY_QUOTA_MESSAGE } from '../storage/storageTypes'
 import {
   loadPreferences,
   savePreferences,
@@ -15,50 +7,43 @@ import {
   saveFavorites,
   loadCustomCombos,
   saveCustomCombos,
-  loadHistory,
-  saveHistory,
-  clearHistory as clearHistoryStore,
+  loadLegacyHistory,
   resetPreferences as resetPreferencesStore,
   loadDailyDrillMap,
   saveDailyDrill,
   saveDailyDrillMap,
-  exportUserData,
-  importUserData,
+  type StorageWriteResult,
 } from '../storage/localStore'
-import type {
-  CustomCombo,
-  DailyDrillMap,
-  DailyDrillState,
-  SessionSummary,
-  ThemePreference,
-  UserPreferences,
-} from '../types'
+import {
+  clearHistory as clearHistoryStore,
+  ensureHistoryInitialized,
+  loadHistory,
+  saveSession,
+  sortHistory,
+} from '../storage/historyStore'
+import * as userDataStore from '../storage/userData'
+import type { DeleteAllUserDataResult } from '../storage/userData'
+import type { CustomCombo, DailyDrillMap, SessionSummary, ThemePreference, UserPreferences } from '../types'
 import { normalizeDailyDrillState } from '../utils/dailyDrill'
+import {
+  AppReactContext,
+  type AddHistoryResult,
+  type AppContextValue,
+  type StorageIssue,
+  type StorageIssueSource,
+} from './useApp'
 
-interface AppContextValue {
-  preferences: UserPreferences
-  setPreferences: (next: UserPreferences | ((p: UserPreferences) => UserPreferences)) => void
-  updatePreferences: (partial: Partial<UserPreferences>) => void
-  resolvedTheme: 'dark' | 'light'
-  setTheme: (theme: ThemePreference) => void
-  favorites: string[]
-  toggleFavorite: (comboId: string) => void
-  customCombos: CustomCombo[]
-  upsertCustomCombo: (combo: CustomCombo) => void
-  removeCustomCombo: (id: string) => void
-  history: SessionSummary[]
-  addHistory: (summary: SessionSummary) => void
-  clearHistory: () => void
-  resetPreferences: () => void
-  dailyDrills: DailyDrillMap
-  /** Upsert one sport/date record into the daily drill map */
-  setDailyDrill: (state: DailyDrillState) => void
-  getDailyDrill: (dateKey: string) => DailyDrillState | null
-  exportData: () => string
-  importData: (json: string) => { ok: boolean; message: string }
+export type { AddHistoryResult, StorageIssue, StorageIssueSource }
+
+type PendingSave = {
+  summary: SessionSummary
+  resolve: (result: AddHistoryResult) => void
 }
 
-const AppContext = createContext<AppContextValue | null>(null)
+function resultFromWrite(write: StorageWriteResult): AddHistoryResult {
+  if (write.ok) return { status: 'persisted' }
+  return { status: 'failed', write }
+}
 
 function resolveTheme(pref: ThemePreference): 'dark' | 'light' {
   if (pref === 'system') {
@@ -70,23 +55,60 @@ function resolveTheme(pref: ThemePreference): 'dark' | 'light' {
   return pref
 }
 
+function messageForWrite(result: Extract<StorageWriteResult, { ok: false }>, source: StorageIssueSource): string {
+  if (source === 'delete') return DELETE_ALL_PARTIAL_MESSAGE
+  if (result.reason === 'quota-exceeded' && source === 'history') return HISTORY_QUOTA_MESSAGE
+  return result.message
+}
+
+function isPersistableHistoryEntry(summary: SessionSummary): boolean {
+  return !summary.excludeFromStats && !summary.isDemo && summary.mode !== 'demo'
+}
+
 export function AppProvider({ children }: { children: ReactNode }) {
   const [preferences, setPreferencesState] = useState<UserPreferences>(() => loadPreferences())
   const [favorites, setFavorites] = useState<string[]>(() => loadFavorites())
   const [customCombos, setCustomCombos] = useState<CustomCombo[]>(() => loadCustomCombos())
-  const [history, setHistory] = useState<SessionSummary[]>(() => loadHistory())
+  const [history, setHistory] = useState<SessionSummary[]>(() => loadLegacyHistory())
+  const [historyReady, setHistoryReady] = useState(false)
   const [dailyDrills, setDailyDrillsState] = useState<DailyDrillMap>(() => loadDailyDrillMap())
   const [resolvedTheme, setResolvedTheme] = useState<'dark' | 'light'>(() =>
     resolveTheme(loadPreferences().theme),
   )
+  const [storageIssue, setStorageIssue] = useState<StorageIssue | null>(null)
+  const [dismissedIssueId, setDismissedIssueId] = useState<number | null>(null)
+  const issueIdRef = useRef(0)
+  const historyReadyRef = useRef(false)
+  const pendingSavesRef = useRef<PendingSave[]>([])
+  const inFlightRef = useRef(new Map<string, Promise<AddHistoryResult>>())
+  const dataEpochRef = useRef(0)
+  const deleteInFlightRef = useRef<Promise<DeleteAllUserDataResult> | null>(null)
 
-  const setPreferences = useCallback((next: UserPreferences | ((p: UserPreferences) => UserPreferences)) => {
-    setPreferencesState((prev) => {
-      const value = typeof next === 'function' ? next(prev) : next
-      savePreferences(value)
-      return value
+  const applyWrite = useCallback((result: StorageWriteResult, source: StorageIssueSource) => {
+    if (result.ok) {
+      setStorageIssue((current) => (current?.source === source ? null : current))
+      return
+    }
+    issueIdRef.current += 1
+    setStorageIssue({
+      id: issueIdRef.current,
+      reason: result.reason,
+      message: messageForWrite(result, source),
+      source,
     })
   }, [])
+
+  const setPreferences = useCallback(
+    (next: UserPreferences | ((p: UserPreferences) => UserPreferences)) => {
+      setPreferencesState((prev) => {
+        const value = typeof next === 'function' ? next(prev) : next
+        const result = savePreferences(value)
+        queueMicrotask(() => applyWrite(result, 'preferences'))
+        return value
+      })
+    },
+    [applyWrite],
+  )
 
   const updatePreferences = useCallback(
     (partial: Partial<UserPreferences>) => {
@@ -96,12 +118,62 @@ export function AppProvider({ children }: { children: ReactNode }) {
   )
 
   useEffect(() => {
-    // Persist migrated history / custom combos so legacy records keep repaired shape.
-    saveHistory(history)
-    saveCustomCombos(customCombos)
-    saveDailyDrillMap(dailyDrills)
-    // intentionally once after initial load
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    const epoch = dataEpochRef.current
+    let cancelled = false
+    void (async () => {
+      const { history: loaded, write } = await ensureHistoryInitialized()
+      if (cancelled || dataEpochRef.current !== epoch) return
+      if (!write.ok) applyWrite(write, 'history')
+
+      historyReadyRef.current = true
+      const pending = pendingSavesRef.current
+      pendingSavesRef.current = []
+
+      setHistory((prev) => {
+        const byId = new Map<string, SessionSummary>()
+        for (const session of loaded) byId.set(session.id, session)
+        for (const item of pending) {
+          if (!byId.has(item.summary.id)) byId.set(item.summary.id, item.summary)
+        }
+        for (const session of prev) {
+          if (!byId.has(session.id)) byId.set(session.id, session)
+        }
+        return sortHistory([...byId.values()])
+      })
+
+      for (const item of pending) {
+        if (dataEpochRef.current !== epoch) {
+          item.resolve({ status: 'skipped' })
+          continue
+        }
+        const write = await saveSession(item.summary)
+        if (cancelled || dataEpochRef.current !== epoch) {
+          item.resolve({ status: 'skipped' })
+          continue
+        }
+        applyWrite(write, 'history')
+        item.resolve(resultFromWrite(write))
+      }
+
+      if (cancelled || dataEpochRef.current !== epoch) return
+      setHistoryReady(true)
+    })()
+
+    if (dataEpochRef.current === epoch) {
+      const writes: Array<{ result: StorageWriteResult; source: StorageIssueSource }> = [
+        { result: saveCustomCombos(customCombos), source: 'migration' },
+        { result: saveDailyDrillMap(dailyDrills), source: 'migration' },
+      ]
+      const failed = writes.find((w) => !w.result.ok)
+      if (failed) applyWrite(failed.result, failed.source)
+    }
+
+    return () => {
+      cancelled = true
+    }
+    // Hydrate IndexedDB history once after mount. Re-running would duplicate
+    // pending-save drains and reset historyReady around an in-flight session.
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
@@ -134,7 +206,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       toggleFavorite: (comboId) => {
         setFavorites((prev) => {
           const next = prev.includes(comboId) ? prev.filter((id) => id !== comboId) : [...prev, comboId]
-          saveFavorites(next)
+          const result = saveFavorites(next)
+          queueMicrotask(() => applyWrite(result, 'favorites'))
           return next
         })
       },
@@ -143,56 +216,141 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setCustomCombos((prev) => {
           const idx = prev.findIndex((c) => c.id === combo.id)
           const next = idx >= 0 ? prev.map((c) => (c.id === combo.id ? combo : c)) : [...prev, combo]
-          saveCustomCombos(next)
+          const result = saveCustomCombos(next)
+          queueMicrotask(() => applyWrite(result, 'custom-combos'))
           return next
         })
       },
       removeCustomCombo: (id) => {
         setCustomCombos((prev) => {
           const next = prev.filter((c) => c.id !== id)
-          saveCustomCombos(next)
+          const result = saveCustomCombos(next)
+          queueMicrotask(() => applyWrite(result, 'custom-combos'))
           return next
         })
       },
       history,
+      historyReady,
       addHistory: (summary) => {
+        if (!isPersistableHistoryEntry(summary)) {
+          return Promise.resolve({ status: 'skipped' })
+        }
+        const existing = inFlightRef.current.get(summary.id)
+        if (existing) return existing
+
         setHistory((prev) => {
           if (prev.some((h) => h.id === summary.id)) return prev
-          if (summary.excludeFromStats || summary.isDemo || summary.mode === 'demo') {
-            return prev
-          }
-          const next = [summary, ...prev]
-          saveHistory(next)
-          return next
+          return [summary, ...prev]
         })
+
+        const epoch = dataEpochRef.current
+        let resolvePersist!: (result: AddHistoryResult) => void
+        const persist = new Promise<AddHistoryResult>((resolve) => {
+          resolvePersist = resolve
+        })
+        inFlightRef.current.set(summary.id, persist)
+
+        const finish = (result: AddHistoryResult) => {
+          inFlightRef.current.delete(summary.id)
+          resolvePersist(result)
+        }
+        if (!historyReadyRef.current) {
+          pendingSavesRef.current.push({ summary, resolve: finish })
+          return persist
+        }
+        void saveSession(summary).then((write) => {
+          if (dataEpochRef.current !== epoch) {
+            finish({ status: 'skipped' })
+            return
+          }
+          applyWrite(write, 'history')
+          finish(resultFromWrite(write))
+        })
+        return persist
       },
-      clearHistory: () => {
-        clearHistoryStore()
-        setHistory([])
+      clearHistory: async () => {
+        const result = await clearHistoryStore()
+        applyWrite(result, 'history')
+        if (result.ok) {
+          const leftover = pendingSavesRef.current
+          pendingSavesRef.current = []
+          for (const item of leftover) {
+            item.resolve({ status: 'skipped' })
+          }
+          setHistory([])
+        }
       },
       resetPreferences: () => {
-        const next = resetPreferencesStore()
+        const { preferences: next, write } = resetPreferencesStore()
         setPreferencesState(next)
+        applyWrite(write, 'preferences')
+      },
+      deleteAllUserData: () => {
+        if (deleteInFlightRef.current) return deleteInFlightRef.current
+        const run = (async () => {
+          dataEpochRef.current += 1
+          const epoch = dataEpochRef.current
+          const result = await userDataStore.deleteAllUserData()
+          if (dataEpochRef.current !== epoch) return result
+
+          const leftover = pendingSavesRef.current
+          pendingSavesRef.current = []
+          for (const item of leftover) {
+            item.resolve({ status: 'skipped' })
+          }
+
+          historyReadyRef.current = true
+          setHistoryReady(true)
+          setPreferencesState(loadPreferences())
+          setFavorites(loadFavorites())
+          setCustomCombos(loadCustomCombos())
+          setDailyDrillsState(loadDailyDrillMap())
+          setHistory(await loadHistory())
+
+          if (result.ok) {
+            setStorageIssue(null)
+          } else {
+            const failedWrite = !result.indexedDB.ok
+              ? result.indexedDB
+              : result.localStorage
+            applyWrite(failedWrite, 'delete')
+          }
+          return result
+        })()
+        deleteInFlightRef.current = run
+        void run.finally(() => {
+          if (deleteInFlightRef.current === run) deleteInFlightRef.current = null
+        })
+        return run
       },
       dailyDrills,
       setDailyDrill: (state) => {
         const normalized = normalizeDailyDrillState(state)
         if (!normalized) return
-        saveDailyDrill(normalized)
+        const result = saveDailyDrill(normalized)
         setDailyDrillsState((prev) => ({ ...prev, [normalized.dateKey]: normalized }))
+        applyWrite(result, 'daily-drill')
       },
       getDailyDrill: (dateKey) => dailyDrills[dateKey] ?? null,
-      exportData: exportUserData,
-      importData: (json) => {
-        const result = importUserData(json)
+      exportData: () => userDataStore.exportUserData(),
+      importData: async (json) => {
+        const result = await userDataStore.importUserData(json)
         if (result.ok) {
           setPreferencesState(loadPreferences())
           setFavorites(loadFavorites())
           setCustomCombos(loadCustomCombos())
-          setHistory(loadHistory())
+          setHistory(await loadHistory())
           setDailyDrillsState(loadDailyDrillMap())
+          setStorageIssue(null)
+        } else if (result.write && !result.write.ok) {
+          applyWrite(result.write, 'import')
         }
         return result
+      },
+      storageIssue,
+      storageWarningVisible: storageIssue != null && storageIssue.id !== dismissedIssueId,
+      dismissStorageIssue: () => {
+        if (storageIssue) setDismissedIssueId(storageIssue.id)
       },
     }),
     [
@@ -203,17 +361,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       favorites,
       customCombos,
       history,
+      historyReady,
       dailyDrills,
+      applyWrite,
+      storageIssue,
+      dismissedIssueId,
     ],
   )
 
-  return <AppContext.Provider value={value}>{children}</AppContext.Provider>
+  return <AppReactContext.Provider value={value}>{children}</AppReactContext.Provider>
 }
-
-export function useApp(): AppContextValue {
-  const ctx = useContext(AppContext)
-  if (!ctx) throw new Error('useApp must be used within AppProvider')
-  return ctx
-}
-
-export { DEFAULT_PREFERENCES }

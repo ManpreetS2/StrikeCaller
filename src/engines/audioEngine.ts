@@ -28,27 +28,56 @@ export class AudioEngine {
 
   /**
    * Unlock / resume AudioContext from a user gesture.
-   * Safe to call repeatedly; no-ops when Web Audio is unavailable.
+   * Best-effort: capability failures resolve false instead of rejecting.
    */
   async prepare(): Promise<boolean> {
-    const ctx = await this.ensure()
-    return Boolean(ctx)
+    try {
+      const ctx = await this.ensure()
+      return Boolean(ctx && ctx.state === 'running')
+    } catch {
+      return false
+    }
   }
 
   isReady(): boolean {
     return Boolean(this.ctx && this.ctx.state === 'running')
   }
 
+  /** Drop any cached context so tests can simulate construction failures. */
+  resetForTests() {
+    this.stopAll()
+    if (this.ctx) {
+      try {
+        void Promise.resolve(this.ctx.close()).catch(() => {})
+      } catch {
+        /* ignore */
+      }
+    }
+    this.ctx = null
+  }
+
+  private audioContextConstructor(): (new () => AudioContext) | undefined {
+    if (typeof window === 'undefined') return undefined
+    const w = window as Window & { webkitAudioContext?: typeof AudioContext }
+    return window.AudioContext ?? w.webkitAudioContext
+  }
+
   private async ensure(): Promise<AudioContext | null> {
-    if (typeof window === 'undefined') return null
-    const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
+    const AudioCtx = this.audioContextConstructor()
     if (!AudioCtx) return null
-    if (!this.ctx) this.ctx = new AudioCtx()
+    try {
+      if (!this.ctx) {
+        this.ctx = new AudioCtx()
+      }
+    } catch {
+      this.ctx = null
+      return null
+    }
     if (this.ctx.state === 'suspended') {
       try {
-        await this.ctx.resume()
+        await Promise.race([this.ctx.resume(), delay(AUDIO_UNLOCK_TIMEOUT_MS)])
       } catch {
-        return this.ctx
+        // Autoplay policy / browser bugs: keep the context for a later gesture.
       }
     }
     return this.ctx
@@ -56,26 +85,30 @@ export class AudioEngine {
 
   private async tone(freq: number, durationMs: number, type: OscillatorType = 'sine', gain = 0.2) {
     if (!this.enabled) return
-    const gen = this.toneGeneration
-    const ctx = await this.ensure()
-    if (!ctx || gen !== this.toneGeneration) return
-    const osc = ctx.createOscillator()
-    const g = ctx.createGain()
-    osc.type = type
-    osc.frequency.value = freq
-    g.gain.value = gain * this.masterVolume
-    osc.connect(g)
-    g.connect(ctx.destination)
-    const now = ctx.currentTime
-    g.gain.setValueAtTime(gain * this.masterVolume, now)
-    g.gain.exponentialRampToValueAtTime(0.001, now + durationMs / 1000)
-    const entry = { osc, stopAt: now + durationMs / 1000 + 0.02 }
-    this.activeNodes.push(entry)
-    osc.onended = () => {
-      this.activeNodes = this.activeNodes.filter((n) => n !== entry)
+    try {
+      const gen = this.toneGeneration
+      const ctx = await this.ensure()
+      if (!ctx || gen !== this.toneGeneration) return
+      const osc = ctx.createOscillator()
+      const g = ctx.createGain()
+      osc.type = type
+      osc.frequency.value = freq
+      g.gain.value = gain * this.masterVolume
+      osc.connect(g)
+      g.connect(ctx.destination)
+      const now = ctx.currentTime
+      g.gain.setValueAtTime(gain * this.masterVolume, now)
+      g.gain.exponentialRampToValueAtTime(0.001, now + durationMs / 1000)
+      const entry = { osc, stopAt: now + durationMs / 1000 + 0.02 }
+      this.activeNodes.push(entry)
+      osc.onended = () => {
+        this.activeNodes = this.activeNodes.filter((n) => n !== entry)
+      }
+      osc.start(now)
+      osc.stop(entry.stopAt)
+    } catch {
+      // Oscillator / destination failures must not reject cue playback.
     }
-    osc.start(now)
-    osc.stop(entry.stopAt)
   }
 
   async playBell() {
@@ -114,6 +147,9 @@ export class AudioEngine {
     }
   }
 }
+
+/** Firefox/Linux CI can leave AudioContext.resume() pending indefinitely. */
+const AUDIO_UNLOCK_TIMEOUT_MS = 800
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))

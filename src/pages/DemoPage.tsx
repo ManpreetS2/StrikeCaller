@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { createDefaultWorkout } from '../data/defaults'
-import { useApp } from '../context/AppContext'
+import { useApp } from '../context/useApp'
 import { SafetyNotice } from '../components/SafetyNotice'
 import { Sparkles } from 'lucide-react'
 import { primeTrainingAudio } from '../utils/primeAudio'
@@ -40,8 +40,8 @@ export function DemoPage() {
       minimalMode: preferences.preferMinimalMode,
     })
 
-    await primeTrainingAudio({ musicFriendly: preferences.speech.musicFriendly })
-    navigate('/session', { state: { config, demo: true, audioPrimed: true } })
+    const primed = await primeTrainingAudio({ musicFriendly: preferences.speech.musicFriendly })
+    navigate('/session', { state: { config, demo: true, audioPrimed: primed.ok } })
   })
 
   return (

@@ -73,11 +73,25 @@ export function formatComboCall(
     .join(', ')
 }
 
-export function createSpeechEngine(getSettings: () => SpeechSettings): SpeechEngine {
-  const supported =
+function utteranceConstructor(): (typeof SpeechSynthesisUtterance) | undefined {
+  if (typeof SpeechSynthesisUtterance === 'function') return SpeechSynthesisUtterance
+  if (typeof window !== 'undefined' && typeof window.SpeechSynthesisUtterance === 'function') {
+    return window.SpeechSynthesisUtterance
+  }
+  return undefined
+}
+
+function isSpeechSynthesisSupported(): boolean {
+  return (
     typeof window !== 'undefined' &&
     typeof window.speechSynthesis !== 'undefined' &&
-    typeof window.speechSynthesis?.speak === 'function'
+    typeof window.speechSynthesis?.speak === 'function' &&
+    typeof utteranceConstructor() === 'function'
+  )
+}
+
+export function createSpeechEngine(getSettings: () => SpeechSettings): SpeechEngine {
+  const supported = isSpeechSynthesisSupported()
 
   let speaking = false
   let generation = 0
@@ -92,9 +106,17 @@ export function createSpeechEngine(getSettings: () => SpeechSettings): SpeechEng
     } catch {
       // ignore
     }
-    window.speechSynthesis.cancel()
+    try {
+      window.speechSynthesis.cancel()
+    } catch {
+      // Some implementations throw; cancellation must not crash the session.
+    }
     speaking = false
-    resetAudioSession()
+    try {
+      resetAudioSession()
+    } catch {
+      /* optional */
+    }
   }
 
   const cancel = () => {
@@ -103,49 +125,70 @@ export function createSpeechEngine(getSettings: () => SpeechSettings): SpeechEng
 
   const getVoices = () => {
     if (!supported) return []
-    return window.speechSynthesis.getVoices()
+    try {
+      return window.speechSynthesis.getVoices()
+    } catch {
+      return []
+    }
   }
 
   const speak = (text: string) =>
-    new Promise<void>((resolve, reject) => {
-      const settings = getSettings()
-      if (!supported || settings.spokenCallsEnabled === false) {
-        resolve()
-        return
-      }
-      hardReset()
-      const speakGeneration = generation
-      prepareCoachingAudioSession(Boolean(settings.musicFriendly))
-
-      const utterance = new SpeechSynthesisUtterance(text)
-      utterance.rate = RUNTIME_SPEECH.rate
-      utterance.pitch = RUNTIME_SPEECH.pitch
-      utterance.volume = RUNTIME_SPEECH.volume
-      const voice = pickEnglishVoice(getVoices())
-      if (voice) utterance.voice = voice
-
-      speaking = true
-      utterance.onend = () => {
-        if (speakGeneration !== generation) {
-          resolve()
-          return
-        }
+    new Promise<void>((resolve) => {
+      const finishQuietly = () => {
         speaking = false
         resolve()
       }
-      utterance.onerror = (event) => {
-        if (speakGeneration !== generation) {
+      try {
+        const settings = getSettings()
+        if (!supported || settings.spokenCallsEnabled === false) {
           resolve()
           return
         }
-        speaking = false
-        if (event.error === 'canceled' || event.error === 'interrupted') {
-          resolve()
+
+        hardReset()
+        const speakGeneration = generation
+        try {
+          prepareCoachingAudioSession(Boolean(settings.musicFriendly))
+        } catch {
+          /* Audio Session API is optional. */
+        }
+
+        const Utterance = utteranceConstructor()
+        if (!Utterance) {
+          finishQuietly()
           return
         }
-        reject(new Error(event.error))
+
+        const utterance = new Utterance(text)
+        utterance.rate = RUNTIME_SPEECH.rate
+        utterance.pitch = RUNTIME_SPEECH.pitch
+        utterance.volume = RUNTIME_SPEECH.volume
+        const voice = pickEnglishVoice(getVoices())
+        if (voice) utterance.voice = voice
+
+        let settled = false
+        const settle = () => {
+          if (settled) return
+          settled = true
+          if (speakGeneration === generation) speaking = false
+          resolve()
+        }
+
+        speaking = true
+        utterance.onend = () => settle()
+        utterance.onerror = () => {
+          // canceled / interrupted / synthesis-failed / hardware / etc.
+          // Expected browser failures must not reject into SessionEngine.
+          settle()
+        }
+        try {
+          window.speechSynthesis.speak(utterance)
+        } catch {
+          settle()
+        }
+      } catch {
+        finishQuietly()
       }
-      window.speechSynthesis.speak(utterance)
     })
 
   return {
@@ -159,7 +202,11 @@ export function createSpeechEngine(getSettings: () => SpeechSettings): SpeechEng
     },
     isSpeaking: () => {
       if (!supported) return false
-      return speaking && window.speechSynthesis.speaking && !window.speechSynthesis.paused
+      try {
+        return speaking && window.speechSynthesis.speaking && !window.speechSynthesis.paused
+      } catch {
+        return false
+      }
     },
   }
 }

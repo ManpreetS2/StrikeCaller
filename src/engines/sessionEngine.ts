@@ -244,7 +244,7 @@ export class SessionEngine {
       if (this.cancelled || token !== this.runToken) return
       this.setCaption(String(n))
       if (this.config.speech.countdownEnabled) {
-        void this.speech.speak(String(n))
+        this.queueSpeech(String(n))
       }
       if (this.config.sound.tonesEnabled) {
         void audioEngine.playCountdownTick()
@@ -253,7 +253,7 @@ export class SessionEngine {
       if (this.cancelled || token !== this.runToken) return
     }
     this.setCaption('Fight')
-    if (this.config.speech.roundCallsEnabled) void this.speech.speak('Fight')
+    if (this.config.speech.roundCallsEnabled) this.queueSpeech('Fight')
     if (this.config.sound.bellsEnabled) void audioEngine.playBell()
     if (this.config.sound.vibrationEnabled) void audioEngine.vibrate([40, 40, 40])
     await this.wait(400)
@@ -292,7 +292,7 @@ export class SessionEngine {
         ) {
           this.finalWarningPlayed = true
           this.setCaption('Ten seconds')
-          if (this.config.speech.roundCallsEnabled) void this.speech.speak('Ten seconds')
+          if (this.config.speech.roundCallsEnabled) this.queueSpeech('Ten seconds')
           if (this.config.sound.tonesEnabled) void audioEngine.playFinalWarning()
         }
         if (this.timeRemainingMs <= 0) {
@@ -343,7 +343,7 @@ export class SessionEngine {
       this.phase = 'rest'
       this.timeRemainingMs = this.config.restDurationSec * 1000
       this.setCaption('Rest')
-      if (this.config.speech.roundCallsEnabled) void this.speech.speak('Rest')
+      if (this.config.speech.roundCallsEnabled) this.queueSpeech('Rest')
       if (this.config.sound.tonesEnabled) void audioEngine.playRestChime()
       this.emit()
     } else {
@@ -463,11 +463,7 @@ export class SessionEngine {
     if (technique.category === 'movement') this.movementActions += 1
     this.events.push({ techniqueId: technique.id, calledAt: Date.now(), spokenAs: spoken })
 
-    try {
-      void this.speech.speak(spoken)
-    } catch {
-      // caption fallback
-    }
+    this.queueSpeech(spoken)
 
     if (this.config.sound.vibrationEnabled) void audioEngine.vibrate(20)
 
@@ -501,10 +497,13 @@ export class SessionEngine {
     this.interrupted = false
     this.speech.hardReset()
     audioEngine.stopAll()
-    await audioEngine.prepare()
+    // Audio unlock is best-effort. A hanging AudioContext.resume() must not
+    // leave the session stuck on Pause with no way to continue.
+    void Promise.resolve(audioEngine.prepare()).catch(() => {})
 
     const token = ++this.runToken
     this.paused = false
+    this.emit()
 
     try {
       // Rest resumes remaining rest without Fight countdown/bell
@@ -660,6 +659,13 @@ export class SessionEngine {
       excludeFromStats: isDemo,
       isDemo,
     }
+  }
+
+  /** Best-effort TTS. Workout timing never awaits this Promise. */
+  private queueSpeech(text: string) {
+    void Promise.resolve(this.speech.speak(text)).catch(() => {
+      /* expected synthesis failures must not become unhandled rejections */
+    })
   }
 
   clearSpeechQueue() {

@@ -1,30 +1,8 @@
-import { createContext, useContext, useId, type ReactNode, type SVGProps } from 'react'
+import { useId, type ReactNode, type SVGProps } from 'react'
+import { DimIdContext, useDimIds, type DimIds } from './dimIds'
+import { resolveIconSize, type IconSize } from './iconSize'
 
-export type IconSize = 'sm' | 'md' | 'lg' | number
-
-const SIZE_MAP = { sm: 24, md: 40, lg: 72 } as const
-
-export function resolveIconSize(size: IconSize = 'md'): number {
-  return typeof size === 'number' ? size : SIZE_MAP[size]
-}
-
-interface DimIds {
-  face: string
-  accent: string
-  edge: string
-  shadow: string
-}
-
-const DimIdContext = createContext<DimIds>({
-  face: 'dimFace',
-  accent: 'dimAccent',
-  edge: 'dimEdge',
-  shadow: 'dimShadow',
-})
-
-export function useDimIds(): DimIds {
-  return useContext(DimIdContext)
-}
+export type { IconSize }
 
 export interface DimensionalIconProps extends Omit<SVGProps<SVGSVGElement>, 'children'> {
   size?: IconSize

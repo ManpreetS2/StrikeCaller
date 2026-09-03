@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getTechniquesByCategory, getTechnique } from '../data/techniques'
 import { MAX_COMBO_LENGTH, validateTechniqueSequence } from '../engines/comboValidator'
-import { useApp } from '../context/AppContext'
+import { useApp } from '../context/useApp'
 import { createDefaultWorkout } from '../data/defaults'
 import { ConfirmDialog } from '../components/ConfirmDialog'
 import { CategoryVisual, SportVisual } from '../components/visual'
@@ -141,8 +141,8 @@ export function BuilderPage() {
       includeHeadKicks: false,
       includeClinch: false,
     })
-    await primeTrainingAudio({ musicFriendly: preferences.speech.musicFriendly })
-    navigate('/session', { state: { config, comboQueue: queue, audioPrimed: true } })
+    const primed = await primeTrainingAudio({ musicFriendly: preferences.speech.musicFriendly })
+    navigate('/session', { state: { config, comboQueue: queue, audioPrimed: primed.ok } })
   })
 
   const save = useOnceAction(() => {

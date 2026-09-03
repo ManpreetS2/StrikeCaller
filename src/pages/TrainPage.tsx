@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Check, Sparkles, AlertTriangle, ChevronDown } from 'lucide-react'
-import { useApp } from '../context/AppContext'
+import { useApp } from '../context/useApp'
 import { createDefaultWorkout } from '../data/defaults'
 import { isPaceTooFast } from '../engines/timingEngine'
 import { SafetyNotice } from '../components/SafetyNotice'
@@ -250,8 +250,8 @@ export function TrainPage() {
       return
     }
 
-    await primeTrainingAudio({ musicFriendly })
-    navigate('/session', { state: { config: buildConfig(), audioPrimed: true } })
+    const primed = await primeTrainingAudio({ musicFriendly })
+    navigate('/session', { state: { config: buildConfig(), audioPrimed: primed.ok } })
   })
 
   const equipmentWarning = useMemo(() => {
