@@ -153,7 +153,7 @@ describe('v1.1.2 finite custom combo sessions', () => {
 
 describe('v1.1.2 Train Again custom rebuild', () => {
   it('rebuilds queue from queuedCombos', () => {
-    const q = queueOf(3, 'custom-xyz')
+    const q = Array.from({ length: 3 }, () => combo('custom-xyz', 'boxing'))
     const summary = {
       id: 's1',
       usedCustomCombo: true,

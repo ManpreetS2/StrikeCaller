@@ -1,5 +1,6 @@
 import { createDefaultWorkout } from '../data/defaults'
 import type { Combo, CustomCombo, SessionSummary, WorkoutConfig } from '../types'
+import { isRuntimeComboSemanticallyValid } from './comboSemantics'
 import { clampRepeatCount, tryCustomComboToRuntime } from './customCombo'
 
 export interface TrainAgainPayload {
@@ -19,9 +20,22 @@ function queueFromCombo(combo: Combo, repeats: number): Combo[] {
   return Array.from({ length: n }, () => cloneCombo(combo))
 }
 
+function finiteSafePayload(config: WorkoutConfig, comboQueue: Combo[]): TrainAgainPayload {
+  return {
+    config: {
+      ...config,
+      finishWhenQueueEmpty: true,
+      mode: config.mode === 'demo' ? 'custom' : config.mode,
+      customComboId: config.customComboId ?? comboQueue[0]?.id,
+      repeatCount: comboQueue.length,
+    },
+    comboQueue,
+  }
+}
+
 /**
  * Rebuild a Train Again session from a completed summary.
- * Custom / fixed-queue workouts restore the exact runtime queue (or snapshot)
+ * Custom / fixed-queue workouts restore semantically valid runtime combos
  * and never fall through to the generator.
  */
 export function buildTrainAgainPayload(
@@ -37,18 +51,19 @@ export function buildTrainAgainPayload(
         pace: summary.pace,
         customPaceMultiplier: summary.customPaceMultiplier,
       })
+  const sessionArt = baseConfig.martialArt
 
   if (summary.queuedCombos && summary.queuedCombos.length > 0) {
-    return {
-      config: {
+    const comboQueue = summary.queuedCombos
+      .map(cloneCombo)
+      .filter((combo) => isRuntimeComboSemanticallyValid(combo, sessionArt))
+    return finiteSafePayload(
+      {
         ...baseConfig,
-        finishWhenQueueEmpty: true,
-        mode: baseConfig.mode === 'demo' ? 'custom' : baseConfig.mode,
         customComboId: baseConfig.customComboId ?? summary.queuedCombos[0]!.id,
-        repeatCount: summary.queuedCombos.length,
       },
-      comboQueue: summary.queuedCombos.map(cloneCombo),
-    }
+      comboQueue,
+    )
   }
 
   const customId = baseConfig.customComboId
@@ -62,36 +77,34 @@ export function buildTrainAgainPayload(
 
     if (live) {
       const runtime = tryCustomComboToRuntime(live)
-      if (runtime) {
+      if (runtime && isRuntimeComboSemanticallyValid(runtime, sessionArt)) {
         const repeats = clampRepeatCount(baseConfig.repeatCount ?? live.repeatCount)
-        return {
-          config: {
+        return finiteSafePayload(
+          {
             ...baseConfig,
-            finishWhenQueueEmpty: true,
             mode: 'custom',
             customComboId: live.id,
-            repeatCount: repeats,
             martialArt: runtime.martialArt,
           },
-          comboQueue: queueFromCombo(runtime, repeats),
-        }
+          queueFromCombo(runtime, repeats),
+        )
       }
     }
 
-    if (snap) {
+    if (snap && isRuntimeComboSemanticallyValid(snap, sessionArt)) {
       const repeats = clampRepeatCount(baseConfig.repeatCount ?? 1)
-      return {
-        config: {
+      return finiteSafePayload(
+        {
           ...baseConfig,
-          finishWhenQueueEmpty: true,
           mode: 'custom',
           customComboId: snap.id,
-          repeatCount: repeats,
           martialArt: snap.martialArt ?? baseConfig.martialArt,
         },
-        comboQueue: queueFromCombo(snap, repeats),
-      }
+        queueFromCombo(snap, repeats),
+      )
     }
+
+    return finiteSafePayload({ ...baseConfig, mode: 'custom' }, [])
   }
 
   return { config: { ...baseConfig, finishWhenQueueEmpty: false } }

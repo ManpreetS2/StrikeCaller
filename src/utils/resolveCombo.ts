@@ -1,5 +1,6 @@
 import { COMBO_MAP } from '../data/combos'
 import type { Combo, CustomCombo, SessionSummary } from '../types'
+import { isRuntimeComboSemanticallyValid } from './comboSemantics'
 import { tryCustomComboToRuntime } from './customCombo'
 
 export function resolveCombo(
@@ -17,7 +18,7 @@ export function resolveCombo(
 
   for (const summary of options.history ?? []) {
     const snap = summary.comboSnapshots?.find((c) => c.id === id)
-    if (snap) return snap
+    if (snap && isRuntimeComboSemanticallyValid(snap)) return snap
   }
 
   return null

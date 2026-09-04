@@ -1,5 +1,6 @@
 import { lookupTechnique } from '../data/techniques'
 import { getCombo } from '../data/combos'
+import { isRuntimeComboSemanticallyValid } from '../utils/comboSemantics'
 import { nextCombo, optionsFromWorkout, getDemoCombos } from './comboGenerator'
 import { computeTechniqueDurationMs } from './timingEngine'
 import { formatTechniqueCall, createSpeechEngine } from './speechEngine'
@@ -42,12 +43,9 @@ function canMutateCombo(phase: SessionPhase, paused: boolean): boolean {
   return !paused && phase === 'work'
 }
 
-/** Built-in/generated combos are expected valid; this only defends unresolvable IDs. */
-function runtimeComboIsPlayable(combo: Combo): boolean {
-  return (
-    combo.techniques.length > 0 &&
-    combo.techniques.every((step) => lookupTechnique(step.techniqueId) != null)
-  )
+/** Built-in/generated combos are expected valid; this still defends untrusted queue input. */
+function runtimeComboIsPlayable(combo: Combo, martialArt: MartialArt): boolean {
+  return isRuntimeComboSemanticallyValid(combo, martialArt)
 }
 
 export class SessionEngine {
@@ -377,9 +375,10 @@ export class SessionEngine {
   }
 
   private pickCombo(): Combo | null {
+    const sessionArt = this.config.martialArt
     while (this.comboQueue.length) {
       const next = this.comboQueue.shift()!
-      if (!runtimeComboIsPlayable(next)) continue
+      if (!runtimeComboIsPlayable(next, sessionArt)) continue
       this.rememberCombo(next)
       return next
     }
@@ -390,7 +389,7 @@ export class SessionEngine {
       this.comboQueue = getDemoCombos(this.config.stance, this.config.martialArt ?? 'muay-thai')
       while (this.comboQueue.length) {
         const next = this.comboQueue.shift()!
-        if (!runtimeComboIsPlayable(next)) continue
+        if (!runtimeComboIsPlayable(next, sessionArt)) continue
         this.rememberCombo(next)
         return next
       }
@@ -400,7 +399,7 @@ export class SessionEngine {
       const id = this.config.selectedComboIds[this.combinationsCompleted % this.config.selectedComboIds.length]!
       try {
         const curated = getCombo(id)
-        if (runtimeComboIsPlayable(curated)) {
+        if (runtimeComboIsPlayable(curated, sessionArt)) {
           this.rememberCombo(curated)
           return curated
         }
@@ -409,8 +408,11 @@ export class SessionEngine {
       }
     }
     const generated = nextCombo(optionsFromWorkout(this.config), this.recentComboIds)
-    this.rememberCombo(generated)
-    return generated
+    if (runtimeComboIsPlayable(generated, sessionArt)) {
+      this.rememberCombo(generated)
+      return generated
+    }
+    return null
   }
 
   private async playNextCombo(token: number) {

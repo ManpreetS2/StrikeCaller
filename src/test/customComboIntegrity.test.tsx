@@ -23,6 +23,9 @@ import {
 import { validateSessionSummary } from '../storage/sessionValidation'
 import { importUserData } from '../storage/userData'
 import { loadHistory, saveSession } from '../storage/historyStore'
+import { buildTrainAgainPayload } from '../utils/trainAgain'
+import { resolveCombo } from '../utils/resolveCombo'
+import { validateRuntimeComboSemantics } from '../utils/comboSemantics'
 import {
   CUSTOM_COMBO_INVALID_SEQUENCE_MESSAGE,
   CUSTOM_COMBO_UNKNOWN_TECHNIQUE_MESSAGE,
@@ -51,7 +54,7 @@ function comboRecord(
   return combo
 }
 
-function validSession(id: string): Record<string, unknown> {
+function validSession(id: string, extra: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     id,
     startedAt: 1_700_000_000_000,
@@ -74,6 +77,7 @@ function validSession(id: string): Record<string, unknown> {
     cancelled: false,
     favoriteComboIds: [],
     usedCustomCombo: false,
+    ...extra,
   }
 }
 
@@ -89,7 +93,11 @@ function dailyState(dateKey: string, comboId: string): DailyDrillState {
   }
 }
 
-function runtimeCombo(id: string, techniqueIds: string[]): Combo {
+function runtimeCombo(
+  id: string,
+  techniqueIds: string[],
+  martialArt: Combo['martialArt'] = 'muay-thai',
+): Combo {
   return {
     id,
     title: `Combo ${id}`,
@@ -105,7 +113,7 @@ function runtimeCombo(id: string, techniqueIds: string[]): Combo {
     coachingNotes: 'n',
     tags: ['custom'],
     equipment: ['shadowboxing'],
-    martialArt: 'muay-thai',
+    martialArt,
   }
 }
 
@@ -625,5 +633,196 @@ describe('A3 SessionEngine malformed custom queue', () => {
     expect(() => engine.snapshot()).not.toThrow()
     expect(engine.snapshot().nextTechniqueLabel).toBeNull()
     engine.stop()
+  })
+
+  it('skips a known-id invalid sequence then plays the valid combo', async () => {
+    expect(validateTechniqueSequence(['cross', 'rear-hook']).valid).toBe(false)
+    const tracked = trackUnhandled()
+    const engine = new SessionEngine(silentWorkout(), { wakeLock: false })
+    const started = runUntilSummary(engine, [
+      runtimeCombo('bad-seq', ['cross', 'rear-hook']),
+      runtimeCombo('good', ['jab', 'cross']),
+    ])
+    await expect(started).resolves.toBeUndefined()
+    const summary = engine.getSummary()
+    expect(engine.snapshot().phase).toBe('summary')
+    expect(summary.combinationsCompleted).toBe(1)
+    expect(summary.comboIds).toEqual(['good'])
+    expect(summary.techniqueCounts['rear-hook']).toBeUndefined()
+    expect(summary.techniqueCounts.jab).toBeGreaterThan(0)
+    expect(tracked.reasons).toEqual([])
+    tracked.stop()
+    engine.stop()
+  })
+
+  it('finishes a finite queue of known-id semantic failures', async () => {
+    const tracked = trackUnhandled()
+    const engine = new SessionEngine(silentWorkout(), { wakeLock: false })
+    const started = runUntilSummary(engine, [
+      runtimeCombo('bad-seq-1', ['cross', 'rear-hook']),
+      runtimeCombo('bad-seq-2', ['cross', 'rear-hook']),
+    ])
+    await expect(started).resolves.toBeUndefined()
+    expect(engine.snapshot().phase).toBe('summary')
+    expect(engine.getSummary().combinationsCompleted).toBe(0)
+    expect(engine.getSummary().techniquesCalled).toBe(0)
+    expect(tracked.reasons).toEqual([])
+    tracked.stop()
+    engine.stop()
+  })
+
+  it('skips a Muay Thai-only technique in a Boxing session then plays a valid Boxing combo', async () => {
+    const tracked = trackUnhandled()
+    const engine = new SessionEngine(silentWorkout({ martialArt: 'boxing' }), { wakeLock: false })
+    const started = runUntilSummary(engine, [
+      runtimeCombo('wrong-sport', ['jab', 'rear-low-kick'], 'boxing'),
+      runtimeCombo('good-box', ['jab', 'cross'], 'boxing'),
+    ])
+    await expect(started).resolves.toBeUndefined()
+    const summary = engine.getSummary()
+    expect(engine.snapshot().phase).toBe('summary')
+    expect(summary.combinationsCompleted).toBe(1)
+    expect(summary.comboIds).toEqual(['good-box'])
+    expect(summary.techniqueCounts['rear-low-kick']).toBeUndefined()
+    expect(summary.techniqueCounts.jab).toBeGreaterThan(0)
+    expect(tracked.reasons).toEqual([])
+    tracked.stop()
+    engine.stop()
+  })
+})
+
+describe('A3 follow-up Train Again and resolveCombo historical combos', () => {
+  it('keeps only the valid historical queued combo', () => {
+    const invalidSeq = runtimeCombo('A', ['cross', 'rear-hook'], 'boxing')
+    const valid = runtimeCombo('B', ['jab', 'cross'], 'boxing')
+    const wrongSport = runtimeCombo('C', ['jab', 'rear-low-kick'], 'boxing')
+    const payload = buildTrainAgainPayload(
+      {
+        id: 'hist-mixed',
+        martialArt: 'boxing',
+        mode: 'custom',
+        usedCustomCombo: true,
+        workoutConfig: createDefaultWorkout({
+          mode: 'custom',
+          martialArt: 'boxing',
+          finishWhenQueueEmpty: true,
+          customComboId: 'A',
+        }),
+        queuedCombos: [invalidSeq, valid, wrongSport],
+      } as SessionSummary,
+      [],
+    )
+    expect(payload.config.finishWhenQueueEmpty).toBe(true)
+    expect(payload.comboQueue?.map((combo) => combo.id)).toEqual(['B'])
+  })
+
+  it('returns a finite-safe empty queue when every historical combo is invalid', async () => {
+    const payload = buildTrainAgainPayload(
+      {
+        id: 'hist-all-bad',
+        martialArt: 'boxing',
+        mode: 'custom',
+        usedCustomCombo: true,
+        workoutConfig: createDefaultWorkout({
+          mode: 'custom',
+          martialArt: 'boxing',
+          finishWhenQueueEmpty: true,
+          customComboId: 'A',
+        }),
+        queuedCombos: [
+          runtimeCombo('A', ['cross', 'rear-hook'], 'boxing'),
+          runtimeCombo('C', ['jab', 'rear-low-kick'], 'boxing'),
+        ],
+      } as SessionSummary,
+      [],
+    )
+    expect(payload.config.finishWhenQueueEmpty).toBe(true)
+    expect(payload.comboQueue).toEqual([])
+    expect(payload.config.mode).not.toBe('coach')
+
+    vi.useFakeTimers()
+    const tracked = trackUnhandled()
+    const engine = new SessionEngine(payload.config, { wakeLock: false })
+    try {
+      const started = runUntilSummary(engine, payload.comboQueue ?? [])
+      await expect(started).resolves.toBeUndefined()
+      expect(engine.snapshot().phase).toBe('summary')
+      expect(engine.getSummary().combinationsCompleted).toBe(0)
+      expect(tracked.reasons).toEqual([])
+    } finally {
+      tracked.stop()
+      engine.stop()
+      vi.useRealTimers()
+    }
+  })
+
+  it('does not queue a semantically invalid historical snapshot', () => {
+    const payload = buildTrainAgainPayload(
+      {
+        id: 'hist-snap',
+        martialArt: 'boxing',
+        mode: 'custom',
+        usedCustomCombo: true,
+        workoutConfig: createDefaultWorkout({
+          mode: 'custom',
+          martialArt: 'boxing',
+          finishWhenQueueEmpty: true,
+          customComboId: 'gone',
+          repeatCount: 2,
+        }),
+        comboSnapshots: [runtimeCombo('gone', ['cross', 'rear-hook'], 'boxing')],
+      } as SessionSummary,
+      [],
+    )
+    expect(payload.config.finishWhenQueueEmpty).toBe(true)
+    expect(payload.comboQueue).toEqual([])
+  })
+
+  it('still trains from a valid historical snapshot', () => {
+    const snap = runtimeCombo('keep-snap', ['jab', 'cross'], 'muay-thai')
+    const payload = buildTrainAgainPayload(
+      {
+        id: 'hist-good-snap',
+        martialArt: 'muay-thai',
+        mode: 'custom',
+        usedCustomCombo: true,
+        workoutConfig: createDefaultWorkout({
+          mode: 'custom',
+          customComboId: 'keep-snap',
+          finishWhenQueueEmpty: true,
+          repeatCount: 2,
+        }),
+        comboSnapshots: [snap],
+      } as SessionSummary,
+      [],
+    )
+    expect(payload.comboQueue?.length).toBe(2)
+    expect(payload.comboQueue?.[0]?.id).toBe('keep-snap')
+  })
+
+  it('resolveCombo returns a valid snapshot and rejects unknown, invalid-sequence, and wrong-sport snapshots', () => {
+    const valid = runtimeCombo('snap-valid', ['jab', 'cross'])
+    const unknown = runtimeCombo('snap-unknown', ['jab', 'does-not-exist'])
+    const badSeq = runtimeCombo('snap-seq', ['cross', 'rear-hook'])
+    const wrongSport = runtimeCombo('snap-sport', ['jab', 'rear-low-kick'], 'boxing')
+    expect(resolveCombo('snap-valid', { history: [{ comboSnapshots: [valid] } as SessionSummary] })).toEqual(
+      expect.objectContaining({ id: 'snap-valid' }),
+    )
+    expect(resolveCombo('snap-unknown', { history: [{ comboSnapshots: [unknown] } as SessionSummary] })).toBeNull()
+    expect(resolveCombo('snap-seq', { history: [{ comboSnapshots: [badSeq] } as SessionSummary] })).toBeNull()
+    expect(resolveCombo('snap-sport', { history: [{ comboSnapshots: [wrongSport] } as SessionSummary] })).toBeNull()
+  })
+
+  it('does not drop a historical SessionSummary whose nested combos are only semantically invalid', () => {
+    const summary = validateSessionSummary(
+      validSession('keep-history', {
+        queuedCombos: [runtimeCombo('bad-seq', ['cross', 'rear-hook'])],
+        comboSnapshots: [runtimeCombo('bad-seq', ['cross', 'rear-hook'])],
+      }),
+    )
+    expect(summary).not.toBeNull()
+    expect(summary?.id).toBe('keep-history')
+    expect(summary?.queuedCombos?.[0]?.id).toBe('bad-seq')
+    expect(validateRuntimeComboSemantics(summary!.queuedCombos![0]!).ok).toBe(false)
   })
 })

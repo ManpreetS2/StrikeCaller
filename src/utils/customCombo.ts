@@ -1,27 +1,25 @@
 import type { Combo, CustomCombo, MartialArt } from '../types'
-import { lookupTechnique } from '../data/techniques'
-import { MAX_COMBO_LENGTH, validateTechniqueSequence } from '../engines/comboValidator'
+import { MAX_COMBO_LENGTH } from '../engines/comboValidator'
+import {
+  validateTechniqueIdsForArt,
+  type ComboSemanticReason,
+  type ComboSemanticResult,
+} from './comboSemantics'
+
+export {
+  CUSTOM_COMBO_INVALID_SEQUENCE_MESSAGE,
+  CUSTOM_COMBO_UNKNOWN_TECHNIQUE_MESSAGE,
+  customComboSportUnavailableMessage,
+  isRuntimeComboSemanticallyValid,
+  validateRuntimeComboSemantics,
+  validateTechniqueIdsForArt,
+} from './comboSemantics'
 
 export const MIN_REPEAT_COUNT = 1
 export const MAX_REPEAT_COUNT = 20
 
-export const CUSTOM_COMBO_UNKNOWN_TECHNIQUE_MESSAGE = 'Custom combo contains an unknown technique.'
-export const CUSTOM_COMBO_INVALID_SEQUENCE_MESSAGE = 'Custom combo contains an invalid technique sequence.'
-
-export function customComboSportUnavailableMessage(martialArt: MartialArt): string {
-  return `Custom combo contains a technique unavailable for ${martialArt === 'boxing' ? 'Boxing' : 'Muay Thai'}.`
-}
-
-export type CustomComboSemanticReason =
-  | 'empty'
-  | 'excessive-length'
-  | 'unknown-technique'
-  | 'sport-incompatible'
-  | 'invalid-sequence'
-
-export type CustomComboSemanticResult =
-  | { ok: true }
-  | { ok: false; reason: CustomComboSemanticReason; message: string }
+export type CustomComboSemanticReason = ComboSemanticReason
+export type CustomComboSemanticResult = ComboSemanticResult
 
 function normalizedCustomComboArt(martialArt: MartialArt | undefined): MartialArt {
   return martialArt === 'boxing' ? 'boxing' : 'muay-thai'
@@ -35,41 +33,7 @@ export function validateCustomComboSemantics(combo: {
   techniqueIds: readonly string[]
   martialArt?: MartialArt
 }): CustomComboSemanticResult {
-  const ids = combo.techniqueIds
-  if (ids.length < 1) {
-    return { ok: false, reason: 'empty', message: 'Custom combo cannot be empty.' }
-  }
-  if (ids.length > MAX_COMBO_LENGTH) {
-    return {
-      ok: false,
-      reason: 'excessive-length',
-      message: `Custom combos must contain 1–${MAX_COMBO_LENGTH} techniques.`,
-    }
-  }
-
-  for (const id of ids) {
-    if (!lookupTechnique(id)) {
-      return { ok: false, reason: 'unknown-technique', message: CUSTOM_COMBO_UNKNOWN_TECHNIQUE_MESSAGE }
-    }
-  }
-
-  const martialArt = normalizedCustomComboArt(combo.martialArt)
-  for (const id of ids) {
-    const technique = lookupTechnique(id)
-    if (!technique?.martialArts.includes(martialArt)) {
-      return {
-        ok: false,
-        reason: 'sport-incompatible',
-        message: customComboSportUnavailableMessage(martialArt),
-      }
-    }
-  }
-
-  const sequence = validateTechniqueSequence([...ids])
-  if (!sequence.valid) {
-    return { ok: false, reason: 'invalid-sequence', message: CUSTOM_COMBO_INVALID_SEQUENCE_MESSAGE }
-  }
-  return { ok: true }
+  return validateTechniqueIdsForArt(combo.techniqueIds, normalizedCustomComboArt(combo.martialArt))
 }
 
 export function isCustomComboSemanticallyValid(combo: {
