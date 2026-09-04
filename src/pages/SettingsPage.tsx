@@ -28,10 +28,13 @@ export function SettingsPage() {
     deleteAllUserData,
     history,
     historyReady,
+    dataMutationPending,
     storageIssue,
   } = useApp()
   const [importMessage, setImportMessage] = useState('')
   const [confirmClear, setConfirmClear] = useState(false)
+  const [clearPending, setClearPending] = useState(false)
+  const clearPendingRef = useRef(false)
   const [confirmReset, setConfirmReset] = useState(false)
   const [confirmDeleteAll, setConfirmDeleteAll] = useState(false)
   const [deleteAllPending, setDeleteAllPending] = useState(false)
@@ -39,6 +42,7 @@ export function SettingsPage() {
     null,
   )
   const deleteAllPendingRef = useRef(false)
+  const dataBusy = !historyReady || dataMutationPending || clearPending || deleteAllPending
 
   return (
     <div className="space-y-6">
@@ -315,15 +319,21 @@ export function SettingsPage() {
           >
             Export JSON
           </button>
-          <label className="btn cursor-pointer">
+          <label className={`btn ${dataBusy ? 'pointer-events-none opacity-60' : 'cursor-pointer'}`}>
             Import JSON
             <input
               type="file"
               accept="application/json,.json"
               className="sr-only"
+              aria-label="Import JSON"
+              disabled={dataBusy}
               onChange={async (e) => {
                 const file = e.target.files?.[0]
                 if (!file) return
+                if (dataBusy) {
+                  e.target.value = ''
+                  return
+                }
                 if (file.size > MAX_IMPORT_BYTES) {
                   setImportMessage('Import file exceeds the 2 MB limit.')
                   e.target.value = ''
@@ -336,7 +346,12 @@ export function SettingsPage() {
               }}
             />
           </label>
-          <button type="button" className="btn" onClick={() => setConfirmClear(true)}>
+          <button
+            type="button"
+            className="btn"
+            disabled={dataBusy}
+            onClick={() => setConfirmClear(true)}
+          >
             Clear workout history
           </button>
           <button type="button" className="btn btn-danger" onClick={() => setConfirmReset(true)}>
@@ -359,6 +374,7 @@ export function SettingsPage() {
         <button
           type="button"
           className="btn btn-danger"
+          disabled={dataBusy}
           onClick={() => {
             setDeleteAllMessage(null)
             setConfirmDeleteAll(true)
@@ -381,13 +397,23 @@ export function SettingsPage() {
           title="Clear workout history?"
           confirmLabel="Clear history"
           danger
+          confirmDisabled={clearPending || dataMutationPending}
+          cancelDisabled={clearPending || dataMutationPending}
           onConfirm={() => {
+            if (clearPendingRef.current) return
+            clearPendingRef.current = true
+            setClearPending(true)
             void (async () => {
               await clearHistory()
+              clearPendingRef.current = false
+              setClearPending(false)
               setConfirmClear(false)
             })()
           }}
-          onCancel={() => setConfirmClear(false)}
+          onCancel={() => {
+            if (clearPendingRef.current) return
+            setConfirmClear(false)
+          }}
         >
           This permanently removes saved sessions from this device.
         </ConfirmDialog>
@@ -413,8 +439,8 @@ export function SettingsPage() {
           title="Delete all local data?"
           confirmLabel="Delete permanently"
           danger
-          confirmDisabled={deleteAllPending}
-          cancelDisabled={deleteAllPending}
+          confirmDisabled={deleteAllPending || dataMutationPending}
+          cancelDisabled={deleteAllPending || dataMutationPending}
           onConfirm={() => {
             if (deleteAllPendingRef.current) return
             deleteAllPendingRef.current = true

@@ -23,6 +23,15 @@ export const DELETE_ALL_PARTIAL_MESSAGE =
 
 export const DELETE_ALL_SUCCESS_MESSAGE = 'All StrikeCaller data on this device was deleted.'
 
+export const LEGACY_HISTORY_CLEANUP_MESSAGE =
+  'StrikeCaller saved your history, but could not remove leftover older storage. Some stale data may remain.'
+
+export const IMPORT_RESTORE_FAILED_MESSAGE =
+  'Import could not be completed. StrikeCaller could not restore all previous data.'
+
+export const HISTORY_CLEAR_RESTORE_FAILED_MESSAGE =
+  'StrikeCaller cleared workout history but could not restore it after leftover storage cleanup failed.'
+
 export function storageFail(reason: StorageWriteReason): Extract<StorageWriteResult, { ok: false }> {
   return { ok: false, reason, message: STORAGE_WRITE_MESSAGES[reason] }
 }

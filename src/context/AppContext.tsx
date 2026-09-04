@@ -14,13 +14,7 @@ import {
   saveDailyDrillMap,
   type StorageWriteResult,
 } from '../storage/localStore'
-import {
-  clearHistory as clearHistoryStore,
-  ensureHistoryInitialized,
-  loadHistory,
-  saveSession,
-  sortHistory,
-} from '../storage/historyStore'
+import * as historyStore from '../storage/historyStore'
 import * as userDataStore from '../storage/userData'
 import type { DeleteAllUserDataResult } from '../storage/userData'
 import type { CustomCombo, DailyDrillMap, SessionSummary, ThemePreference, UserPreferences } from '../types'
@@ -83,6 +77,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const inFlightRef = useRef(new Map<string, Promise<AddHistoryResult>>())
   const dataEpochRef = useRef(0)
   const deleteInFlightRef = useRef<Promise<DeleteAllUserDataResult> | null>(null)
+  const clearInFlightRef = useRef<Promise<void> | null>(null)
+  const dataMutationTailRef = useRef(Promise.resolve())
+  const dataMutationCountRef = useRef(0)
+  const [dataMutationPending, setDataMutationPending] = useState(false)
+
+  const runLocalDataMutation = useCallback(<T,>(work: () => Promise<T>): Promise<T> => {
+    dataMutationCountRef.current += 1
+    setDataMutationPending(true)
+    const run = dataMutationTailRef.current.then(work, work)
+    dataMutationTailRef.current = run.then(
+      () => undefined,
+      () => undefined,
+    )
+    void run.finally(() => {
+      dataMutationCountRef.current -= 1
+      if (dataMutationCountRef.current === 0) setDataMutationPending(false)
+    })
+    return run
+  }, [])
 
   const applyWrite = useCallback((result: StorageWriteResult, source: StorageIssueSource) => {
     if (result.ok) {
@@ -121,7 +134,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const epoch = dataEpochRef.current
     let cancelled = false
     void (async () => {
-      const { history: loaded, write } = await ensureHistoryInitialized()
+      const { history: loaded, write } = await historyStore.ensureHistoryInitialized()
       if (cancelled || dataEpochRef.current !== epoch) return
       if (!write.ok) applyWrite(write, 'history')
 
@@ -138,7 +151,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         for (const session of prev) {
           if (!byId.has(session.id)) byId.set(session.id, session)
         }
-        return sortHistory([...byId.values()])
+        return historyStore.sortHistory([...byId.values()])
       })
 
       for (const item of pending) {
@@ -146,7 +159,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           item.resolve({ status: 'skipped' })
           continue
         }
-        const write = await saveSession(item.summary)
+        const write = await historyStore.saveSession(item.summary)
         if (cancelled || dataEpochRef.current !== epoch) {
           item.resolve({ status: 'skipped' })
           continue
@@ -231,6 +244,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       },
       history,
       historyReady,
+      dataMutationPending,
       addHistory: (summary) => {
         if (!isPersistableHistoryEntry(summary)) {
           return Promise.resolve({ status: 'skipped' })
@@ -258,7 +272,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           pendingSavesRef.current.push({ summary, resolve: finish })
           return persist
         }
-        void saveSession(summary).then((write) => {
+        void historyStore.saveSession(summary).then((write) => {
           if (dataEpochRef.current !== epoch) {
             finish({ status: 'skipped' })
             return
@@ -268,17 +282,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
         })
         return persist
       },
-      clearHistory: async () => {
-        const result = await clearHistoryStore()
-        applyWrite(result, 'history')
-        if (result.ok) {
-          const leftover = pendingSavesRef.current
-          pendingSavesRef.current = []
-          for (const item of leftover) {
-            item.resolve({ status: 'skipped' })
+      clearHistory: () => {
+        if (clearInFlightRef.current) return clearInFlightRef.current
+        const run = runLocalDataMutation(async () => {
+          const result = await historyStore.clearHistory()
+          applyWrite(result, 'history')
+          if (result.ok) {
+            dataEpochRef.current += 1
+            const leftover = pendingSavesRef.current
+            pendingSavesRef.current = []
+            for (const item of leftover) {
+              item.resolve({ status: 'skipped' })
+            }
+            setHistory([])
           }
-          setHistory([])
-        }
+        })
+        clearInFlightRef.current = run
+        void run.finally(() => {
+          if (clearInFlightRef.current === run) clearInFlightRef.current = null
+        })
+        return run
       },
       resetPreferences: () => {
         const { preferences: next, write } = resetPreferencesStore()
@@ -287,7 +310,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       },
       deleteAllUserData: () => {
         if (deleteInFlightRef.current) return deleteInFlightRef.current
-        const run = (async () => {
+        const run = runLocalDataMutation(async () => {
           dataEpochRef.current += 1
           const epoch = dataEpochRef.current
           const result = await userDataStore.deleteAllUserData()
@@ -305,7 +328,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           setFavorites(loadFavorites())
           setCustomCombos(loadCustomCombos())
           setDailyDrillsState(loadDailyDrillMap())
-          setHistory(await loadHistory())
+          setHistory(await historyStore.loadHistory())
 
           if (result.ok) {
             setStorageIssue(null)
@@ -316,7 +339,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             applyWrite(failedWrite, 'delete')
           }
           return result
-        })()
+        })
         deleteInFlightRef.current = run
         void run.finally(() => {
           if (deleteInFlightRef.current === run) deleteInFlightRef.current = null
@@ -333,20 +356,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
       },
       getDailyDrill: (dateKey) => dailyDrills[dateKey] ?? null,
       exportData: () => userDataStore.exportUserData(),
-      importData: async (json) => {
-        const result = await userDataStore.importUserData(json)
-        if (result.ok) {
-          setPreferencesState(loadPreferences())
-          setFavorites(loadFavorites())
-          setCustomCombos(loadCustomCombos())
-          setHistory(await loadHistory())
-          setDailyDrillsState(loadDailyDrillMap())
-          setStorageIssue(null)
-        } else if (result.write && !result.write.ok) {
-          applyWrite(result.write, 'import')
-        }
-        return result
-      },
+      importData: (json) =>
+        runLocalDataMutation(async () => {
+          const result = await userDataStore.importUserData(json)
+          const applied = result.ok || ('applied' in result && result.applied === true)
+          if (applied) {
+            dataEpochRef.current += 1
+            setPreferencesState(loadPreferences())
+            setFavorites(loadFavorites())
+            setCustomCombos(loadCustomCombos())
+            setHistory(await historyStore.loadHistory())
+            setDailyDrillsState(loadDailyDrillMap())
+            historyReadyRef.current = true
+            setHistoryReady(true)
+            if (result.ok) {
+              setStorageIssue(null)
+            } else if (result.write && !result.write.ok) {
+              applyWrite(result.write, 'import')
+            }
+          } else if (result.write && !result.write.ok) {
+            applyWrite(result.write, 'import')
+          }
+          return result
+        }),
       storageIssue,
       storageWarningVisible: storageIssue != null && storageIssue.id !== dismissedIssueId,
       dismissStorageIssue: () => {
@@ -363,7 +395,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       history,
       historyReady,
       dailyDrills,
+      dataMutationPending,
       applyWrite,
+      runLocalDataMutation,
       storageIssue,
       dismissedIssueId,
     ],

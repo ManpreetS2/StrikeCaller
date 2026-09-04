@@ -461,7 +461,7 @@ describe('delete all data Settings UI', () => {
       </AppProvider>,
     )
     expect(screen.getByRole('heading', { name: 'Delete all local data' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Delete all data' })).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Delete all data' })).toBeEnabled())
     expect(localStorage.getItem(STORAGE_KEYS.favorites)).toBeTruthy()
 
     await user.click(screen.getByRole('button', { name: 'Delete all data' }))
@@ -484,6 +484,7 @@ describe('delete all data Settings UI', () => {
         <SettingsPage />
       </AppProvider>,
     )
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Delete all data' })).toBeEnabled())
     await user.click(screen.getByRole('button', { name: 'Delete all data' }))
     await user.click(screen.getByRole('button', { name: 'Delete permanently' }))
     await waitFor(() => {
@@ -508,6 +509,7 @@ describe('delete all data Settings UI', () => {
         <SettingsPage />
       </AppProvider>,
     )
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Delete all data' })).toBeEnabled())
     await user.click(screen.getByRole('button', { name: 'Delete all data' }))
     await user.click(screen.getByRole('button', { name: 'Delete permanently' }))
     await waitFor(() => {
@@ -534,6 +536,7 @@ describe('delete all data Settings UI', () => {
         <SettingsPage />
       </AppProvider>,
     )
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Delete all data' })).toBeEnabled())
     await user.click(screen.getByRole('button', { name: 'Delete all data' }))
     await user.click(screen.getByRole('button', { name: 'Delete permanently' }))
     await waitFor(() => {

@@ -26,6 +26,7 @@ import {
 } from '../storage/localStore'
 import { exportUserData, importUserData } from '../storage/userData'
 import { loadHistory, saveSession, resetHistoryDbConnection } from '../storage/historyStore'
+import * as historyStore from '../storage/historyStore'
 import * as idb from '../storage/idb'
 import type { CustomCombo, DailyDrillMap, SessionSummary } from '../types'
 
@@ -113,6 +114,7 @@ function PersistenceHarness() {
     upsertCustomCombo,
     history,
     historyReady,
+    dataMutationPending,
     preferences,
     favorites,
     customCombos,
@@ -120,9 +122,11 @@ function PersistenceHarness() {
     storageWarningVisible,
     dismissStorageIssue,
     exportData,
+    importData,
     clearHistory,
   } = useApp()
   const [exported, setExported] = useState('')
+  const [importMessage, setImportMessage] = useState('none')
 
   return (
     <div>
@@ -149,6 +153,21 @@ function PersistenceHarness() {
       <button type="button" onClick={() => void clearHistory()}>
         clear-history
       </button>
+      <button
+        type="button"
+        onClick={() => {
+          void importData(
+            JSON.stringify({
+              version: 3,
+              history: [session('imported-B', { startedAt: 2_000_000_000_000 })],
+            }),
+          ).then((result) => {
+            setImportMessage(result.message)
+          })
+        }}
+      >
+        import-B
+      </button>
       <button type="button" onClick={() => updatePreferences({ largeText: true })}>
         change-pref
       </button>
@@ -167,6 +186,7 @@ function PersistenceHarness() {
       <span data-testid="history-count">{history.length}</span>
       <span data-testid="history-ids">{history.map((h) => h.id).join(',')}</span>
       <span data-testid="history-ready">{historyReady ? 'yes' : 'no'}</span>
+      <span data-testid="data-busy">{dataMutationPending ? 'yes' : 'no'}</span>
       <span data-testid="large-text">{String(preferences.largeText)}</span>
       <span data-testid="favorites">{favorites.join(',')}</span>
       <span data-testid="combo-count">{customCombos.length}</span>
@@ -174,6 +194,7 @@ function PersistenceHarness() {
       <span data-testid="issue-source">{storageIssue?.source ?? 'none'}</span>
       <span data-testid="warning-visible">{storageWarningVisible ? 'yes' : 'no'}</span>
       <pre data-testid="export-payload">{exported}</pre>
+      <span data-testid="import-message">{importMessage}</span>
     </div>
   )
 }
@@ -785,7 +806,7 @@ describe('history initialization races and fallback', () => {
     expect(parsed.history.map((h) => h.id)).toEqual(['A'])
   })
 
-  it('disables Settings export until history is ready', async () => {
+  it('disables Settings export, import, and clear until history is ready', async () => {
     expect(await saveSession(session('A', { startedAt: 1_000 }))).toEqual({ ok: true })
     resetHistoryDbConnection()
     const { release } = deferIndexedDbOpen()
@@ -794,8 +815,12 @@ describe('history initialization races and fallback', () => {
       await router.navigate('/settings')
     })
     expect(screen.getByRole('button', { name: 'Export JSON' })).toBeDisabled()
+    expect(screen.getByLabelText('Import JSON')).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Clear workout history' })).toBeDisabled()
     release()
     await waitFor(() => expect(screen.getByRole('button', { name: 'Export JSON' })).toBeEnabled())
+    expect(screen.getByLabelText('Import JSON')).toBeEnabled()
+    expect(screen.getByRole('button', { name: 'Clear workout history' })).toBeEnabled()
   })
 
   it('shows legacy history when IndexedDB is unavailable and never writes empty history', async () => {
@@ -837,5 +862,204 @@ describe('history initialization races and fallback', () => {
     expect(screen.getByTestId('history-ids').textContent).toContain('A')
     expect(screen.getByTestId('history-ids').textContent).toContain('B')
     expect(loadLegacyHistory().map((h) => h.id)).toEqual(['A', 'B'])
+  })
+})
+
+function holdFirstReadwrite() {
+  let release = () => {}
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const original = idb.transactSessions
+  let heldFirstWrite = false
+  vi.spyOn(idb, 'transactSessions').mockImplementation(async (mode, work) => {
+    if (mode === 'readwrite' && !heldFirstWrite) {
+      heldFirstWrite = true
+      await gate
+    }
+    return original(mode, work)
+  })
+  return { release: () => release() }
+}
+
+function ClearReentrancyHarness() {
+  const { clearHistory, history, historyReady } = useApp()
+  const [samePromise, setSamePromise] = useState('unknown')
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => {
+          const first = clearHistory()
+          const second = clearHistory()
+          setSamePromise(first === second ? 'yes' : 'no')
+        }}
+      >
+        double-clear
+      </button>
+      <span data-testid="history-ready">{historyReady ? 'yes' : 'no'}</span>
+      <span data-testid="history-ids">{history.map((item) => item.id).join(',')}</span>
+      <span data-testid="same-promise">{samePromise}</span>
+    </div>
+  )
+}
+
+describe('clear history and import AppContext races', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    resetStorageAvailabilityCache()
+    localStorage.setItem(
+      'strikecaller:preferences',
+      JSON.stringify({ ...DEFAULT_PREFERENCES, onboardingComplete: true }),
+    )
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    resetStorageAvailabilityCache()
+  })
+
+  it('does not resurrect an in-flight AppContext save after Clear History succeeds', async () => {
+    const user = userEvent.setup()
+    renderPersistenceApp('/')
+    await waitFor(() => expect(screen.getByTestId('history-ready')).toHaveTextContent('yes'))
+
+    const { release } = holdFirstReadwrite()
+    await user.click(screen.getByRole('button', { name: 'complete-workout' }))
+    await waitFor(() => expect(screen.getByTestId('history-ids').textContent).toContain('new-session'))
+    await user.click(screen.getByRole('button', { name: 'clear-history' }))
+    release()
+
+    await waitFor(() => expect(screen.getByTestId('history-count')).toHaveTextContent('0'))
+    expect(await loadHistory()).toEqual([])
+    expect(localStorage.getItem(LEGACY_HISTORY_KEY)).toBeNull()
+  })
+
+  it('reuses one in-flight Clear History promise', async () => {
+    expect(await saveSession(session('once'))).toEqual({ ok: true })
+    render(
+      <AppProvider>
+        <ClearReentrancyHarness />
+      </AppProvider>,
+    )
+    await waitFor(() => expect(screen.getByTestId('history-ready')).toHaveTextContent('yes'))
+    await act(async () => {
+      screen.getByRole('button', { name: 'double-clear' }).click()
+    })
+    await waitFor(() => expect(screen.getByTestId('same-promise')).toHaveTextContent('yes'))
+    await waitFor(() => expect(screen.getByTestId('history-ids')).toHaveTextContent(''))
+    expect(await loadHistory()).toEqual([])
+  })
+
+  it('does not merge stale startup hydration into React after an authoritative import', async () => {
+    expect(await saveSession(session('A'))).toEqual({ ok: true })
+    resetHistoryDbConnection()
+    let releaseHydration = () => {}
+    const gate = new Promise<void>((resolve) => {
+      releaseHydration = resolve
+    })
+    const original = historyStore.ensureHistoryInitialized
+    vi.spyOn(historyStore, 'ensureHistoryInitialized').mockImplementation(async () => {
+      const result = await original()
+      await gate
+      return result
+    })
+
+    renderPersistenceApp('/')
+    expect(screen.getByTestId('history-ready')).toHaveTextContent('no')
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'import-B' }).click()
+    })
+    await waitFor(() => expect(screen.getByTestId('import-message')).toHaveTextContent('Import successful.'))
+    expect(screen.getByTestId('history-ids')).toHaveTextContent('imported-B')
+
+    releaseHydration()
+    await waitFor(() => expect(screen.getByTestId('history-ready')).toHaveTextContent('yes'))
+    expect(screen.getByTestId('history-ids')).toHaveTextContent('imported-B')
+    expect(screen.getByTestId('history-ids').textContent).not.toContain('A')
+    expect((await loadHistory()).map((item) => item.id)).toEqual(['imported-B'])
+  })
+
+  it('leaves existing data in place and does not claim success when leftover legacy cleanup fails', async () => {
+    const user = userEvent.setup()
+    expect(await saveSession(session('old-idb'))).toEqual({ ok: true })
+    renderPersistenceApp('/')
+    await waitFor(() => expect(screen.getByTestId('history-ready')).toHaveTextContent('yes'))
+    localStorage.setItem(LEGACY_HISTORY_KEY, JSON.stringify([session('old-legacy')]))
+
+    const originalRemove = Storage.prototype.removeItem
+    vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(function (this: Storage, key: string) {
+      if (key === LEGACY_HISTORY_KEY) throw new Error('blocked remove')
+      return originalRemove.call(this, key)
+    })
+
+    await user.click(screen.getByRole('button', { name: 'import-B' }))
+    await waitFor(() =>
+      expect(screen.getByTestId('import-message')).toHaveTextContent(
+        'Import could not be saved. Existing data was left unchanged.',
+      ),
+    )
+    expect(screen.getByTestId('import-message')).not.toHaveTextContent('Import successful.')
+    expect(screen.getByTestId('history-ids')).toHaveTextContent('old-idb')
+    expect((await loadHistory()).map((item) => item.id)).toEqual(['old-idb'])
+    expect(localStorage.getItem(LEGACY_HISTORY_KEY)).toBeTruthy()
+  })
+
+  it('disables Clear History confirm while a clear is in flight', async () => {
+    const user = userEvent.setup()
+    expect(await saveSession(session('settings-clear'))).toEqual({ ok: true })
+    let release = () => {}
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    vi.spyOn(historyStore, 'clearHistory').mockImplementation(async () => {
+      await gate
+      return { ok: true }
+    })
+    const { router } = renderPersistenceApp('/')
+    await act(async () => {
+      await router.navigate('/settings')
+    })
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Export JSON' })).toBeEnabled())
+    await user.click(screen.getByRole('button', { name: 'Clear workout history' }))
+    await user.click(screen.getByRole('button', { name: 'Clear history' }))
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Clear history' })).toBeDisabled()
+    })
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled()
+    release()
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: 'Clear workout history?' })).not.toBeInTheDocument()
+    })
+  })
+
+  it('disables Import, Clear History, and Delete All while a data mutation is in flight', async () => {
+    const user = userEvent.setup()
+    expect(await saveSession(session('settings-busy'))).toEqual({ ok: true })
+    let release = () => {}
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    vi.spyOn(historyStore, 'clearHistory').mockImplementation(async () => {
+      await gate
+      return { ok: true }
+    })
+    const { router } = renderPersistenceApp('/')
+    await act(async () => {
+      await router.navigate('/settings')
+    })
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Export JSON' })).toBeEnabled())
+    await user.click(screen.getByRole('button', { name: 'Clear workout history' }))
+    await user.click(screen.getByRole('button', { name: 'Clear history' }))
+    await waitFor(() => {
+      expect(screen.getByLabelText('Import JSON')).toBeDisabled()
+    })
+    expect(screen.getByRole('button', { name: 'Clear history' })).toBeDisabled()
+    release()
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: 'Clear workout history?' })).not.toBeInTheDocument()
+    })
+    expect(screen.getByLabelText('Import JSON')).toBeEnabled()
   })
 })

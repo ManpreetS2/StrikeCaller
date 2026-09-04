@@ -7,8 +7,9 @@ import {
   loadPreferences,
   savePreferences,
 } from '../storage/localStore'
-import { exportUserData, importUserData } from '../storage/userData'
 import { transactSessions } from '../storage/idb'
+import * as idb from '../storage/idb'
+import { exportUserData, importUserData, deleteAllUserData } from '../storage/userData'
 import {
   clearHistory,
   ensureHistoryInitialized,
@@ -18,8 +19,14 @@ import {
   replaceHistory,
   resetHistoryDbConnection,
   saveSession,
+  setAfterAuthoritativeFenceForTests,
   sortHistory,
 } from '../storage/historyStore'
+import {
+  HISTORY_CLEAR_RESTORE_FAILED_MESSAGE,
+  IMPORT_RESTORE_FAILED_MESSAGE,
+  LEGACY_HISTORY_CLEANUP_MESSAGE,
+} from '../storage/storageTypes'
 import type { Combo, SessionSummary } from '../types'
 
 function session(id: string, extra: Partial<SessionSummary> = {}): SessionSummary {
@@ -102,6 +109,54 @@ function spyPut(
   })
 }
 
+function holdFirstReadwrite() {
+  let release = () => {}
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  const original = idb.transactSessions
+  let heldFirstWrite = false
+  vi.spyOn(idb, 'transactSessions').mockImplementation(async (mode, work) => {
+    if (mode === 'readwrite' && !heldFirstWrite) {
+      heldFirstWrite = true
+      await gate
+    }
+    return original(mode, work)
+  })
+  return { release: () => release() }
+}
+
+async function waitForCondition(pred: () => boolean, label: string) {
+  for (let i = 0; i < 200; i++) {
+    if (pred()) return
+    await Promise.resolve()
+  }
+  throw new Error(`timed out waiting for ${label}`)
+}
+
+function recordStoreMutations() {
+  const events: string[] = []
+  const originalClear = IDBObjectStore.prototype.clear
+  const originalPut = IDBObjectStore.prototype.put
+  vi.spyOn(IDBObjectStore.prototype, 'clear').mockImplementation(function (this: IDBObjectStore) {
+    events.push('clear')
+    return originalClear.call(this)
+  })
+  vi.spyOn(IDBObjectStore.prototype, 'put').mockImplementation(function (
+    this: IDBObjectStore,
+    value: unknown,
+    key?: IDBValidKey,
+  ) {
+    const id =
+      typeof value === 'object' && value !== null && 'id' in value && typeof value.id === 'string'
+        ? value.id
+        : '?'
+    events.push(`put:${id}`)
+    return originalPut.call(this, value, key)
+  })
+  return events
+}
+
 describe('IndexedDB history store and legacy migration', () => {
   beforeEach(() => {
     localStorage.clear()
@@ -110,6 +165,7 @@ describe('IndexedDB history store and legacy migration', () => {
 
   afterEach(() => {
     vi.restoreAllMocks()
+    setAfterAuthoritativeFenceForTests(null)
     localStorage.clear()
   })
 
@@ -418,7 +474,12 @@ describe('IndexedDB history store and legacy migration', () => {
       return originalRemove.call(this, key)
     })
     const first = await initHistory()
-    expect(first.write.ok).toBe(true)
+    expect(first.write.ok).toBe(false)
+    expect(first.write).toMatchObject({
+      ok: false,
+      reason: 'write-failed',
+      message: LEGACY_HISTORY_CLEANUP_MESSAGE,
+    })
     expect(ids(first.history)).toEqual(['abc'])
     expect(localStorage.getItem(LEGACY_HISTORY_KEY)).toBeTruthy()
     expect(ids(await loadHistory())).toEqual(['abc'])
@@ -484,6 +545,469 @@ describe('IndexedDB history store and legacy migration', () => {
     const saved = await saveSession(session('new'))
     expect(saved.ok).toBe(false)
     expect(await loadHistory()).toEqual([])
+  })
+
+  it('does not let an in-flight session save resurrect after a successful clear', async () => {
+    const { release } = holdFirstReadwrite()
+    const saveP = saveSession(session('late-clear-write'))
+    const clearP = clearHistory()
+    release()
+    expect((await clearP).ok).toBe(true)
+    await saveP
+    expect(await loadHistory()).toEqual([])
+    expect(localStorage.getItem(LEGACY_HISTORY_KEY)).toBeNull()
+    expect(await getSessionById('late-clear-write')).toEqual({ status: 'not-found' })
+  })
+
+  it('does not remigrate leftover legacy after a successful clear races initialization', async () => {
+    localStorage.setItem(LEGACY_HISTORY_KEY, JSON.stringify([session('init-clear-late')]))
+    const { release } = holdFirstReadwrite()
+    const initP = ensureHistoryInitialized()
+    const clearP = clearHistory()
+    release()
+    expect((await clearP).ok).toBe(true)
+    await initP
+    expect(localStorage.getItem(LEGACY_HISTORY_KEY)).toBeNull()
+    expect(await loadHistory()).toEqual([])
+    expect(await getSessionById('init-clear-late')).toEqual({ status: 'not-found' })
+  })
+
+  it('restores IndexedDB history and reports failure when leftover legacy cannot be removed during clear', async () => {
+    expect(await saveSession(session('recover-me'))).toEqual({ ok: true })
+    localStorage.setItem(LEGACY_HISTORY_KEY, JSON.stringify([session('legacy-copy')]))
+    const originalRemove = Storage.prototype.removeItem
+    vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(function (this: Storage, key: string) {
+      if (key === LEGACY_HISTORY_KEY) throw new Error('blocked remove')
+      return originalRemove.call(this, key)
+    })
+    const result = await clearHistory()
+    expect(result.ok).toBe(false)
+    expect(ids(await loadHistory())).toEqual(['recover-me'])
+    expect(localStorage.getItem(LEGACY_HISTORY_KEY)).toBeTruthy()
+  })
+
+  it('does not let delayed initialization insert old sessions after an imported history replaces IndexedDB', async () => {
+    localStorage.setItem(LEGACY_HISTORY_KEY, JSON.stringify([session('A')]))
+    const { release } = holdFirstReadwrite()
+    const initP = ensureHistoryInitialized()
+    const imported = importUserData(
+      JSON.stringify({
+        version: 3,
+        history: [session('B', { startedAt: 2 })],
+      }),
+    )
+    release()
+    const result = await imported
+    expect(result.ok).toBe(true)
+    await initP
+    expect(ids(await loadHistory())).toEqual(['B'])
+    expect(localStorage.getItem(LEGACY_HISTORY_KEY)).toBeNull()
+  })
+
+  it('rolls back imported history when leftover legacy cleanup fails after a successful replace', async () => {
+    localStorage.setItem(LEGACY_HISTORY_KEY, JSON.stringify([session('old-legacy')]))
+    expect(await saveSession(session('old-idb'))).toEqual({ ok: true })
+    savePreferences({ ...DEFAULT_PREFERENCES, stance: 'southpaw' })
+    const originalRemove = Storage.prototype.removeItem
+    vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(function (this: Storage, key: string) {
+      if (key === LEGACY_HISTORY_KEY) throw new Error('blocked remove')
+      return originalRemove.call(this, key)
+    })
+    const result = await importUserData(
+      JSON.stringify({
+        version: 3,
+        preferences: { ...DEFAULT_PREFERENCES, stance: 'orthodox' },
+        history: [session('B', { startedAt: 2 })],
+      }),
+    )
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.applied).toBeUndefined()
+    expect(result.message).toBe('Import could not be saved. Existing data was left unchanged.')
+    expect(result.message).not.toBe('Import successful.')
+    expect(ids(await loadHistory())).toEqual(['old-idb'])
+    expect(loadPreferences().stance).toBe('southpaw')
+    expect(localStorage.getItem(LEGACY_HISTORY_KEY)).toBeTruthy()
+  })
+
+  it('can remove leftover legacy on a later successful init retry', async () => {
+    localStorage.setItem(LEGACY_HISTORY_KEY, JSON.stringify([session('abc', { techniqueCounts: { jab: 1 } })]))
+    const originalRemove = Storage.prototype.removeItem
+    const remove = vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(function (this: Storage, key: string) {
+      if (key === LEGACY_HISTORY_KEY) throw new Error('blocked remove')
+      return originalRemove.call(this, key)
+    })
+    const first = await initHistory()
+    expect(first.write.ok).toBe(false)
+    expect(localStorage.getItem(LEGACY_HISTORY_KEY)).toBeTruthy()
+    expect(ids(await loadHistory())).toEqual(['abc'])
+
+    remove.mockImplementation(function (this: Storage, key: string) {
+      return originalRemove.call(this, key)
+    })
+    const second = await initHistory()
+    expect(second.write.ok).toBe(true)
+    expect(ids(second.history)).toEqual(['abc'])
+    expect(localStorage.getItem(LEGACY_HISTORY_KEY)).toBeNull()
+    expect(ids(await loadHistory())).toEqual(['abc'])
+  })
+
+  it('does not let a new saveSession interleave with Clear History after the fence', async () => {
+    expect(await saveSession(session('keep-then-clear'))).toEqual({ ok: true })
+    const events = recordStoreMutations()
+    let reachedFence = false
+    let releaseFence = () => {}
+    const fence = new Promise<void>((resolve) => {
+      releaseFence = resolve
+    })
+    setAfterAuthoritativeFenceForTests(async () => {
+      reachedFence = true
+      await fence
+    })
+
+    const clearP = clearHistory()
+    await waitForCondition(() => reachedFence, 'clear fence')
+    const saveP = saveSession(session('late-session'))
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(events.filter((event) => event === 'put:late-session')).toEqual([])
+    releaseFence()
+    expect((await clearP).ok).toBe(true)
+    expect((await saveP).ok).toBe(true)
+    const latePut = events.lastIndexOf('put:late-session')
+    const clearAt = events.indexOf('clear')
+    expect(clearAt).toBeGreaterThanOrEqual(0)
+    expect(latePut).toBeGreaterThan(clearAt)
+    expect(ids(await loadHistory())).toEqual(['late-session'])
+  })
+
+  it('does not let a new saveSession interleave with import replace after the fence', async () => {
+    expect(await saveSession(session('A'))).toEqual({ ok: true })
+    const events = recordStoreMutations()
+    let reachedFence = false
+    let releaseFence = () => {}
+    const fence = new Promise<void>((resolve) => {
+      releaseFence = resolve
+    })
+    setAfterAuthoritativeFenceForTests(async () => {
+      reachedFence = true
+      await fence
+    })
+
+    const imported = importUserData(
+      JSON.stringify({
+        version: 3,
+        history: [session('B', { startedAt: 2 })],
+      }),
+    )
+    await waitForCondition(() => reachedFence, 'import fence')
+    const saveP = saveSession(session('late-session'))
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(events.filter((event) => event === 'put:late-session')).toEqual([])
+    releaseFence()
+    expect((await imported).ok).toBe(true)
+    expect((await saveP).ok).toBe(true)
+    const latePut = events.lastIndexOf('put:late-session')
+    const clearAt = events.indexOf('clear')
+    expect(clearAt).toBeGreaterThanOrEqual(0)
+    expect(latePut).toBeGreaterThan(clearAt)
+    expect(ids(await loadHistory())).toEqual(['late-session', 'B'])
+  })
+
+  it('does not remigrate leftover legacy A after a rolled-back import of B and a later init', async () => {
+    localStorage.setItem(LEGACY_HISTORY_KEY, JSON.stringify([session('A')]))
+    const originalRemove = Storage.prototype.removeItem
+    const remove = vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(function (
+      this: Storage,
+      key: string,
+    ) {
+      if (key === LEGACY_HISTORY_KEY) throw new Error('blocked remove')
+      return originalRemove.call(this, key)
+    })
+    const first = await importUserData(
+      JSON.stringify({
+        version: 3,
+        history: [session('B', { startedAt: 2 })],
+      }),
+    )
+    expect(first.ok).toBe(false)
+    expect(ids(await loadHistory())).toEqual([])
+    expect(localStorage.getItem(LEGACY_HISTORY_KEY)).toBeTruthy()
+
+    remove.mockImplementation(function (this: Storage, key: string) {
+      return originalRemove.call(this, key)
+    })
+    resetHistoryDbConnection()
+    const initialized = await ensureHistoryInitialized()
+    expect(initialized.write.ok).toBe(true)
+    expect(ids(initialized.history)).toEqual(['A'])
+    expect(ids(await loadHistory())).toEqual(['A'])
+    expect(ids(await loadHistory())).not.toContain('B')
+    expect(localStorage.getItem(LEGACY_HISTORY_KEY)).toBeNull()
+
+    expect(
+      (
+        await importUserData(
+          JSON.stringify({
+            version: 3,
+            history: [session('B', { startedAt: 2 })],
+          }),
+        )
+      ).ok,
+    ).toBe(true)
+    expect(ids(await loadHistory())).toEqual(['B'])
+    expect(localStorage.getItem(LEGACY_HISTORY_KEY)).toBeNull()
+  })
+
+  it('does not return stale history from ensureHistoryInitialized during Clear History', async () => {
+    expect(await saveSession(session('A'))).toEqual({ ok: true })
+    let reachedFence = false
+    let releaseFence = () => {}
+    const fence = new Promise<void>((resolve) => {
+      releaseFence = resolve
+    })
+    setAfterAuthoritativeFenceForTests(async () => {
+      reachedFence = true
+      await fence
+    })
+    const clearP = clearHistory()
+    await waitForCondition(() => reachedFence, 'clear fence')
+    const initP = ensureHistoryInitialized()
+    releaseFence()
+    expect((await clearP).ok).toBe(true)
+    const initialized = await initP
+    expect(ids(initialized.history)).toEqual([])
+    expect(await loadHistory()).toEqual([])
+  })
+
+  it('does not return stale history from ensureHistoryInitialized during import', async () => {
+    expect(await saveSession(session('A'))).toEqual({ ok: true })
+    let reachedFence = false
+    let releaseFence = () => {}
+    const fence = new Promise<void>((resolve) => {
+      releaseFence = resolve
+    })
+    setAfterAuthoritativeFenceForTests(async () => {
+      reachedFence = true
+      await fence
+    })
+    const imported = importUserData(
+      JSON.stringify({
+        version: 3,
+        history: [session('B', { startedAt: 2 })],
+      }),
+    )
+    await waitForCondition(() => reachedFence, 'import fence')
+    const initP = ensureHistoryInitialized()
+    releaseFence()
+    expect((await imported).ok).toBe(true)
+    const initialized = await initP
+    expect(ids(initialized.history)).toEqual(['B'])
+    expect(ids(await loadHistory())).toEqual(['B'])
+  })
+
+  it('lets a later clear run after an unexpected authoritative throw', async () => {
+    expect(await saveSession(session('survive'))).toEqual({ ok: true })
+    setAfterAuthoritativeFenceForTests(async () => {
+      throw new Error('fence exploded')
+    })
+    await expect(clearHistory()).rejects.toThrow('fence exploded')
+    setAfterAuthoritativeFenceForTests(null)
+    expect((await clearHistory()).ok).toBe(true)
+    expect(await loadHistory()).toEqual([])
+  })
+
+  it('lets a later import succeed after a failed import transition', async () => {
+    expect(await saveSession(session('existing-session'))).toEqual({ ok: true })
+    spyPut((value, original) => {
+      if (typeof value === 'object' && value && 'id' in value && value.id === 'imported-should-not-stick') {
+        throw new DOMException('import blocked', 'UnknownError')
+      }
+      return original(value)
+    })
+    const failed = await importUserData(
+      JSON.stringify({
+        version: 3,
+        history: [session('imported-should-not-stick')],
+      }),
+    )
+    expect(failed.ok).toBe(false)
+    vi.restoreAllMocks()
+    const succeeded = await importUserData(
+      JSON.stringify({
+        version: 3,
+        history: [session('imported-ok')],
+      }),
+    )
+    expect(succeeded.ok).toBe(true)
+    expect(ids(await loadHistory())).toEqual(['imported-ok'])
+  })
+
+  it('serializes Clear History then import so the imported dataset wins', async () => {
+    expect(await saveSession(session('A'))).toEqual({ ok: true })
+    let releaseClear = () => {}
+    const clearFence = new Promise<void>((resolve) => {
+      releaseClear = resolve
+    })
+    let clearReached = false
+    setAfterAuthoritativeFenceForTests(async () => {
+      if (clearReached) return
+      clearReached = true
+      await clearFence
+    })
+    const clearP = clearHistory()
+    await waitForCondition(() => clearReached, 'clear fence before import')
+    const importP = importUserData(
+      JSON.stringify({
+        version: 3,
+        history: [session('B', { startedAt: 2 })],
+      }),
+    )
+    releaseClear()
+    expect((await clearP).ok).toBe(true)
+    expect((await importP).ok).toBe(true)
+    expect(ids(await loadHistory())).toEqual(['B'])
+  })
+
+  it('serializes import then Clear History so the final history is empty', async () => {
+    expect(await saveSession(session('A'))).toEqual({ ok: true })
+    let releaseImport = () => {}
+    const importFence = new Promise<void>((resolve) => {
+      releaseImport = resolve
+    })
+    let importReached = false
+    setAfterAuthoritativeFenceForTests(async () => {
+      if (importReached) return
+      importReached = true
+      await importFence
+    })
+    const importP = importUserData(
+      JSON.stringify({
+        version: 3,
+        history: [session('B', { startedAt: 2 })],
+      }),
+    )
+    await waitForCondition(() => importReached, 'import fence before clear')
+    const clearP = clearHistory()
+    releaseImport()
+    expect((await importP).ok).toBe(true)
+    expect((await clearP).ok).toBe(true)
+    expect(await loadHistory()).toEqual([])
+  })
+
+  it('reports incomplete recovery when clear restore fails after leftover legacy cannot be removed', async () => {
+    expect(await saveSession(session('recover-me'))).toEqual({ ok: true })
+    localStorage.setItem(LEGACY_HISTORY_KEY, JSON.stringify([session('legacy-copy')]))
+    const originalRemove = Storage.prototype.removeItem
+    vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(function (this: Storage, key: string) {
+      if (key === LEGACY_HISTORY_KEY) throw new Error('blocked remove')
+      return originalRemove.call(this, key)
+    })
+    let clears = 0
+    const originalClear = IDBObjectStore.prototype.clear
+    vi.spyOn(IDBObjectStore.prototype, 'clear').mockImplementation(function (this: IDBObjectStore) {
+      clears += 1
+      if (clears >= 2) throw new DOMException('restore clear failed', 'UnknownError')
+      return originalClear.call(this)
+    })
+    const result = await clearHistory()
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.message).toBe(HISTORY_CLEAR_RESTORE_FAILED_MESSAGE)
+    expect(localStorage.getItem(LEGACY_HISTORY_KEY)).toBeTruthy()
+  })
+
+  it('reports a partial import when leftover cleanup fails and history restore also fails', async () => {
+    expect(await saveSession(session('old-idb'))).toEqual({ ok: true })
+    localStorage.setItem(LEGACY_HISTORY_KEY, JSON.stringify([session('A')]))
+    const originalRemove = Storage.prototype.removeItem
+    vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(function (this: Storage, key: string) {
+      if (key === LEGACY_HISTORY_KEY) throw new Error('blocked remove')
+      return originalRemove.call(this, key)
+    })
+    let clears = 0
+    const originalClear = IDBObjectStore.prototype.clear
+    vi.spyOn(IDBObjectStore.prototype, 'clear').mockImplementation(function (this: IDBObjectStore) {
+      clears += 1
+      if (clears >= 2) throw new DOMException('restore clear failed', 'UnknownError')
+      return originalClear.call(this)
+    })
+    const result = await importUserData(
+      JSON.stringify({
+        version: 3,
+        history: [session('B', { startedAt: 2 })],
+      }),
+    )
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.applied).toBe(true)
+    expect(result.message).toBe(IMPORT_RESTORE_FAILED_MESSAGE)
+    expect(result.message).not.toMatch(/left unchanged/i)
+    expect(ids(await loadHistory())).toEqual(['B'])
+  })
+
+  it('does not deadlock when Clear History and Delete All overlap', async () => {
+    expect(await saveSession(session('A'))).toEqual({ ok: true })
+    const clearP = clearHistory()
+    const deleteP = deleteAllUserData()
+    expect((await clearP).ok).toBe(true)
+    expect((await deleteP).ok).toBe(true)
+    expect(await loadHistory()).toEqual([])
+  })
+
+  it('does not deadlock when import and Delete All overlap', async () => {
+    expect(await saveSession(session('A'))).toEqual({ ok: true })
+    let reachedFence = false
+    let releaseFence = () => {}
+    const fence = new Promise<void>((resolve) => {
+      releaseFence = resolve
+    })
+    setAfterAuthoritativeFenceForTests(async () => {
+      reachedFence = true
+      await fence
+    })
+    const importP = importUserData(
+      JSON.stringify({
+        version: 3,
+        history: [session('B', { startedAt: 2 })],
+      }),
+    )
+    await waitForCondition(() => reachedFence, 'import fence before delete')
+    const deleteP = deleteAllUserData()
+    releaseFence()
+    await importP
+    expect((await deleteP).ok).toBe(true)
+    expect(await loadHistory()).toEqual([])
+  })
+
+  it('lets a later Delete All run after an unexpected authoritative throw', async () => {
+    expect(await saveSession(session('A'))).toEqual({ ok: true })
+    setAfterAuthoritativeFenceForTests(async () => {
+      throw new Error('delete fence exploded')
+    })
+    await expect(deleteAllUserData()).rejects.toThrow('delete fence exploded')
+    setAfterAuthoritativeFenceForTests(null)
+    expect((await deleteAllUserData()).ok).toBe(true)
+    expect(await loadHistory()).toEqual([])
+  })
+
+  it('serializes two overlapping imports onto the later payload', async () => {
+    const first = importUserData(
+      JSON.stringify({
+        version: 3,
+        history: [session('first-import')],
+      }),
+    )
+    const second = importUserData(
+      JSON.stringify({
+        version: 3,
+        history: [session('second-import', { startedAt: 2 })],
+      }),
+    )
+    expect((await first).ok).toBe(true)
+    expect((await second).ok).toBe(true)
+    expect(ids(await loadHistory())).toEqual(['second-import'])
   })
 })
 
