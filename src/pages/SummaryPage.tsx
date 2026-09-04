@@ -127,7 +127,7 @@ export function SummaryPage() {
       state: {
         config: payload.config,
         comboQueue: payload.comboQueue,
-        demo: summary.isDemo,
+        demo: payload.config.mode === 'demo',
       },
     })
   }

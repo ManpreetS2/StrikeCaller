@@ -1,8 +1,7 @@
-import { useEffect, useMemo, useRef, useState, useCallback, memo } from 'react'
-import { useBlocker, useLocation, useNavigate } from 'react-router-dom'
+import { useEffect, useRef, useState, useCallback, memo } from 'react'
+import { Link, useBlocker, useLocation, useNavigate } from 'react-router-dom'
 import { Maximize, Minimize } from 'lucide-react'
 import { SessionEngine, type SessionSnapshot } from '../engines/sessionEngine'
-import { createDefaultWorkout } from '../data/defaults'
 import { useApp } from '../context/useApp'
 import { ComboDisplay } from '../components/ComboDisplay'
 import { CompactComboPath } from '../components/CompactComboPath'
@@ -13,15 +12,8 @@ import { resolveTimerState } from '../components/sessionTimerState'
 import { primeTrainingAudio } from '../utils/primeAudio'
 import { localDateKey } from '../utils/localDate'
 import { dailyDrillKey } from '../utils/dailyDrill'
-import type { SessionSummary, WorkoutConfig } from '../types'
-
-interface LocationState {
-  config?: WorkoutConfig
-  demo?: boolean
-  dailyPhase?: 'slowDone' | 'normalDone' | 'fightDone'
-  comboQueue?: import('../types').Combo[]
-  audioPrimed?: boolean
-}
+import { parseSessionStartState, type SessionStartState } from '../utils/sessionStart'
+import type { SessionSummary } from '../types'
 
 type SessionUi = Omit<SessionSnapshot, 'timeRemainingMs'>
 
@@ -81,31 +73,40 @@ const CallPanel = memo(function CallPanel({
   )
 })
 
+function SessionUnavailable() {
+  return (
+    <div className="mx-auto max-w-md space-y-4">
+      <div className="panel space-y-4 p-5 sm:p-6">
+        <h1 className="display text-4xl sm:text-5xl">Session unavailable</h1>
+        <p className="text-sm text-[var(--text-muted)] sm:text-base">
+          This active session can’t be resumed from this page. Start a new workout to continue training.
+        </p>
+        <div className="flex flex-wrap gap-2 pt-1">
+          <Link to="/train" className="btn btn-primary">
+            Back to Train
+          </Link>
+          <Link to="/" className="btn">
+            Home
+          </Link>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function SessionPage() {
-  const navigate = useNavigate()
   const location = useLocation()
+  const parsed = parseSessionStartState(location.state)
+  if (!parsed.ok) return <SessionUnavailable />
+  return <ActiveSessionPage start={parsed.value} />
+}
+
+function ActiveSessionPage({ start }: { start: SessionStartState }) {
+  const navigate = useNavigate()
   const { preferences, updatePreferences, addHistory, toggleFavorite, favorites, getDailyDrill, setDailyDrill } =
     useApp()
-  const state = (location.state as LocationState | null) ?? {}
-  const isDemo = Boolean(state.demo) || state.config?.mode === 'demo'
-  const config = useMemo(
-    () =>
-      state.config ??
-      createDefaultWorkout({
-        martialArt: preferences.martialArt,
-        stance: preferences.stance,
-        callStyle: preferences.callStyle,
-        pace: preferences.pace,
-        speech: preferences.speech,
-        sound: preferences.sound,
-        resumeBehavior: preferences.resumeBehavior,
-        mode: isDemo ? 'demo' : 'round',
-        roundDurationSec: isDemo ? 60 : 180,
-        rounds: 1,
-        minimalMode: preferences.preferMinimalMode,
-      }),
-    [state.config, isDemo, preferences],
-  )
+  const startRef = useRef(start)
+  const config = start.config
 
   const engineRef = useRef<SessionEngine | null>(null)
   const endedRef = useRef(false)
@@ -163,7 +164,7 @@ export function SessionPage() {
     ;(async () => {
       let audioFailed = false
       try {
-        if (!state.audioPrimed) {
+        if (!startRef.current.audioPrimed) {
           setPreparing(true)
           try {
             const primed = await primeTrainingAudio({ musicFriendly: config.speech.musicFriendly })
@@ -177,7 +178,10 @@ export function SessionPage() {
       }
       if (!alive) return
       if (audioFailed) setAudioUnavailable(true)
-      await engine.start({ demo: isDemo, comboQueue: state.comboQueue })
+      await engine.start({
+        demo: startRef.current.config.mode === 'demo',
+        comboQueue: startRef.current.comboQueue,
+      })
     })()
 
     return () => {
@@ -238,8 +242,8 @@ export function SessionPage() {
   }, [hasMeaningfulProgress])
 
   const applyDailyPhase = (summary: SessionSummary, cancelled: boolean) => {
-    if (cancelled || !state.dailyPhase) return summary
-    const phase = state.dailyPhase
+    const phase = startRef.current.dailyPhase
+    if (cancelled || !phase) return summary
     const art = summary.martialArt
     const key = dailyDrillKey(localDateKey(), art)
     const existing = getDailyDrill(key)

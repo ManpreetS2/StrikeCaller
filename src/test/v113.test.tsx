@@ -206,7 +206,7 @@ describe('v1.1.3 session navigation blocking', () => {
           timingMultipliers: {
             ...createDefaultWorkout().timingMultipliers,
             pauseBetweenCombosMs: 20,
-            punch: 0.15,
+            punch: 0.7,
           },
         }),
       },
@@ -292,7 +292,7 @@ describe('v1.1.3 session navigation blocking', () => {
           timingMultipliers: {
             ...createDefaultWorkout().timingMultipliers,
             pauseBetweenCombosMs: 10,
-            punch: 0.1,
+            punch: 0.7,
           },
         }),
         comboQueue: [combo],
