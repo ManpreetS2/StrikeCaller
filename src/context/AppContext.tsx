@@ -19,6 +19,7 @@ import * as userDataStore from '../storage/userData'
 import type { DeleteAllUserDataResult } from '../storage/userData'
 import type { CustomCombo, DailyDrillMap, SessionSummary, ThemePreference, UserPreferences } from '../types'
 import { normalizeDailyDrillState } from '../utils/dailyDrill'
+import { validateCustomComboSemantics } from '../utils/customCombo'
 import {
   AppReactContext,
   type AddHistoryResult,
@@ -250,6 +251,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
       customCombos,
       upsertCustomCombo: (combo) => {
         enqueueAfterLocalData(() => {
+          const semantic = validateCustomComboSemantics(combo)
+          if (!semantic.ok) {
+            applyWrite({ ok: false, reason: 'write-failed', message: semantic.message }, 'custom-combos')
+            return
+          }
           setCustomCombos((prev) => {
             const idx = prev.findIndex((c) => c.id === combo.id)
             const next = idx >= 0 ? prev.map((c) => (c.id === combo.id ? combo : c)) : [...prev, combo]

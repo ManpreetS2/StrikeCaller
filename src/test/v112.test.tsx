@@ -204,7 +204,7 @@ describe('v1.1.2 Train Again custom rebuild', () => {
     const live: CustomCombo = {
       id: 'custom-live',
       title: 'Live',
-      techniqueIds: ['jab', 'cross', 'hook-lead'],
+      techniqueIds: ['jab', 'cross', 'lead-hook'],
       createdAt: 1,
       updatedAt: 1,
       favorite: false,

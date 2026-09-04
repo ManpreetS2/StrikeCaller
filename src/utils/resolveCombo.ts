@@ -1,6 +1,6 @@
 import { COMBO_MAP } from '../data/combos'
 import type { Combo, CustomCombo, SessionSummary } from '../types'
-import { customComboToRuntime } from './customCombo'
+import { tryCustomComboToRuntime } from './customCombo'
 
 export function resolveCombo(
   id: string,
@@ -10,7 +10,10 @@ export function resolveCombo(
   if (curated) return curated
 
   const custom = options.customCombos?.find((c) => c.id === id)
-  if (custom) return customComboToRuntime(custom)
+  if (custom) {
+    const runtime = tryCustomComboToRuntime(custom)
+    if (runtime) return runtime
+  }
 
   for (const summary of options.history ?? []) {
     const snap = summary.comboSnapshots?.find((c) => c.id === id)

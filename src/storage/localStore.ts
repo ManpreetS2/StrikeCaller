@@ -11,6 +11,7 @@ import type {
   UserPreferences,
 } from '../types'
 import { migrateDailyDrillMap, normalizeDailyDrillState } from '../utils/dailyDrill'
+import { isCustomComboSemanticallyValid } from '../utils/customCombo'
 import { WORKOUT_LIMITS } from '../utils/workoutValidation'
 import {
   booleanOr,
@@ -425,13 +426,17 @@ export function saveFavorites(ids: string[]): StorageWriteResult {
   return writeJSON(KEYS.favorites, ids)
 }
 
+function persistableCustomCombo(raw: unknown): CustomCombo | null {
+  const migrated = migrateCustomCombo(raw)
+  if (!migrated || !isCustomComboSemanticallyValid(migrated)) return null
+  return migrated
+}
+
 /** LOAD salvage: drop malformed combos; truncate >8 techniques and mark migrated. */
 export function loadCustomCombos(): CustomCombo[] {
   const raw = readJSON(KEYS.customCombos)
   if (!Array.isArray(raw)) return []
-  return raw
-    .map((item) => migrateCustomCombo(item))
-    .filter((item): item is CustomCombo => item != null)
+  return raw.map((item) => persistableCustomCombo(item)).filter((item): item is CustomCombo => item != null)
 }
 
 export function migrateCustomCombo(raw: unknown): CustomCombo | null {
@@ -473,7 +478,7 @@ export function migrateCustomCombo(raw: unknown): CustomCombo | null {
 export function saveCustomCombos(combos: CustomCombo[]): StorageWriteResult {
   return writeJSON(
     KEYS.customCombos,
-    combos.map((c) => migrateCustomCombo(c)).filter(Boolean),
+    combos.map((c) => persistableCustomCombo(c)).filter((item): item is CustomCombo => item != null),
   )
 }
 

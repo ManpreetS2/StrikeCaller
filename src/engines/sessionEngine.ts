@@ -1,4 +1,4 @@
-import { getTechnique } from '../data/techniques'
+import { lookupTechnique } from '../data/techniques'
 import { getCombo } from '../data/combos'
 import { nextCombo, optionsFromWorkout, getDemoCombos } from './comboGenerator'
 import { computeTechniqueDurationMs } from './timingEngine'
@@ -40,6 +40,14 @@ type Listener = (snapshot: SessionSnapshot) => void
 
 function canMutateCombo(phase: SessionPhase, paused: boolean): boolean {
   return !paused && phase === 'work'
+}
+
+/** Built-in/generated combos are expected valid; this only defends unresolvable IDs. */
+function runtimeComboIsPlayable(combo: Combo): boolean {
+  return (
+    combo.techniques.length > 0 &&
+    combo.techniques.every((step) => lookupTechnique(step.techniqueId) != null)
+  )
 }
 
 export class SessionEngine {
@@ -103,14 +111,17 @@ export class SessionEngine {
   }
 
   snapshot(): SessionSnapshot {
-    const next =
+    const nextId =
       this.combo && this.stepIndex + 1 < this.combo.techniques.length
-        ? formatTechniqueCall(
-            getTechnique(this.combo.techniques[this.stepIndex + 1]!.techniqueId),
-            this.config.callStyle,
-            { stance: this.config.stance, terminology: this.config.sideTerminology },
-          )
+        ? this.combo.techniques[this.stepIndex + 1]!.techniqueId
         : null
+    const nextTechnique = nextId ? lookupTechnique(nextId) : null
+    const next = nextTechnique
+      ? formatTechniqueCall(nextTechnique, this.config.callStyle, {
+          stance: this.config.stance,
+          terminology: this.config.sideTerminology,
+        })
+      : null
 
     return {
       phase: this.phase,
@@ -366,8 +377,9 @@ export class SessionEngine {
   }
 
   private pickCombo(): Combo | null {
-    if (this.comboQueue.length) {
+    while (this.comboQueue.length) {
       const next = this.comboQueue.shift()!
+      if (!runtimeComboIsPlayable(next)) continue
       this.rememberCombo(next)
       return next
     }
@@ -376,16 +388,22 @@ export class SessionEngine {
     }
     if (this.demoMode) {
       this.comboQueue = getDemoCombos(this.config.stance, this.config.martialArt ?? 'muay-thai')
-      const next = this.comboQueue.shift()!
-      this.rememberCombo(next)
-      return next
+      while (this.comboQueue.length) {
+        const next = this.comboQueue.shift()!
+        if (!runtimeComboIsPlayable(next)) continue
+        this.rememberCombo(next)
+        return next
+      }
+      return null
     }
     if (this.config.selectedComboIds?.length) {
       const id = this.config.selectedComboIds[this.combinationsCompleted % this.config.selectedComboIds.length]!
       try {
         const curated = getCombo(id)
-        this.rememberCombo(curated)
-        return curated
+        if (runtimeComboIsPlayable(curated)) {
+          this.rememberCombo(curated)
+          return curated
+        }
       } catch {
         // fall through to generator
       }
@@ -433,7 +451,14 @@ export class SessionEngine {
       return
     }
 
-    const technique = getTechnique(step.techniqueId)
+    const technique = lookupTechnique(step.techniqueId)
+    if (!technique) {
+      this.combo = null
+      this.current = null
+      this.stepIndex = 0
+      await this.playNextCombo(token)
+      return
+    }
     const spoken = formatTechniqueCall(technique, this.config.callStyle, {
       stance: this.config.stance,
       terminology: this.config.sideTerminology,

@@ -1,6 +1,6 @@
 import { createDefaultWorkout } from '../data/defaults'
 import type { Combo, CustomCombo, SessionSummary, WorkoutConfig } from '../types'
-import { clampRepeatCount, customComboToRuntime } from './customCombo'
+import { clampRepeatCount, tryCustomComboToRuntime } from './customCombo'
 
 export interface TrainAgainPayload {
   config: WorkoutConfig
@@ -61,18 +61,20 @@ export function buildTrainAgainPayload(
       summary.comboSnapshots?.[0]
 
     if (live) {
-      const runtime = customComboToRuntime(live)
-      const repeats = clampRepeatCount(baseConfig.repeatCount ?? live.repeatCount)
-      return {
-        config: {
-          ...baseConfig,
-          finishWhenQueueEmpty: true,
-          mode: 'custom',
-          customComboId: live.id,
-          repeatCount: repeats,
-          martialArt: runtime.martialArt,
-        },
-        comboQueue: queueFromCombo(runtime, repeats),
+      const runtime = tryCustomComboToRuntime(live)
+      if (runtime) {
+        const repeats = clampRepeatCount(baseConfig.repeatCount ?? live.repeatCount)
+        return {
+          config: {
+            ...baseConfig,
+            finishWhenQueueEmpty: true,
+            mode: 'custom',
+            customComboId: live.id,
+            repeatCount: repeats,
+            martialArt: runtime.martialArt,
+          },
+          comboQueue: queueFromCombo(runtime, repeats),
+        }
       }
     }
 

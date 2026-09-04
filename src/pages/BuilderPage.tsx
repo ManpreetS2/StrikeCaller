@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { getTechniquesByCategory, getTechnique } from '../data/techniques'
+import { getTechniquesByCategory, lookupTechnique, techniqueDisplayName } from '../data/techniques'
 import { MAX_COMBO_LENGTH, validateTechniqueSequence } from '../engines/comboValidator'
 import { useApp } from '../context/useApp'
 import { createDefaultWorkout } from '../data/defaults'
@@ -11,9 +11,10 @@ import { useOnceAction } from '../hooks/useOnceAction'
 import {
   clampRepeatCount,
   clampTechniqueIds,
-  customComboToRuntime,
   MAX_REPEAT_COUNT,
   MIN_REPEAT_COUNT,
+  tryCustomComboToRuntime,
+  validateCustomComboSemantics,
 } from '../utils/customCombo'
 import type { CustomCombo, MartialArt, TechniqueCategory } from '../types'
 
@@ -36,11 +37,7 @@ function categoriesFor(art: MartialArt): TechniqueCategory[] {
 }
 
 function techniqueSupportsArt(techniqueId: string, art: MartialArt): boolean {
-  try {
-    return getTechnique(techniqueId).martialArts.includes(art)
-  } catch {
-    return false
-  }
+  return lookupTechnique(techniqueId)?.martialArts.includes(art) ?? false
 }
 
 export function BuilderPage() {
@@ -108,7 +105,12 @@ export function BuilderPage() {
   }
 
   const trainCombo = useOnceAction(async (combo: CustomCombo) => {
-    const runtime = customComboToRuntime(combo)
+    const runtime = tryCustomComboToRuntime(combo)
+    if (!runtime) {
+      const semantic = validateCustomComboSemantics(combo)
+      setSaveError(semantic.ok ? 'This combo is invalid and cannot be trained.' : semantic.message)
+      return
+    }
     const repeats = clampRepeatCount(combo.repeatCount)
     const queue = Array.from({ length: repeats }, () => ({
       ...runtime,
@@ -142,18 +144,15 @@ export function BuilderPage() {
       includeClinch: false,
     })
     const primed = await primeTrainingAudio({ musicFriendly: preferences.speech.musicFriendly })
+    setSaveError(null)
     navigate('/session', { state: { config, comboQueue: queue, audioPrimed: primed.ok } })
   })
 
   const save = useOnceAction(() => {
     if (!validation.valid || sequence.length === 0 || sequence.length > MAX_COMBO_LENGTH) return
-    const incompatible = sequence.filter((id) => !techniqueSupportsArt(id, activeArt))
-    if (incompatible.length) {
-      setSaveError(
-        `Cannot save: ${incompatible.length} technique(s) are incompatible with ${
-          activeArt === 'boxing' ? 'Boxing' : 'Muay Thai'
-        }.`,
-      )
+    const semantic = validateCustomComboSemantics({ techniqueIds: sequence, martialArt: activeArt })
+    if (!semantic.ok) {
+      setSaveError(semantic.message)
       return
     }
     setSaveError(null)
@@ -264,12 +263,7 @@ export function BuilderPage() {
         </div>
         <ol className="flex flex-wrap items-center gap-2">
           {sequence.map((id, index) => {
-            let name = id
-            try {
-              name = getTechnique(id).name
-            } catch {
-              // unknown legacy id
-            }
+            const name = techniqueDisplayName(id)
             return (
               <li key={`${id}-${index}`} className="flex items-center gap-2">
                 <button
@@ -388,6 +382,11 @@ export function BuilderPage() {
             ))}
           </div>
         </div>
+        {saveError && (
+          <p className="mb-3 text-sm text-[var(--accent-text)]" role="alert">
+            {saveError}
+          </p>
+        )}
         {filteredSaved.length === 0 ? (
           <p className="text-sm text-[var(--text-muted)]">No custom combos yet.</p>
         ) : (
@@ -403,15 +402,7 @@ export function BuilderPage() {
                     </span>
                   </p>
                   <p className="text-sm text-[var(--text-muted)]">
-                    {combo.techniqueIds
-                      .map((id) => {
-                        try {
-                          return getTechnique(id).name
-                        } catch {
-                          return id
-                        }
-                      })
-                      .join(' → ')}
+                    {combo.techniqueIds.map((id) => techniqueDisplayName(id)).join(' → ')}
                     {' · '}
                     {clampRepeatCount(combo.repeatCount)} reps
                   </p>

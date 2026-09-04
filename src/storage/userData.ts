@@ -1,6 +1,7 @@
 import type { CustomCombo, DailyDrillMap, SessionSummary, UserPreferences } from '../types'
 import { migrateDailyDrillMap, normalizeDailyDrillState } from '../utils/dailyDrill'
 import { MAX_COMBO_LENGTH } from '../engines/comboValidator'
+import { validateCustomComboSemantics } from '../utils/customCombo'
 import {
   clearSessionsStore,
   ensureHistoryInitialized,
@@ -180,6 +181,8 @@ function validateImportPayload(
       if (combo.repeatCount < 1 || combo.repeatCount > 20) {
         return { ok: false, message: 'Custom combo repeatCount must be 1–20.' }
       }
+      const semantic = validateCustomComboSemantics(combo)
+      if (!semantic.ok) return { ok: false, message: semantic.message }
       combos.push(combo)
     }
     normalized.customCombos = combos
