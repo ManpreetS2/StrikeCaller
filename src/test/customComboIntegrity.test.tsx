@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest'
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { AppProvider } from '../context/AppContext'
@@ -20,7 +20,7 @@ import {
   savePreferences,
   STORAGE_KEYS,
 } from '../storage/localStore'
-import { validateSessionSummary } from '../storage/sessionValidation'
+import { validateSessionSummary, validateWorkoutConfig } from '../storage/sessionValidation'
 import { importUserData } from '../storage/userData'
 import { loadHistory, saveSession } from '../storage/historyStore'
 import { buildTrainAgainPayload } from '../utils/trainAgain'
@@ -266,6 +266,16 @@ function UpsertProbe({ combo }: { combo: CustomCombo }) {
       <span data-testid="combo-ids">{customCombos.map((item) => item.id).join(',')}</span>
       <span data-testid="issue">{storageIssue?.message ?? ''}</span>
     </div>
+  )
+}
+
+function HistoryIds() {
+  const { history, historyReady } = useApp()
+  return (
+    <>
+      <span data-testid="history-ready">{historyReady ? 'yes' : 'no'}</span>
+      <span data-testid="history-ids">{history.map((item) => item.id).join(',')}</span>
+    </>
   )
 }
 
@@ -739,21 +749,39 @@ describe('A3 follow-up Train Again and resolveCombo historical combos', () => {
     expect(payload.config.finishWhenQueueEmpty).toBe(true)
     expect(payload.comboQueue).toEqual([])
     expect(payload.config.mode).not.toBe('coach')
+    expect(validateWorkoutConfig(payload.config)).not.toBeNull()
+    expect(payload.config.repeatCount).not.toBe(0)
 
     vi.useFakeTimers()
     const tracked = trackUnhandled()
     const engine = new SessionEngine(payload.config, { wakeLock: false })
+    let summary: SessionSummary
     try {
       const started = runUntilSummary(engine, payload.comboQueue ?? [])
       await expect(started).resolves.toBeUndefined()
       expect(engine.snapshot().phase).toBe('summary')
-      expect(engine.getSummary().combinationsCompleted).toBe(0)
+      summary = engine.getSummary()
+      expect(summary.combinationsCompleted).toBe(0)
+      expect(summary.techniquesCalled).toBe(0)
+      expect(validateSessionSummary(summary)).not.toBeNull()
       expect(tracked.reasons).toEqual([])
     } finally {
       tracked.stop()
       engine.stop()
       vi.useRealTimers()
     }
+
+    expect(await saveSession(summary!)).toEqual({ ok: true })
+    expect((await loadHistory()).map((item) => item.id)).toContain(summary!.id)
+
+    render(
+      <AppProvider>
+        <HistoryIds />
+      </AppProvider>,
+    )
+    await waitFor(() => expect(screen.getByTestId('history-ready')).toHaveTextContent('yes'))
+    expect(screen.getByTestId('history-ids')).toHaveTextContent(summary!.id)
+    expect((await loadHistory()).map((item) => item.id)).toContain(summary!.id)
   })
 
   it('does not queue a semantically invalid historical snapshot', () => {
@@ -811,6 +839,28 @@ describe('A3 follow-up Train Again and resolveCombo historical combos', () => {
     expect(resolveCombo('snap-unknown', { history: [{ comboSnapshots: [unknown] } as SessionSummary] })).toBeNull()
     expect(resolveCombo('snap-seq', { history: [{ comboSnapshots: [badSeq] } as SessionSummary] })).toBeNull()
     expect(resolveCombo('snap-sport', { history: [{ comboSnapshots: [wrongSport] } as SessionSummary] })).toBeNull()
+    expect(
+      resolveCombo('snap-mt-in-boxing', {
+        history: [
+          {
+            martialArt: 'boxing',
+            workoutConfig: createDefaultWorkout({ martialArt: 'boxing' }),
+            comboSnapshots: [runtimeCombo('snap-mt-in-boxing', ['jab', 'cross'], 'muay-thai')],
+          } as SessionSummary,
+        ],
+      }),
+    ).toBeNull()
+    expect(
+      resolveCombo('snap-box', {
+        history: [
+          {
+            martialArt: 'boxing',
+            workoutConfig: createDefaultWorkout({ martialArt: 'boxing' }),
+            comboSnapshots: [runtimeCombo('snap-box', ['jab', 'cross'], 'boxing')],
+          } as SessionSummary,
+        ],
+      }),
+    ).toEqual(expect.objectContaining({ id: 'snap-box' }))
   })
 
   it('does not drop a historical SessionSummary whose nested combos are only semantically invalid', () => {

@@ -21,16 +21,18 @@ function queueFromCombo(combo: Combo, repeats: number): Combo[] {
 }
 
 function finiteSafePayload(config: WorkoutConfig, comboQueue: Combo[]): TrainAgainPayload {
-  return {
-    config: {
-      ...config,
-      finishWhenQueueEmpty: true,
-      mode: config.mode === 'demo' ? 'custom' : config.mode,
-      customComboId: config.customComboId ?? comboQueue[0]?.id,
-      repeatCount: comboQueue.length,
-    },
-    comboQueue,
+  const next: WorkoutConfig = {
+    ...config,
+    finishWhenQueueEmpty: true,
+    mode: config.mode === 'demo' ? 'custom' : config.mode,
+    customComboId: config.customComboId ?? comboQueue[0]?.id,
   }
+  if (comboQueue.length > 0) {
+    next.repeatCount = comboQueue.length
+  } else if (config.repeatCount == null || config.repeatCount < 1 || config.repeatCount > 20) {
+    delete next.repeatCount
+  }
+  return { config: next, comboQueue }
 }
 
 /**

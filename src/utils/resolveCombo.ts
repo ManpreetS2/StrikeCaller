@@ -18,7 +18,8 @@ export function resolveCombo(
 
   for (const summary of options.history ?? []) {
     const snap = summary.comboSnapshots?.find((c) => c.id === id)
-    if (snap && isRuntimeComboSemanticallyValid(snap)) return snap
+    const expectedArt = summary.workoutConfig?.martialArt ?? summary.martialArt
+    if (snap && isRuntimeComboSemanticallyValid(snap, expectedArt)) return snap
   }
 
   return null
