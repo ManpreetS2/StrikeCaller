@@ -3,13 +3,22 @@ import { DEFAULT_PREFERENCES, createDefaultWorkout } from '../data/defaults'
 import {
   EXPORT_VERSION,
   LEGACY_HISTORY_KEY,
+  STORAGE_KEYS,
+  loadFavorites,
   loadLegacyHistory,
   loadPreferences,
+  saveFavorites,
   savePreferences,
 } from '../storage/localStore'
 import { transactSessions } from '../storage/idb'
 import * as idb from '../storage/idb'
-import { exportUserData, importUserData, deleteAllUserData } from '../storage/userData'
+import { exportUserData, importUserData, deleteAllUserData, setAfterImportLocalWritesForTests } from '../storage/userData'
+import {
+  HISTORY_CLEAR_RESTORE_FAILED_MESSAGE,
+  IMPORT_EXECUTION_FAILED_MESSAGE,
+  IMPORT_RESTORE_FAILED_MESSAGE,
+  LEGACY_HISTORY_CLEANUP_MESSAGE,
+} from '../storage/storageTypes'
 import {
   clearHistory,
   ensureHistoryInitialized,
@@ -22,11 +31,6 @@ import {
   setAfterAuthoritativeFenceForTests,
   sortHistory,
 } from '../storage/historyStore'
-import {
-  HISTORY_CLEAR_RESTORE_FAILED_MESSAGE,
-  IMPORT_RESTORE_FAILED_MESSAGE,
-  LEGACY_HISTORY_CLEANUP_MESSAGE,
-} from '../storage/storageTypes'
 import type { Combo, SessionSummary } from '../types'
 
 function session(id: string, extra: Partial<SessionSummary> = {}): SessionSummary {
@@ -166,6 +170,7 @@ describe('IndexedDB history store and legacy migration', () => {
   afterEach(() => {
     vi.restoreAllMocks()
     setAfterAuthoritativeFenceForTests(null)
+    setAfterImportLocalWritesForTests(null)
     localStorage.clear()
   })
 
@@ -1008,6 +1013,167 @@ describe('IndexedDB history store and legacy migration', () => {
     expect((await first).ok).toBe(true)
     expect((await second).ok).toBe(true)
     expect(ids(await loadHistory())).toEqual(['second-import'])
+  })
+
+  it('marks applied when localStorage restore fails after a history replace failure', async () => {
+    expect(await saveSession(session('A'))).toEqual({ ok: true })
+    savePreferences({ ...DEFAULT_PREFERENCES, stance: 'southpaw' })
+    saveFavorites(['old-fav'])
+    spyPut((value, original) => {
+      if (typeof value === 'object' && value && 'id' in value && value.id === 'B') {
+        throw new DOMException('replace blocked', 'UnknownError')
+      }
+      return original(value)
+    })
+    let allowRestore = true
+    setAfterImportLocalWritesForTests(async () => {
+      allowRestore = false
+    })
+    const originalSetItem = Storage.prototype.setItem
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (
+      this: Storage,
+      key: string,
+      value: string,
+    ) {
+      if (!allowRestore && (key === STORAGE_KEYS.preferences || key === STORAGE_KEYS.favorites)) {
+        throw new Error('restore blocked')
+      }
+      return originalSetItem.call(this, key, value)
+    })
+    const result = await importUserData(
+      JSON.stringify({
+        version: 3,
+        preferences: { ...DEFAULT_PREFERENCES, stance: 'orthodox' },
+        favorites: ['new-fav'],
+        history: [session('B', { startedAt: 2 })],
+      }),
+    )
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.applied).toBe(true)
+    expect(result.message).toBe(IMPORT_RESTORE_FAILED_MESSAGE)
+    expect(result.message).not.toMatch(/left unchanged/i)
+    expect(ids(await loadHistory())).toEqual(['A'])
+    expect(loadPreferences().stance).toBe('orthodox')
+    expect(loadFavorites()).toEqual(['new-fav'])
+  })
+
+  it('marks applied when a non-history import cannot restore previous localStorage', async () => {
+    savePreferences({ ...DEFAULT_PREFERENCES, stance: 'southpaw' })
+    saveFavorites(['old-fav'])
+    let preferenceWrites = 0
+    const originalSetItem = Storage.prototype.setItem
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (
+      this: Storage,
+      key: string,
+      value: string,
+    ) {
+      if (key === STORAGE_KEYS.favorites) throw new Error('favorites write blocked')
+      if (key === STORAGE_KEYS.preferences) {
+        preferenceWrites += 1
+        if (preferenceWrites >= 2) throw new Error('restore blocked')
+      }
+      return originalSetItem.call(this, key, value)
+    })
+    const result = await importUserData(
+      JSON.stringify({
+        version: 3,
+        preferences: { ...DEFAULT_PREFERENCES, stance: 'orthodox' },
+        favorites: ['new-fav'],
+      }),
+    )
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.applied).toBe(true)
+    expect(result.message).toBe(IMPORT_RESTORE_FAILED_MESSAGE)
+    expect(loadPreferences().stance).toBe('orthodox')
+    expect(loadFavorites()).toEqual(['old-fav'])
+  })
+
+  it('does not label a post-parse storage throw as malformed JSON', async () => {
+    setAfterImportLocalWritesForTests(async () => {
+      throw new Error('indexeddb exploded')
+    })
+    const result = await importUserData(
+      JSON.stringify({
+        version: 3,
+        history: [session('B')],
+      }),
+    )
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.message).toBe(IMPORT_EXECUTION_FAILED_MESSAGE)
+    expect(result.message).not.toMatch(/parse JSON/i)
+    expect(result.message).not.toMatch(/indexeddb exploded/i)
+  })
+
+  it('does not label an authoritative fence throw as malformed JSON', async () => {
+    setAfterAuthoritativeFenceForTests(async () => {
+      throw new Error('fence exploded')
+    })
+    const result = await importUserData(
+      JSON.stringify({
+        version: 3,
+        history: [session('B')],
+      }),
+    )
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.message).toBe(IMPORT_EXECUTION_FAILED_MESSAGE)
+    expect(result.message).not.toMatch(/parse JSON/i)
+    expect(result.message).not.toMatch(/fence exploded/i)
+  })
+
+  it('still reports malformed JSON for invalid import text', async () => {
+    const result = await importUserData('{')
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.message).toBe('Could not parse JSON.')
+  })
+
+  it('does not emit an unhandled rejection when an authoritative transition throws', async () => {
+    const reasons: unknown[] = []
+    const onWindow = (event: PromiseRejectionEvent) => {
+      reasons.push(event.reason)
+      event.preventDefault()
+    }
+    const onProcess = (reason: unknown) => {
+      reasons.push(reason)
+    }
+    window.addEventListener('unhandledrejection', onWindow)
+    process.on('unhandledRejection', onProcess)
+    setAfterAuthoritativeFenceForTests(async () => {
+      throw new Error('cleanup boom')
+    })
+    await expect(clearHistory()).rejects.toThrow('cleanup boom')
+    await Promise.resolve()
+    await Promise.resolve()
+    window.removeEventListener('unhandledrejection', onWindow)
+    process.off('unhandledRejection', onProcess)
+    expect(reasons).toEqual([])
+    setAfterAuthoritativeFenceForTests(null)
+    expect((await clearHistory()).ok).toBe(true)
+  })
+
+  it('does not let public initHistory interleave with Clear History', async () => {
+    expect(await saveSession(session('A'))).toEqual({ ok: true })
+    let reachedFence = false
+    let releaseFence = () => {}
+    const fence = new Promise<void>((resolve) => {
+      releaseFence = resolve
+    })
+    setAfterAuthoritativeFenceForTests(async () => {
+      reachedFence = true
+      await fence
+    })
+    const clearP = clearHistory()
+    await waitForCondition(() => reachedFence, 'clear fence before initHistory')
+    const initP = initHistory()
+    releaseFence()
+    expect((await clearP).ok).toBe(true)
+    const initialized = await initP
+    expect(ids(initialized.history)).toEqual([])
+    expect(await loadHistory()).toEqual([])
   })
 })
 

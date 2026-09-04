@@ -16,6 +16,7 @@ import {
   saveCustomCombos,
   loadCustomCombos,
   saveDailyDrillMap,
+  loadDailyDrillMap,
   storageAvailable,
   resetStorageAvailabilityCache,
   STORAGE_WRITE_MESSAGES,
@@ -23,11 +24,14 @@ import {
   classifyStorageError,
   loadLegacyHistory,
   LEGACY_HISTORY_KEY,
+  STORAGE_KEYS,
 } from '../storage/localStore'
-import { exportUserData, importUserData } from '../storage/userData'
-import { loadHistory, saveSession, resetHistoryDbConnection } from '../storage/historyStore'
+import { exportUserData, importUserData, setAfterImportLocalWritesForTests } from '../storage/userData'
+import * as userData from '../storage/userData'
+import { loadHistory, saveSession, resetHistoryDbConnection, setAfterAuthoritativeFenceForTests } from '../storage/historyStore'
 import * as historyStore from '../storage/historyStore'
 import * as idb from '../storage/idb'
+import { IMPORT_RESTORE_FAILED_MESSAGE } from '../storage/storageTypes'
 import type { CustomCombo, DailyDrillMap, SessionSummary } from '../types'
 
 function session(id: string, extra: Partial<SessionSummary> = {}): SessionSummary {
@@ -481,9 +485,9 @@ describe('history load, export, import, and related stores', () => {
       }),
     )
     expect(result.ok).toBe(false)
-    expect(result.message).toBe(
-      'Import could not be saved. StrikeCaller could not restore all previous data.',
-    )
+    if (result.ok) return
+    expect(result.applied).toBe(true)
+    expect(result.message).toBe(IMPORT_RESTORE_FAILED_MESSAGE)
     expect(result.message).not.toMatch(/left unchanged/i)
   })
 })
@@ -1056,10 +1060,424 @@ describe('clear history and import AppContext races', () => {
       expect(screen.getByLabelText('Import JSON')).toBeDisabled()
     })
     expect(screen.getByRole('button', { name: 'Clear history' })).toBeDisabled()
+    expect(screen.getByLabelText('Default martial art')).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Export JSON', hidden: true })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Reset preferences', hidden: true })).toBeDisabled()
     release()
     await waitFor(() => {
       expect(screen.queryByRole('dialog', { name: 'Clear workout history?' })).not.toBeInTheDocument()
     })
     expect(screen.getByLabelText('Import JSON')).toBeEnabled()
+  })
+})
+
+async function waitForCondition(pred: () => boolean, label: string) {
+  await waitFor(() => {
+    expect(pred(), label).toBe(true)
+  })
+}
+
+function renderAppApi() {
+  const apiRef: { current: ReturnType<typeof useApp> | null } = { current: null }
+  function Harness() {
+    const ctx = useApp()
+    apiRef.current = ctx
+    return (
+      <div>
+        <span data-testid="history-ids">{ctx.history.map((item) => item.id).join(',')}</span>
+        <span data-testid="history-ready">{ctx.historyReady ? 'yes' : 'no'}</span>
+        <span data-testid="stance">{ctx.preferences.stance}</span>
+        <span data-testid="martial-art">{ctx.preferences.martialArt}</span>
+        <span data-testid="favorites">{ctx.favorites.join(',')}</span>
+        <span data-testid="combo-ids">{ctx.customCombos.map((item) => item.id).join(',')}</span>
+        <span data-testid="drill-ids">{Object.keys(ctx.dailyDrills).sort().join(',')}</span>
+        <span data-testid="issue-message">{ctx.storageIssue?.message ?? 'none'}</span>
+      </div>
+    )
+  }
+  render(
+    <AppProvider>
+      <Harness />
+    </AppProvider>,
+  )
+  return apiRef
+}
+
+function drill(comboId: string, completed = false) {
+  return {
+    dateKey: '2026-01-01:muay-thai',
+    comboId,
+    martialArt: 'muay-thai' as const,
+    slowDone: completed,
+    normalDone: completed,
+    fightDone: completed,
+    completed,
+  }
+}
+
+describe('AppContext durable/React agreement and partial import reload', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    resetStorageAvailabilityCache()
+    localStorage.setItem(
+      'strikecaller:preferences',
+      JSON.stringify({ ...DEFAULT_PREFERENCES, onboardingComplete: true, stance: 'southpaw' }),
+    )
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    setAfterAuthoritativeFenceForTests(null)
+    setAfterImportLocalWritesForTests(null)
+    resetStorageAvailabilityCache()
+  })
+
+  it('keeps a late AppContext add in IndexedDB and React after Clear History', async () => {
+    expect(await saveSession(session('A'))).toEqual({ ok: true })
+    const apiRef = renderAppApi()
+    await waitFor(() => expect(screen.getByTestId('history-ready')).toHaveTextContent('yes'))
+    await waitFor(() => expect(screen.getByTestId('history-ids')).toHaveTextContent('A'))
+
+    const late = session('late-session', { startedAt: 2_000_000_000_000 })
+    let reachedFence = false
+    let releaseFence = () => {}
+    const fence = new Promise<void>((resolve) => {
+      releaseFence = resolve
+    })
+    setAfterAuthoritativeFenceForTests(async () => {
+      reachedFence = true
+      await fence
+    })
+
+    const clearP = apiRef.current!.clearHistory()
+    await waitForCondition(() => reachedFence, 'clear fence')
+    const addP = apiRef.current!.addHistory(late)
+    releaseFence()
+    await clearP
+    const addResult = await addP
+    await waitFor(() => expect(screen.getByTestId('history-ids')).toHaveTextContent('late-session'))
+    expect(addResult).toEqual({ status: 'persisted' })
+    expect((await loadHistory()).map((item) => item.id)).toEqual(['late-session'])
+    expect(screen.getByTestId('history-ids')).toHaveTextContent('late-session')
+    expect(screen.getByTestId('history-ids').textContent).not.toContain('A')
+  })
+
+  it('keeps a late AppContext add in IndexedDB and React after import', async () => {
+    expect(await saveSession(session('A', { startedAt: 1_000 }))).toEqual({ ok: true })
+    const apiRef = renderAppApi()
+    await waitFor(() => expect(screen.getByTestId('history-ready')).toHaveTextContent('yes'))
+
+    const late = session('C', { startedAt: 3_000 })
+    let reachedFence = false
+    let releaseFence = () => {}
+    const fence = new Promise<void>((resolve) => {
+      releaseFence = resolve
+    })
+    setAfterAuthoritativeFenceForTests(async () => {
+      reachedFence = true
+      await fence
+    })
+
+    const importP = apiRef.current!.importData(
+      JSON.stringify({
+        version: 3,
+        history: [session('B', { startedAt: 2_000 })],
+      }),
+    )
+    await waitForCondition(() => reachedFence, 'import fence')
+    const addP = apiRef.current!.addHistory(late)
+    releaseFence()
+    expect((await importP).ok).toBe(true)
+    const addResult = await addP
+    expect(addResult).toEqual({ status: 'persisted' })
+    await waitFor(() => expect(screen.getByTestId('history-ids')).toHaveTextContent('C,B'))
+    expect((await loadHistory()).map((item) => item.id)).toEqual(['C', 'B'])
+    expect(screen.getByTestId('history-ids')).toHaveTextContent('C,B')
+  })
+
+  it('wipes a pre-clear AppContext save from IndexedDB and React', async () => {
+    const apiRef = renderAppApi()
+    await waitFor(() => expect(screen.getByTestId('history-ready')).toHaveTextContent('yes'))
+    const { release } = holdFirstReadwrite()
+    const addP = apiRef.current!.addHistory(session('A'))
+    await waitFor(() => expect(screen.getByTestId('history-ids').textContent).toContain('A'))
+    const clearP = apiRef.current!.clearHistory()
+    release()
+    await addP
+    await clearP
+    await waitFor(() => expect(screen.getByTestId('history-ids')).toHaveTextContent(''))
+    expect(await loadHistory()).toEqual([])
+  })
+
+  it('reloads AppContext from actual storage when import rollback restore fails', async () => {
+    expect(await saveSession(session('A'))).toEqual({ ok: true })
+    saveFavorites(['old-fav'])
+    saveCustomCombos([customCombo('old-combo')])
+    saveDailyDrillMap({ '2026-01-01:muay-thai': drill('beg-01') })
+    const apiRef = renderAppApi()
+    await waitFor(() => expect(screen.getByTestId('history-ready')).toHaveTextContent('yes'))
+    await waitFor(() => expect(screen.getByTestId('stance')).toHaveTextContent('southpaw'))
+
+    spyIdbPut((value, original) => {
+      if (sessionIdOf(value) === 'B') throw new DOMException('replace blocked', 'UnknownError')
+      return original(value)
+    })
+    let allowRestore = true
+    setAfterImportLocalWritesForTests(async () => {
+      allowRestore = false
+    })
+    const originalSetItem = Storage.prototype.setItem
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (
+      this: Storage,
+      key: string,
+      value: string,
+    ) {
+      if (
+        !allowRestore &&
+        (key === STORAGE_KEYS.preferences ||
+          key === STORAGE_KEYS.favorites ||
+          key === STORAGE_KEYS.customCombos ||
+          key === STORAGE_KEYS.daily)
+      ) {
+        throw new Error('restore blocked')
+      }
+      return originalSetItem.call(this, key, value)
+    })
+
+    const result = await apiRef.current!.importData(
+      JSON.stringify({
+        version: 3,
+        preferences: { ...DEFAULT_PREFERENCES, stance: 'orthodox', martialArt: 'boxing' },
+        favorites: ['new-fav'],
+        customCombos: [customCombo('new-combo')],
+        dailyDrills: { '2026-01-01:muay-thai': drill('beg-02', true) },
+        history: [session('B', { startedAt: 2 })],
+      }),
+    )
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.applied).toBe(true)
+    expect(result.message).toBe(IMPORT_RESTORE_FAILED_MESSAGE)
+
+    await waitFor(() => expect(screen.getByTestId('stance')).toHaveTextContent('orthodox'))
+    expect(screen.getByTestId('martial-art')).toHaveTextContent('boxing')
+    expect(screen.getByTestId('favorites')).toHaveTextContent('new-fav')
+    expect(screen.getByTestId('combo-ids')).toHaveTextContent('new-combo')
+    expect(screen.getByTestId('drill-ids')).toHaveTextContent('2026-01-01:muay-thai')
+    expect(screen.getByTestId('history-ids')).toHaveTextContent('A')
+    expect(loadPreferences().stance).toBe('orthodox')
+    expect(loadPreferences().martialArt).toBe('boxing')
+    expect(loadFavorites()).toEqual(['new-fav'])
+    expect(loadCustomCombos().map((item) => item.id)).toEqual(['new-combo'])
+    expect(Object.keys(loadDailyDrillMap())).toEqual(['2026-01-01:muay-thai'])
+    expect(loadDailyDrillMap()['2026-01-01:muay-thai']?.comboId).toBe('beg-02')
+    expect((await loadHistory()).map((item) => item.id)).toEqual(['A'])
+    expect(screen.getByTestId('issue-message')).toHaveTextContent(IMPORT_RESTORE_FAILED_MESSAGE)
+  })
+
+  it('reloads AppContext after a non-history import whose restore fails', async () => {
+    saveFavorites(['old-fav'])
+    const apiRef = renderAppApi()
+    await waitFor(() => expect(screen.getByTestId('history-ready')).toHaveTextContent('yes'))
+    let preferenceWrites = 0
+    const originalSetItem = Storage.prototype.setItem
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (
+      this: Storage,
+      key: string,
+      value: string,
+    ) {
+      if (key === STORAGE_KEYS.favorites) throw new Error('favorites write blocked')
+      if (key === STORAGE_KEYS.preferences) {
+        preferenceWrites += 1
+        if (preferenceWrites >= 2) throw new Error('restore blocked')
+      }
+      return originalSetItem.call(this, key, value)
+    })
+
+    const result = await apiRef.current!.importData(
+      JSON.stringify({
+        version: 3,
+        preferences: { ...DEFAULT_PREFERENCES, stance: 'orthodox' },
+        favorites: ['new-fav'],
+      }),
+    )
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.applied).toBe(true)
+    await waitFor(() => expect(screen.getByTestId('stance')).toHaveTextContent('orthodox'))
+    expect(screen.getByTestId('favorites')).toHaveTextContent('old-fav')
+    expect(loadPreferences().stance).toBe('orthodox')
+    expect(loadFavorites()).toEqual(['old-fav'])
+  })
+
+  it('queues a preference change behind a paused import so rollback cannot overwrite it', async () => {
+    const apiRef = renderAppApi()
+    await waitFor(() => expect(screen.getByTestId('history-ready')).toHaveTextContent('yes'))
+    localStorage.setItem(LEGACY_HISTORY_KEY, JSON.stringify([session('legacy-A')]))
+    const originalRemove = Storage.prototype.removeItem
+    vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(function (this: Storage, key: string) {
+      if (key === LEGACY_HISTORY_KEY) throw new Error('blocked remove')
+      return originalRemove.call(this, key)
+    })
+
+    let reachedWrites = false
+    let releaseWrites = () => {}
+    const writesGate = new Promise<void>((resolve) => {
+      releaseWrites = resolve
+    })
+    setAfterImportLocalWritesForTests(async () => {
+      reachedWrites = true
+      await writesGate
+    })
+
+    const importP = apiRef.current!.importData(
+      JSON.stringify({
+        version: 3,
+        preferences: { ...DEFAULT_PREFERENCES, stance: 'orthodox' },
+        history: [session('B', { startedAt: 2 })],
+      }),
+    )
+    await waitForCondition(() => reachedWrites, 'import local writes')
+    expect(loadPreferences().stance).toBe('orthodox')
+    apiRef.current!.updatePreferences({ martialArt: 'boxing' })
+    expect(screen.getByTestId('martial-art')).not.toHaveTextContent('boxing')
+    releaseWrites()
+    const result = await importP
+    expect(result.ok).toBe(false)
+    await waitFor(() => expect(screen.getByTestId('martial-art')).toHaveTextContent('boxing'))
+    expect(loadPreferences().martialArt).toBe('boxing')
+  })
+
+  it('queues favorite and custom combo writes behind a paused import', async () => {
+    saveFavorites(['old-fav'])
+    const apiRef = renderAppApi()
+    await waitFor(() => expect(screen.getByTestId('history-ready')).toHaveTextContent('yes'))
+
+    let reachedWrites = false
+    let releaseWrites = () => {}
+    const writesGate = new Promise<void>((resolve) => {
+      releaseWrites = resolve
+    })
+    setAfterImportLocalWritesForTests(async () => {
+      reachedWrites = true
+      await writesGate
+    })
+
+    const importP = apiRef.current!.importData(
+      JSON.stringify({
+        version: 3,
+        favorites: ['imported-fav'],
+        customCombos: [customCombo('imported-combo')],
+        history: [session('B', { startedAt: 2 })],
+      }),
+    )
+    await waitForCondition(() => reachedWrites, 'import local writes')
+    apiRef.current!.toggleFavorite('user-fav')
+    apiRef.current!.upsertCustomCombo(customCombo('user-combo'))
+    expect(screen.getByTestId('favorites')).not.toHaveTextContent('user-fav')
+    releaseWrites()
+    expect((await importP).ok).toBe(true)
+    await waitFor(() => expect(screen.getByTestId('favorites').textContent).toContain('user-fav'))
+    expect(screen.getByTestId('combo-ids').textContent).toContain('user-combo')
+    expect(loadFavorites()).toContain('user-fav')
+    expect(loadCustomCombos().map((item) => item.id)).toContain('user-combo')
+  })
+
+  it('does not export a mid-import snapshot', async () => {
+    expect(await saveSession(session('A'))).toEqual({ ok: true })
+    const apiRef = renderAppApi()
+    await waitFor(() => expect(screen.getByTestId('history-ready')).toHaveTextContent('yes'))
+
+    let reachedWrites = false
+    let releaseWrites = () => {}
+    const writesGate = new Promise<void>((resolve) => {
+      releaseWrites = resolve
+    })
+    setAfterImportLocalWritesForTests(async () => {
+      reachedWrites = true
+      await writesGate
+    })
+
+    const importP = apiRef.current!.importData(
+      JSON.stringify({
+        version: 3,
+        preferences: { ...DEFAULT_PREFERENCES, stance: 'orthodox' },
+        history: [session('B', { startedAt: 2 })],
+      }),
+    )
+    await waitForCondition(() => reachedWrites, 'import local writes')
+    let exported = ''
+    const exportP = apiRef.current!.exportData().then((json) => {
+      exported = json
+      return json
+    })
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(exported).toBe('')
+    releaseWrites()
+    expect((await importP).ok).toBe(true)
+    const json = await exportP
+    const parsed = JSON.parse(json) as { history: SessionSummary[]; preferences: { stance: string } }
+    expect(parsed.history.map((item) => item.id)).toEqual(['B'])
+    expect(parsed.preferences.stance).toBe('orthodox')
+  })
+
+  it('does not emit an unhandled rejection when a local-data mutation throws', async () => {
+    const apiRef = renderAppApi()
+    await waitFor(() => expect(screen.getByTestId('history-ready')).toHaveTextContent('yes'))
+    const reasons: unknown[] = []
+    const onWindow = (event: PromiseRejectionEvent) => {
+      reasons.push(event.reason)
+      event.preventDefault()
+    }
+    const onProcess = (reason: unknown) => {
+      reasons.push(reason)
+    }
+    window.addEventListener('unhandledrejection', onWindow)
+    process.on('unhandledRejection', onProcess)
+    vi.spyOn(historyStore, 'clearHistory').mockRejectedValue(new Error('clear exploded'))
+    await expect(apiRef.current!.clearHistory()).rejects.toThrow('clear exploded')
+    await Promise.resolve()
+    await Promise.resolve()
+    window.removeEventListener('unhandledrejection', onWindow)
+    process.off('unhandledRejection', onProcess)
+    expect(reasons).toEqual([])
+    vi.mocked(historyStore.clearHistory).mockRestore()
+    await apiRef.current!.clearHistory()
+    await waitFor(() => expect(screen.getByTestId('history-ids')).toHaveTextContent(''))
+  })
+
+  it('recovers Clear History dialog pending state after an unexpected reject', async () => {
+    const user = userEvent.setup()
+    vi.spyOn(historyStore, 'clearHistory').mockRejectedValue(new Error('clear exploded'))
+    const { router } = renderPersistenceApp('/')
+    await act(async () => {
+      await router.navigate('/settings')
+    })
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Clear workout history' })).toBeEnabled())
+    await user.click(screen.getByRole('button', { name: 'Clear workout history' }))
+    await user.click(screen.getByRole('button', { name: 'Clear history' }))
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Clear history' })).toBeEnabled()
+    })
+    expect(screen.getByRole('dialog', { name: 'Clear workout history?' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeEnabled()
+  })
+
+  it('recovers Delete All dialog pending state after an unexpected reject', async () => {
+    const user = userEvent.setup()
+    vi.spyOn(userData, 'deleteAllUserData').mockRejectedValue(new Error('delete exploded'))
+    const { router } = renderPersistenceApp('/')
+    await act(async () => {
+      await router.navigate('/settings')
+    })
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Delete all data' })).toBeEnabled())
+    await user.click(screen.getByRole('button', { name: 'Delete all data' }))
+    await user.click(screen.getByRole('button', { name: 'Delete permanently' }))
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Delete permanently' })).toBeEnabled()
+    })
+    expect(screen.getByRole('dialog', { name: 'Delete all local data?' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeEnabled()
   })
 })

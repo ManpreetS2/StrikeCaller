@@ -438,8 +438,8 @@ describe('summary completion persistence handshake', () => {
     const held = new Promise<void>((resolve) => {
       release = resolve
     })
-    const originalSave = historyStore.saveSession
-    const saveSpy = vi.spyOn(historyStore, 'saveSession').mockImplementation(async (next) => {
+    const originalSave = historyStore.commitSessionWrite
+    const saveSpy = vi.spyOn(historyStore, 'commitSessionWrite').mockImplementation(async (next) => {
       if (next.id === summary.id) await held
       return originalSave(next)
     })
@@ -469,8 +469,8 @@ describe('summary completion persistence handshake', () => {
     })
     const { release } = deferIndexedDbOpen()
     resetHistoryDbConnection()
-    const originalSave = historyStore.saveSession
-    const saveSpy = vi.spyOn(historyStore, 'saveSession').mockImplementation(async (next) => originalSave(next))
+    const originalSave = historyStore.commitSessionWrite
+    const saveSpy = vi.spyOn(historyStore, 'commitSessionWrite').mockImplementation(async (next) => originalSave(next))
     const putIds: string[] = []
     const originalPut = IDBObjectStore.prototype.put
     vi.spyOn(IDBObjectStore.prototype, 'put').mockImplementation(function (

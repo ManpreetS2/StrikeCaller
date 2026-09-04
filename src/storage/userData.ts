@@ -34,7 +34,11 @@ import {
 } from './localStore'
 import { isPlainObject, hasOwn, nonNegativeInt } from './parseUnknown'
 import { isPersistableSession, validateSessionSummary } from './sessionValidation'
-import { DELETE_ALL_PARTIAL_MESSAGE, IMPORT_RESTORE_FAILED_MESSAGE } from './storageTypes'
+import {
+  DELETE_ALL_PARTIAL_MESSAGE,
+  IMPORT_EXECUTION_FAILED_MESSAGE,
+  IMPORT_RESTORE_FAILED_MESSAGE,
+} from './storageTypes'
 
 export type DeleteAllUserDataFailureClass = 'localStorage' | 'indexedDB'
 
@@ -50,6 +54,37 @@ export type DeleteAllUserDataResult =
 
 let inFlightDelete: Promise<DeleteAllUserDataResult> | null = null
 let importTail: Promise<void> = Promise.resolve()
+let afterImportLocalWritesForTests: (() => Promise<void>) | null = null
+
+/**
+ * Test-only hook: runs after an import has written planned localStorage values
+ * and before the IndexedDB history replace. Production code must not use this.
+ */
+export function setAfterImportLocalWritesForTests(hook: (() => Promise<void>) | null): void {
+  afterImportLocalWritesForTests = hook
+}
+
+function rollbackImportResult(
+  restored: boolean,
+  write: StorageWriteResult,
+): ImportUserDataResult {
+  if (restored) {
+    return {
+      ok: false,
+      message: 'Import could not be saved. Existing data was left unchanged.',
+      write,
+    }
+  }
+  const failed = write.ok
+    ? { ok: false as const, reason: 'write-failed' as const, message: IMPORT_RESTORE_FAILED_MESSAGE }
+    : { ...write, message: IMPORT_RESTORE_FAILED_MESSAGE }
+  return {
+    ok: false,
+    applied: true,
+    message: IMPORT_RESTORE_FAILED_MESSAGE,
+    write: failed,
+  }
+}
 
 export type ImportUserDataResult =
   | { ok: true; message: string }
@@ -188,11 +223,19 @@ function validateImportPayload(
 
 export function importUserData(json: string): Promise<ImportUserDataResult> {
   const run = importTail.then(() => performImportUserData(json), () => performImportUserData(json))
-  importTail = run.then(
+  const guarded = run.then(
+    (result) => result,
+    () =>
+      ({
+        ok: false as const,
+        message: IMPORT_EXECUTION_FAILED_MESSAGE,
+      }) satisfies ImportUserDataResult,
+  )
+  importTail = guarded.then(
     () => undefined,
     () => undefined,
   )
-  return run
+  return guarded
 }
 
 async function performImportUserData(json: string): Promise<ImportUserDataResult> {
@@ -200,8 +243,15 @@ async function performImportUserData(json: string): Promise<ImportUserDataResult
   if (new TextEncoder().encode(json).length > MAX_IMPORT_BYTES) {
     return { ok: false, message: 'Import file exceeds the 2 MB limit.' }
   }
+
+  let parsed: unknown
   try {
-    const parsed: unknown = JSON.parse(json)
+    parsed = JSON.parse(json)
+  } catch {
+    return { ok: false, message: 'Could not parse JSON.' }
+  }
+
+  try {
     const validated = validateImportPayload(parsed)
     if (!validated.ok) return validated
 
@@ -214,7 +264,7 @@ async function performImportUserData(json: string): Promise<ImportUserDataResult
     if (daily) planned.push({ key: STORAGE_KEYS.daily, write: () => saveDailyDrillMap(daily) })
 
     if (history) {
-      return runAuthoritativeHistoryTransition(async (generation) => {
+      return await runAuthoritativeHistoryTransition(async (generation) => {
         const idbSnapshot = await loadHistoryFromDbOnly()
         if (!idbSnapshot.ok) {
           return {
@@ -244,15 +294,11 @@ async function performImportUserData(json: string): Promise<ImportUserDataResult
             for (const snap of snapshots) {
               if (!restoreRaw(snap.key, snap.value)) restored = false
             }
-            return {
-              ok: false as const,
-              message: restored
-                ? 'Import could not be saved. Existing data was left unchanged.'
-                : 'Import could not be saved. StrikeCaller could not restore all previous data.',
-              write: result,
-            }
+            return rollbackImportResult(restored, result)
           }
         }
+
+        if (afterImportLocalWritesForTests) await afterImportLocalWritesForTests()
 
         const historyWrite = await replaceHistoryAt(history, generation)
         if (!historyWrite.ok) {
@@ -260,13 +306,7 @@ async function performImportUserData(json: string): Promise<ImportUserDataResult
           for (const snap of snapshots) {
             if (!restoreRaw(snap.key, snap.value)) restored = false
           }
-          return {
-            ok: false as const,
-            message: restored
-              ? 'Import could not be saved. Existing data was left unchanged.'
-              : 'Import could not be saved. StrikeCaller could not restore all previous data.',
-            write: historyWrite,
-          }
+          return rollbackImportResult(restored, historyWrite)
         }
 
         const legacyRemoved = removeLegacyHistory()
@@ -317,19 +357,13 @@ async function performImportUserData(json: string): Promise<ImportUserDataResult
         for (const snap of snapshots) {
           if (!restoreRaw(snap.key, snap.value)) restored = false
         }
-        return {
-          ok: false,
-          message: restored
-            ? 'Import could not be saved. Existing data was left unchanged.'
-            : 'Import could not be saved. StrikeCaller could not restore all previous data.',
-          write: result,
-        }
+        return rollbackImportResult(restored, result)
       }
     }
 
     return { ok: true, message: 'Import successful.' }
   } catch {
-    return { ok: false, message: 'Could not parse JSON.' }
+    return { ok: false, message: IMPORT_EXECUTION_FAILED_MESSAGE }
   }
 }
 

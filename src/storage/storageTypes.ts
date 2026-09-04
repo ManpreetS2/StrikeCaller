@@ -29,6 +29,9 @@ export const LEGACY_HISTORY_CLEANUP_MESSAGE =
 export const IMPORT_RESTORE_FAILED_MESSAGE =
   'Import could not be completed. StrikeCaller could not restore all previous data.'
 
+export const IMPORT_EXECUTION_FAILED_MESSAGE =
+  'Import could not be saved. StrikeCaller could not complete this import.'
+
 export const HISTORY_CLEAR_RESTORE_FAILED_MESSAGE =
   'StrikeCaller cleared workout history but could not restore it after leftover storage cleanup failed.'
 

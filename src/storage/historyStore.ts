@@ -23,9 +23,13 @@ const inFlightWrites = new Set<Promise<unknown>>()
 let historyMutexTail: Promise<void> = Promise.resolve()
 let afterAuthoritativeFenceForTests: (() => Promise<void>) | null = null
 
+function afterSettle(promise: Promise<unknown>, cleanup: () => void): void {
+  void promise.then(cleanup, cleanup)
+}
+
 function trackInFlight<T>(promise: Promise<T>): Promise<T> {
   inFlightWrites.add(promise)
-  void promise.finally(() => {
+  afterSettle(promise, () => {
     inFlightWrites.delete(promise)
   })
   return promise
@@ -54,6 +58,10 @@ export async function waitForInFlightHistoryWrites(): Promise<void> {
   while (inFlightWrites.size > 0) {
     await Promise.allSettled([...inFlightWrites])
   }
+}
+
+export function getHistoryWriteGeneration(): number {
+  return historyWriteGeneration
 }
 
 export function abandonHistoryInitialization(): void {
@@ -195,26 +203,38 @@ export async function loadHistory(): Promise<SessionSummary[]> {
 }
 
 export async function saveSession(summary: SessionSummary): Promise<StorageWriteResult> {
+  return (await commitSessionWrite(summary)).write
+}
+
+/**
+ * Mutex-held session persist used by AppContext to reconcile React with durable order.
+ * `generation` is the write generation observed after acquiring the history mutex.
+ */
+export async function commitSessionWrite(
+  summary: SessionSummary,
+): Promise<{ write: StorageWriteResult; generation: number }> {
   const next = persistable(summary)
-  if (!next) return { ok: true }
+  const generationAtCall = historyWriteGeneration
+  if (!next) return { write: { ok: true }, generation: generationAtCall }
   return withHistoryMutex(async () => {
     const generation = historyWriteGeneration
-    if (!isCurrentGeneration(generation)) return { ok: true }
-    if (!isIndexedDbAvailable()) return indexedDbUnavailableResult()
-    return trackInFlight(
+    if (!isCurrentGeneration(generation)) return { write: { ok: true }, generation }
+    if (!isIndexedDbAvailable()) return { write: indexedDbUnavailableResult(), generation }
+    const write = await trackInFlight(
       (async () => {
-        if (!isCurrentGeneration(generation)) return { ok: true }
+        if (!isCurrentGeneration(generation)) return { ok: true } as StorageWriteResult
         try {
           await transactSessions('readwrite', (store) => {
             if (!isCurrentGeneration(generation)) return
             store.put(next)
           })
-          return { ok: true }
+          return { ok: true } as StorageWriteResult
         } catch (error) {
           return classifyIdbError(error)
         }
       })(),
     )
+    return { write, generation }
   })
 }
 
@@ -348,7 +368,7 @@ export async function loadHistoryFromDbOnly(): Promise<
  * every legacy session id is present in IndexedDB.
  */
 export function initHistory(): Promise<{ history: SessionSummary[]; write: StorageWriteResult }> {
-  return trackInFlight(runInitHistory())
+  return withHistoryMutex(() => trackInFlight(runInitHistory()))
 }
 
 async function runInitHistory(): Promise<{ history: SessionSummary[]; write: StorageWriteResult }> {
@@ -421,7 +441,7 @@ export function ensureHistoryInitialized(): Promise<{ history: SessionSummary[];
     if (!initPromise) {
       const generation = historyWriteGeneration
       initPromise = trackInFlight(
-        initHistory().then((result) => {
+        runInitHistory().then((result) => {
           if (!isCurrentGeneration(generation)) {
             initPromise = null
           } else if (!result.write.ok) {
