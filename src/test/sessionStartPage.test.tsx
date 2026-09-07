@@ -196,6 +196,22 @@ describe('A5 SessionPage start-state gate', () => {
     tracked.stop()
   })
 
+  it('rejects an explicit null comboQueue without starting the engine', async () => {
+    const tracked = trackUnhandled()
+    renderApp({
+      pathname: '/session',
+      state: { config: silentConfig(), comboQueue: null, audioPrimed: true },
+    })
+    await expectUnavailable()
+    expect(startSpy).not.toHaveBeenCalled()
+    expect(primeSpy).not.toHaveBeenCalled()
+    expect(wakeRequest).not.toHaveBeenCalled()
+    expect(screen.queryByRole('toolbar', { name: /session controls/i })).not.toBeInTheDocument()
+    expect(await loadHistory()).toEqual([])
+    expect(tracked.reasons).toEqual([])
+    tracked.stop()
+  })
+
   it('rejects a structurally valid combo with an unknown technique', async () => {
     renderApp({
       pathname: '/session',

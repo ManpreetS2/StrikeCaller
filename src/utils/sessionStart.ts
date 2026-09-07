@@ -56,7 +56,7 @@ export function parseSessionStartState(raw: unknown): SessionStartParseResult {
 
   const value: SessionStartState = { config }
 
-  if (hasOwn(raw, 'comboQueue') && raw.comboQueue != null) {
+  if (hasOwn(raw, 'comboQueue') && raw.comboQueue !== undefined) {
     const queue = parseComboQueue(raw.comboQueue, config.martialArt)
     if (!queue.ok) return queue
     value.comboQueue = queue.value

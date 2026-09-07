@@ -149,6 +149,17 @@ describe('parseSessionStartState invalid payloads', () => {
     })
   })
 
+  it('rejects an explicit null comboQueue', () => {
+    const result = parseSessionStartState({
+      config: roundConfig(),
+      comboQueue: null,
+    })
+    expect(result).toEqual({
+      ok: false,
+      reason: 'invalid-combo-queue',
+    })
+  })
+
   it('rejects a malformed comboQueue entry', () => {
     expect(parseSessionStartState({ config: roundConfig(), comboQueue: [{}] })).toEqual({
       ok: false,
