@@ -408,7 +408,7 @@ export class SessionEngine {
       }
     }
     const generated = nextCombo(optionsFromWorkout(this.config), this.recentComboIds)
-    if (runtimeComboIsPlayable(generated, sessionArt)) {
+    if (generated && runtimeComboIsPlayable(generated, sessionArt)) {
       this.rememberCombo(generated)
       return generated
     }

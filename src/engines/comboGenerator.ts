@@ -1,11 +1,16 @@
-import { filterCombos, CURATED_COMBOS } from '../data/combos'
+import { CURATED_COMBOS } from '../data/combos'
 import { getTechnique, TECHNIQUES } from '../data/techniques'
 import { validateTechniqueSequence, mirrorTechniqueIds } from './comboValidator'
+import {
+  isTechniqueEligibleForGenerator,
+  selectEligibleCuratedCombos,
+} from './generatorEligibility'
 import type {
   Combo,
   Difficulty,
   Equipment,
   Stance,
+  Technique,
   TechniqueCategory,
   TrainingMode,
   WorkoutConfig,
@@ -46,35 +51,41 @@ function pick<T>(list: T[], rand: () => number): T | undefined {
   return list[Math.floor(rand() * list.length)]
 }
 
-export function selectCuratedCombos(options: GeneratorOptions): Combo[] {
-  const pool = filterCombos({
-    martialArt: options.martialArt,
-    difficulty: options.difficulty,
-    mode: options.mode,
-    equipment: options.equipment,
-    includeDefense: options.defenseFrequency > 0,
-    includeMovement: options.movementFrequency > 0,
-    includeHeadKicks: options.includeHeadKicks,
-    includeElbows: options.includeElbows,
-    includeKnees: options.includeKnees,
-    includeClinch: options.includeClinch,
-    maxLength: options.comboLength.max,
-  })
+function allowedTechniques(options: GeneratorOptions): Technique[] {
+  const eligible = TECHNIQUES.filter((t) => isTechniqueEligibleForGenerator(t, options))
+  const atDifficulty = eligible.filter(
+    (t) =>
+      t.difficulty === options.difficulty ||
+      t.difficulty === 'beginner' ||
+      isReachableSpecialFamily(t),
+  )
+  return atDifficulty.length ? atDifficulty : eligible
+}
 
-  // Also allow adjacent difficulties for variety
-  if (pool.length < 5) {
-    return filterCombos({
-      martialArt: options.martialArt,
-      mode: options.mode,
-      equipment: options.equipment,
-      includeHeadKicks: options.includeHeadKicks,
-      includeElbows: options.includeElbows,
-      includeKnees: options.includeKnees,
-      includeClinch: options.includeClinch,
-      maxLength: options.comboLength.max,
-    })
+function isReachableSpecialFamily(technique: Technique): boolean {
+  return (
+    technique.category === 'knee' ||
+    technique.category === 'elbow' ||
+    technique.category === 'clinch' ||
+    technique.tags.includes('head-kick')
+  )
+}
+
+function applyStance(combo: Combo, stance: Stance): Combo {
+  return {
+    ...combo,
+    stance,
+    techniques: mirrorTechniqueIds(
+      combo.techniques.map((t) => t.techniqueId),
+      stance,
+    ).map((techniqueId) => ({ techniqueId })),
   }
-  return pool
+}
+
+export function selectCuratedCombos(options: GeneratorOptions): Combo[] {
+  const strict = selectEligibleCuratedCombos(options, { broadenDifficulty: false })
+  if (strict.length >= 5) return strict
+  return selectEligibleCuratedCombos(options, { broadenDifficulty: true })
 }
 
 export function generateRuleBasedCombo(options: GeneratorOptions, rand = Math.random): Combo | null {
@@ -82,34 +93,18 @@ export function generateRuleBasedCombo(options: GeneratorOptions, rand = Math.ra
     options.comboLength.min +
     Math.floor(rand() * Math.max(1, options.comboLength.max - options.comboLength.min + 1))
 
-  const allowed = TECHNIQUES.filter((t) => {
-    if (options.martialArt && !t.martialArts.includes(options.martialArt)) return false
-    const categoryAllowed =
-      options.categories.includes(t.category) ||
+  const allowed = allowedTechniques(options)
+  const starters = allowed.filter(
+    (t) =>
       t.category === 'punch' ||
-      (options.defenseFrequency > 0 && (t.category === 'defense' || t.category === 'counter')) ||
-      (options.movementFrequency > 0 && t.category === 'movement')
-
-    if (!categoryAllowed) return false
-
-    if (t.tags.includes('head-kick') && !options.includeHeadKicks) return false
-    if (t.category === 'elbow' && !options.includeElbows) return false
-    if (t.category === 'knee' && !options.includeKnees) return false
-    if (t.category === 'clinch' && !options.includeClinch) return false
-    if (
-      options.equipment === 'shadowboxing' &&
-      t.requiresEquipment.includes('partner') &&
-      t.category === 'clinch'
-    ) {
-      return false
-    }
-    if (options.equipment === 'limited-space' && (t.id === 'circle' || t.id.startsWith('angle-out'))) {
-      return false
-    }
-    return t.difficulty === options.difficulty || t.difficulty === 'beginner'
-  })
-
-  const starters = allowed.filter((t) => t.category === 'punch' || t.category === 'teep' || t.category === 'defense')
+      t.category === 'teep' ||
+      t.category === 'defense' ||
+      t.category === 'kick' ||
+      t.category === 'knee' ||
+      t.category === 'elbow' ||
+      t.category === 'clinch' ||
+      t.category === 'counter',
+  )
   const sequence: string[] = []
   let current = pick(starters.length ? starters : allowed, rand)
   if (!current) return null
@@ -120,7 +115,7 @@ export function generateRuleBasedCombo(options: GeneratorOptions, rand = Math.ra
     let candidates = allowed.filter((t) => {
       if (last.incompatibleFollowUps.includes(t.id)) return false
       if (last.recommendedFollowUps.includes(t.id)) return true
-      // allow repetition based on frequency
+      if (isReachableSpecialFamily(t)) return true
       if (t.id === last.id) return rand() < options.repetitionFrequency
       return last.recommendedFollowUps.length === 0
     })
@@ -128,7 +123,7 @@ export function generateRuleBasedCombo(options: GeneratorOptions, rand = Math.ra
     if (rand() < options.defenseFrequency) {
       const defense = candidates.filter((t) => t.category === 'defense' || t.category === 'counter')
       if (defense.length) candidates = defense
-    } else if (rand() < options.movementFrequency && sequence.length >= length - 1) {
+    } else if (options.movementFrequency > 0 && rand() < options.movementFrequency && sequence.length >= length - 1) {
       const movement = candidates.filter((t) => t.category === 'movement')
       if (movement.length) candidates = movement
     }
@@ -144,7 +139,6 @@ export function generateRuleBasedCombo(options: GeneratorOptions, rand = Math.ra
     const validation = validateTechniqueSequence(sequence)
     if (!validation.valid) {
       sequence.pop()
-      // try a safe exit instead
       const exit = pick(
         allowed.filter((t) => t.category === 'movement' || t.id === 'jab'),
         rand,
@@ -157,8 +151,7 @@ export function generateRuleBasedCombo(options: GeneratorOptions, rand = Math.ra
     }
   }
 
-  // Ensure ending movement sometimes without exceeding max length
-  if (rand() < options.movementFrequency && sequence.length < options.comboLength.max) {
+  if (options.movementFrequency > 0 && rand() < options.movementFrequency && sequence.length < options.comboLength.max) {
     const exits = ['reset-stance', 'pivot-left', 'angle-out-left', 'step-back']
     const exit = pick(
       exits
@@ -180,6 +173,7 @@ export function generateRuleBasedCombo(options: GeneratorOptions, rand = Math.ra
     }
   }
 
+  if (!sequence.length) return null
   const mirrored = mirrorTechniqueIds(sequence, options.stance)
   const validation = validateTechniqueSequence(mirrored)
   if (!validation.valid) return null
@@ -198,44 +192,70 @@ export function generateRuleBasedCombo(options: GeneratorOptions, rand = Math.ra
   })
 }
 
+function emergencyCompliantCombo(options: GeneratorOptions): Combo | null {
+  const allowedIds = new Set(allowedTechniques(options).map((t) => t.id))
+  const min = options.comboLength.min
+  const max = options.comboLength.max
+  const candidates: string[][] = []
+  if (allowedIds.has('jab') && allowedIds.has('cross')) {
+    candidates.push(['jab', 'cross'])
+    if (max >= 3) candidates.push(['jab', 'cross', 'jab'])
+  }
+  if (allowedIds.has('jab')) {
+    candidates.push(['jab', 'jab'])
+    candidates.push(['jab'])
+  }
+  for (const sequence of candidates) {
+    if (sequence.length < min || sequence.length > max) continue
+    if (!sequence.every((id) => allowedIds.has(id))) continue
+    if (!validateTechniqueSequence(sequence).valid) continue
+    return buildCombo({
+      id: `gen-emergency-${sequence.join('-')}`,
+      title: 'Generated combination',
+      difficulty: options.difficulty,
+      purpose: 'pressure',
+      techniques: mirrorTechniqueIds(sequence, options.stance),
+      setup: 'Compliant fallback built from the allowed technique pool.',
+      notes: 'Generated from validated follow-up rules — not a random string of strikes.',
+      tags: ['generated'],
+      stance: options.stance,
+      martialArt: options.martialArt ?? 'muay-thai',
+    })
+  }
+  return null
+}
+
+/** Test seam so last-resort coverage can stub rule generation without rewriting SessionEngine. */
+export const comboGeneration = {
+  selectCuratedCombos,
+  generateRuleBasedCombo,
+}
+
 export function nextCombo(
   options: GeneratorOptions,
   recentIds: string[] = [],
-): Combo {
+): Combo | null {
   const rand = options.seed != null ? mulberry32(options.seed + recentIds.length) : Math.random
   const preferCurated = options.preferCurated !== false
-  const curated = selectCuratedCombos(options).filter((c) => !recentIds.includes(c.id))
+  const curated = comboGeneration.selectCuratedCombos(options).filter((c) => !recentIds.includes(c.id))
 
   if (preferCurated && curated.length) {
     const chosen = pick(curated, rand) ?? curated[0]!
-    const ids = mirrorTechniqueIds(
-      chosen.techniques.map((t) => t.techniqueId),
-      options.stance,
-    )
-    return {
-      ...chosen,
-      techniques: ids.map((techniqueId) => ({ techniqueId })),
-      stance: options.stance,
-    }
+    return applyStance(chosen, options.stance)
   }
 
-  const generated = generateRuleBasedCombo(options, rand)
+  const generated = comboGeneration.generateRuleBasedCombo(options, rand)
   if (generated) return generated
 
-  const art = options.martialArt ?? 'muay-thai'
-  const fallback =
-    CURATED_COMBOS.find((c) => c.martialArt === art && c.difficulty === 'beginner') ??
-    CURATED_COMBOS.find((c) => c.martialArt === art) ??
-    CURATED_COMBOS[0]!
-  return {
-    ...fallback,
-    martialArt: art,
-    techniques: mirrorTechniqueIds(
-      fallback.techniques.map((t) => t.techniqueId),
-      options.stance,
-    ).map((techniqueId) => ({ techniqueId })),
-    stance: options.stance,
+  const lastResort = selectEligibleCuratedCombos(options, { broadenDifficulty: true }).filter(
+    (c) => !recentIds.includes(c.id),
+  )
+  if (lastResort.length) {
+    const chosen = pick(lastResort, rand) ?? lastResort[0]!
+    return applyStance(chosen, options.stance)
   }
+
+  return emergencyCompliantCombo(options)
 }
 
 export function optionsFromWorkout(config: WorkoutConfig): GeneratorOptions {

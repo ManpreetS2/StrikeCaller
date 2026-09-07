@@ -179,8 +179,9 @@ describe('curated library and generator', () => {
       includeClinch: false,
       seed: 42,
     })
+    expect(combo).not.toBeNull()
     expect(
-      validateTechniqueSequence(combo.techniques.map((t) => t.techniqueId)).valid,
+      validateTechniqueSequence(combo!.techniques.map((t) => t.techniqueId)).valid,
     ).toBe(true)
   })
 })
