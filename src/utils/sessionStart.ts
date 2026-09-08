@@ -7,6 +7,7 @@ import {
 } from '../storage/sessionValidation'
 import { hasOwn, isPlainObject, oneOf, readBoolean } from '../storage/parseUnknown'
 import { isRuntimeComboSemanticallyValid } from './comboSemantics'
+import { parseDailyDrillKey } from './dailyDrill'
 
 export type DailyPhase = (typeof DAILY_PHASES)[number]
 
@@ -15,6 +16,7 @@ export interface SessionStartState {
   comboQueue?: Combo[]
   demo?: boolean
   dailyPhase?: DailyPhase
+  dailyDrillKey?: string
   audioPrimed?: boolean
 }
 
@@ -30,6 +32,8 @@ export type SessionStartFailReason =
   | 'inconsistent-demo'
   | 'invalid-daily-phase'
   | 'inconsistent-daily-phase'
+  | 'invalid-daily-drill-key'
+  | 'inconsistent-daily-drill-key'
 
 export type SessionStartParseResult =
   | { ok: true; value: SessionStartState }
@@ -40,7 +44,10 @@ export type SessionStartParseResult =
  *
  * Present-but-invalid optional fields are rejected, not coerced.
  * `config.mode` is the source of truth for demo vs training.
- * `dailyPhase` is allowed only on `mode: 'daily'`.
+ * `dailyPhase` is allowed only on `mode: 'daily'` and requires a matching `dailyDrillKey`.
+ * `dailyDrillKey` is origin-day metadata: it is not required to equal today's date.
+ * DailyPage phase sessions always send both. Train Again of a Daily workout may use
+ * `mode: 'daily'` without completion metadata and must not mark Daily progress.
  * A supplied comboQueue is an execution command: one bad entry fails the payload.
  */
 export function parseSessionStartState(raw: unknown): SessionStartParseResult {
@@ -81,7 +88,17 @@ export function parseSessionStartState(raw: unknown): SessionStartParseResult {
     const dailyPhase = oneOf(raw.dailyPhase, DAILY_PHASES)
     if (!dailyPhase) return { ok: false, reason: 'invalid-daily-phase' }
     if (config.mode !== 'daily') return { ok: false, reason: 'inconsistent-daily-phase' }
+    if (!hasOwn(raw, 'dailyDrillKey')) return { ok: false, reason: 'inconsistent-daily-drill-key' }
     value.dailyPhase = dailyPhase
+  }
+
+  if (hasOwn(raw, 'dailyDrillKey')) {
+    if (config.mode !== 'daily') return { ok: false, reason: 'inconsistent-daily-drill-key' }
+    if (!value.dailyPhase) return { ok: false, reason: 'inconsistent-daily-drill-key' }
+    const parsed = parseDailyDrillKey(raw.dailyDrillKey)
+    if (!parsed.ok) return { ok: false, reason: 'invalid-daily-drill-key' }
+    if (parsed.martialArt !== config.martialArt) return { ok: false, reason: 'inconsistent-daily-drill-key' }
+    value.dailyDrillKey = parsed.key
   }
 
   return { ok: true, value }

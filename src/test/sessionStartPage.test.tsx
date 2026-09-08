@@ -171,6 +171,22 @@ describe('A5 SessionPage start-state gate', () => {
     expect(primeSpy).not.toHaveBeenCalled()
   })
 
+  it('rejects a malformed Daily origin key without starting the engine', async () => {
+    renderApp({
+      pathname: '/session',
+      state: {
+        config: silentConfig({ mode: 'daily', martialArt: 'boxing' }),
+        dailyPhase: 'slowDone',
+        dailyDrillKey: 'garbage',
+        audioPrimed: true,
+      },
+    })
+    await expectUnavailable()
+    expect(startSpy).not.toHaveBeenCalled()
+    expect(primeSpy).not.toHaveBeenCalled()
+    expect(wakeRequest).not.toHaveBeenCalled()
+  })
+
   it('starts a valid createDefaultWorkout config', async () => {
     renderApp({
       pathname: '/session',
@@ -459,16 +475,21 @@ describe('A5 legitimate session entry points', () => {
     )
   })
 
-  it('Daily Slow Practice starts with a valid dailyPhase', async () => {
+  it('Daily Slow Practice starts with a valid dailyPhase and origin key', async () => {
     const user = userEvent.setup()
     const { router } = renderApp('/daily')
     await user.click(screen.getAllByRole('button', { name: /slow practice/i })[0]!)
     await waitFor(() => {
       expect(router.state.location.pathname).toBe('/session')
     })
-    const state = router.state.location.state as { config: WorkoutConfig; dailyPhase: string }
+    const state = router.state.location.state as {
+      config: WorkoutConfig
+      dailyPhase: string
+      dailyDrillKey: string
+    }
     expect(state.config.mode).toBe('daily')
     expect(state.dailyPhase).toBe('slowDone')
+    expect(state.dailyDrillKey).toMatch(/^\d{4}-\d{2}-\d{2}:muay-thai$/)
     await waitFor(() => {
       expect(screen.getByText(/daily · /i)).toBeInTheDocument()
     })

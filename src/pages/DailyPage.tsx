@@ -1,7 +1,5 @@
 import { useMemo } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { BEGINNER_COMBOS, INTERMEDIATE_COMBOS, BOXING_COMBOS, getCombo } from '../data/combos'
-import { BOXING_BEGINNER, BOXING_INTERMEDIATE } from '../data/boxing'
 import { ComboDisplay } from '../components/ComboDisplay'
 import { useApp } from '../context/useApp'
 import { createDefaultWorkout, definedPartial } from '../data/defaults'
@@ -12,21 +10,13 @@ import {
   emptyDailyDrill,
   phaseLockReason,
   phaseUnlocked,
+  pickDailyComboId,
+  resolveDailyDrillCombo,
 } from '../utils/dailyDrill'
-import type { MartialArt, PacePreset, WorkoutConfig } from '../types'
+import type { PacePreset, WorkoutConfig } from '../types'
 
 interface DailyLocationState {
   workoutSeed?: WorkoutConfig
-}
-
-function pickDailyComboId(key: string, martialArt: MartialArt): string {
-  const pool =
-    martialArt === 'boxing'
-      ? [...BOXING_BEGINNER, ...BOXING_INTERMEDIATE]
-      : [...BEGINNER_COMBOS, ...INTERMEDIATE_COMBOS]
-  let hash = 0
-  for (let i = 0; i < key.length; i++) hash = (hash + key.charCodeAt(i) * (i + 1)) % pool.length
-  return pool[hash]!.id
 }
 
 export function DailyPage() {
@@ -43,24 +33,34 @@ export function DailyPage() {
     return pickDailyComboId(key, martialArt)
   }, [getDailyDrill, key, martialArt])
 
-  const combo = useMemo(() => {
-    try {
-      return getCombo(comboId)
-    } catch {
-      return martialArt === 'boxing' ? BOXING_COMBOS[0]! : BEGINNER_COMBOS[0]!
-    }
-  }, [comboId, martialArt])
+  const combo = useMemo(() => resolveDailyDrillCombo(comboId, martialArt), [comboId, martialArt])
 
   const state = getDailyDrill(key) ?? emptyDailyDrill(localDateKey(), martialArt, comboId)
 
   const startPhase = (pace: PacePreset, field: 'slowDone' | 'normalDone' | 'fightDone') => {
-    if (!phaseUnlocked(state, field)) return
+    const originCivilDate = localDateKey()
+    const originKey = dailyDrillKey(originCivilDate, martialArt)
+    const existing = getDailyDrill(originKey)
+    const originComboId = existing?.comboId ?? pickDailyComboId(originKey, martialArt)
+    const originCombo = resolveDailyDrillCombo(originComboId, martialArt)
+    const originState = existing ?? emptyDailyDrill(originCivilDate, martialArt, originCombo.id)
+
+    if (!existing) {
+      setDailyDrill({
+        ...originState,
+        comboId: originCombo.id,
+        martialArt,
+        dateKey: originKey,
+      })
+    }
+
+    if (!phaseUnlocked(originState, field)) return
 
     setDailyDrill({
-      ...state,
-      comboId: combo.id,
+      ...originState,
+      comboId: originCombo.id,
       martialArt,
-      dateKey: key,
+      dateKey: originKey,
     })
 
     const seedDefined = definedPartial(seed ?? {})
@@ -76,7 +76,7 @@ export function DailyPage() {
       sessionDurationSec: 45,
       roundDurationSec: 45,
       rounds: 1,
-      selectedComboIds: [combo.id],
+      selectedComboIds: [originCombo.id],
       speech: {
         ...(seed?.speech ?? preferences.speech),
         callStyle: seed?.callStyle ?? preferences.callStyle,
@@ -92,7 +92,7 @@ export function DailyPage() {
       ...(seed?.movementFrequency !== undefined ? { movementFrequency: seed.movementFrequency } : {}),
       ...(seed?.categories !== undefined ? { categories: seed.categories } : {}),
     })
-    navigate('/session', { state: { config, dailyPhase: field } })
+    navigate('/session', { state: { config, dailyPhase: field, dailyDrillKey: originKey } })
   }
 
   return (

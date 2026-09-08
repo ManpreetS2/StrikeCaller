@@ -117,11 +117,50 @@ describe('parseSessionStartState valid payloads', () => {
     if (parsed.ok) expect(parsed.value.comboQueue).toBeUndefined()
   })
 
-  it('accepts a daily phase payload', () => {
-    const config = createDefaultWorkout({ mode: 'daily', selectedComboIds: ['beg-01'] })
-    const parsed = parseSessionStartState({ config, dailyPhase: 'slowDone' })
+  it('accepts a daily phase payload with a matching origin key', () => {
+    const config = createDefaultWorkout({ mode: 'daily', martialArt: 'boxing', selectedComboIds: ['bx-b01'] })
+    const parsed = parseSessionStartState({
+      config,
+      dailyPhase: 'slowDone',
+      dailyDrillKey: '2026-09-08:boxing',
+    })
     expect(parsed.ok).toBe(true)
-    if (parsed.ok) expect(parsed.value.dailyPhase).toBe('slowDone')
+    if (parsed.ok) {
+      expect(parsed.value.dailyPhase).toBe('slowDone')
+      expect(parsed.value.dailyDrillKey).toBe('2026-09-08:boxing')
+    }
+  })
+
+  it('accepts a previous-day Daily origin key after midnight', () => {
+    const config = createDefaultWorkout({ mode: 'daily', martialArt: 'boxing', selectedComboIds: ['bx-b01'] })
+    const parsed = parseSessionStartState({
+      config,
+      dailyPhase: 'slowDone',
+      dailyDrillKey: '2026-09-08:boxing',
+    })
+    expect(parsed.ok).toBe(true)
+    if (parsed.ok) expect(parsed.value.dailyDrillKey).toBe('2026-09-08:boxing')
+  })
+
+  it('accepts a Muay Thai Daily origin key', () => {
+    const config = createDefaultWorkout({ mode: 'daily', martialArt: 'muay-thai', selectedComboIds: ['beg-01'] })
+    const parsed = parseSessionStartState({
+      config,
+      dailyPhase: 'normalDone',
+      dailyDrillKey: '2026-09-08:muay-thai',
+    })
+    expect(parsed.ok).toBe(true)
+    if (parsed.ok) expect(parsed.value.dailyDrillKey).toBe('2026-09-08:muay-thai')
+  })
+
+  it('accepts a Daily-mode Train Again payload without phase completion metadata', () => {
+    const config = createDefaultWorkout({ mode: 'daily', selectedComboIds: ['beg-01'] })
+    const parsed = parseSessionStartState({ config })
+    expect(parsed.ok).toBe(true)
+    if (parsed.ok) {
+      expect(parsed.value.dailyPhase).toBeUndefined()
+      expect(parsed.value.dailyDrillKey).toBeUndefined()
+    }
   })
 })
 
@@ -227,6 +266,95 @@ describe('parseSessionStartState invalid payloads', () => {
     expect(parseSessionStartState({ config: roundConfig(), dailyPhase: 'slowDone' })).toEqual({
       ok: false,
       reason: 'inconsistent-daily-phase',
+    })
+  })
+
+  it('rejects a Daily phase without an origin key', () => {
+    const config = createDefaultWorkout({ mode: 'daily', martialArt: 'boxing' })
+    expect(parseSessionStartState({ config, dailyPhase: 'slowDone' })).toEqual({
+      ok: false,
+      reason: 'inconsistent-daily-drill-key',
+    })
+  })
+
+  it('rejects a Daily origin key without a phase', () => {
+    const config = createDefaultWorkout({ mode: 'daily', martialArt: 'boxing' })
+    expect(parseSessionStartState({ config, dailyDrillKey: '2026-09-08:boxing' })).toEqual({
+      ok: false,
+      reason: 'inconsistent-daily-drill-key',
+    })
+  })
+
+  it('rejects a Daily origin key on a non-daily session', () => {
+    expect(
+      parseSessionStartState({
+        config: roundConfig({ martialArt: 'boxing' }),
+        dailyDrillKey: '2026-09-08:boxing',
+      }),
+    ).toEqual({
+      ok: false,
+      reason: 'inconsistent-daily-drill-key',
+    })
+  })
+
+  it('rejects a malformed Daily origin key', () => {
+    const config = createDefaultWorkout({ mode: 'daily', martialArt: 'boxing' })
+    expect(
+      parseSessionStartState({ config, dailyPhase: 'slowDone', dailyDrillKey: 'garbage' }),
+    ).toEqual({
+      ok: false,
+      reason: 'invalid-daily-drill-key',
+    })
+  })
+
+  it('rejects an unpadded Daily origin key', () => {
+    const config = createDefaultWorkout({ mode: 'daily', martialArt: 'boxing' })
+    expect(
+      parseSessionStartState({ config, dailyPhase: 'slowDone', dailyDrillKey: '2026-9-8:boxing' }),
+    ).toEqual({
+      ok: false,
+      reason: 'invalid-daily-drill-key',
+    })
+  })
+
+  it('rejects an impossible civil date in a Daily origin key', () => {
+    const config = createDefaultWorkout({ mode: 'daily', martialArt: 'boxing' })
+    expect(
+      parseSessionStartState({ config, dailyPhase: 'slowDone', dailyDrillKey: '2026-02-31:boxing' }),
+    ).toEqual({
+      ok: false,
+      reason: 'invalid-daily-drill-key',
+    })
+    expect(
+      parseSessionStartState({ config, dailyPhase: 'slowDone', dailyDrillKey: '2026-09-99:boxing' }),
+    ).toEqual({
+      ok: false,
+      reason: 'invalid-daily-drill-key',
+    })
+  })
+
+  it('rejects a Daily origin key whose martial art does not match config', () => {
+    const boxing = createDefaultWorkout({ mode: 'daily', martialArt: 'boxing' })
+    expect(
+      parseSessionStartState({
+        config: boxing,
+        dailyPhase: 'slowDone',
+        dailyDrillKey: '2026-09-08:muay-thai',
+      }),
+    ).toEqual({
+      ok: false,
+      reason: 'inconsistent-daily-drill-key',
+    })
+    const muay = createDefaultWorkout({ mode: 'daily', martialArt: 'muay-thai' })
+    expect(
+      parseSessionStartState({
+        config: muay,
+        dailyPhase: 'slowDone',
+        dailyDrillKey: '2026-09-08:boxing',
+      }),
+    ).toEqual({
+      ok: false,
+      reason: 'inconsistent-daily-drill-key',
     })
   })
 })

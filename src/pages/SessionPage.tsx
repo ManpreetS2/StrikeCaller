@@ -10,8 +10,7 @@ import { SessionControlDock } from '../components/SessionControlDock'
 import { SessionTimer } from '../components/SessionTimer'
 import { resolveTimerState } from '../components/sessionTimerState'
 import { primeTrainingAudio } from '../utils/primeAudio'
-import { localDateKey } from '../utils/localDate'
-import { dailyDrillKey } from '../utils/dailyDrill'
+import { emptyDailyDrill, parseDailyDrillKey } from '../utils/dailyDrill'
 import { parseSessionStartState, type SessionStartState } from '../utils/sessionStart'
 import type { SessionSummary } from '../types'
 
@@ -243,20 +242,14 @@ function ActiveSessionPage({ start }: { start: SessionStartState }) {
 
   const applyDailyPhase = (summary: SessionSummary, cancelled: boolean) => {
     const phase = startRef.current.dailyPhase
-    if (cancelled || !phase) return summary
-    const art = summary.martialArt
-    const key = dailyDrillKey(localDateKey(), art)
+    const key = startRef.current.dailyDrillKey
+    if (cancelled || !phase || !key) return summary
+    const parsed = parseDailyDrillKey(key)
+    if (!parsed.ok || parsed.martialArt !== summary.martialArt) return summary
     const existing = getDailyDrill(key)
-    const base = existing ?? {
-      dateKey: key,
-      comboId: summary.workoutConfig?.selectedComboIds?.[0] ?? '',
-      martialArt: art,
-      slowDone: false,
-      normalDone: false,
-      fightDone: false,
-      completed: false,
-    }
-    const next = { ...base, martialArt: art, dateKey: key, [phase]: true }
+    const comboId = existing?.comboId || summary.workoutConfig?.selectedComboIds?.[0] || ''
+    const base = existing ?? emptyDailyDrill(parsed.civilDate, parsed.martialArt, comboId)
+    const next = { ...base, martialArt: parsed.martialArt, dateKey: key, [phase]: true }
     const completed = Boolean(next.slowDone && next.normalDone && next.fightDone)
     setDailyDrill({ ...next, completed })
     return { ...summary, dailyPhase: phase, dailyDrillCompleted: completed }
