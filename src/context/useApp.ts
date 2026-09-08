@@ -45,6 +45,7 @@ export interface AppContextValue {
   removeCustomCombo: (id: string) => void
   history: SessionSummary[]
   historyReady: boolean
+  dataMutationPending: boolean
   addHistory: (summary: SessionSummary) => Promise<AddHistoryResult>
   clearHistory: () => Promise<void>
   resetPreferences: () => void

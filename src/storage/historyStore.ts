@@ -11,6 +11,8 @@ import { loadLegacyHistory, removeLegacyHistory } from './localStore'
 import { isPersistableSession, parseSessionRouteId, validateSessionSummary } from './sessionValidation'
 import {
   classifyStorageError,
+  HISTORY_CLEAR_RESTORE_FAILED_MESSAGE,
+  LEGACY_HISTORY_CLEANUP_MESSAGE,
   STORAGE_WRITE_MESSAGES,
   type StorageWriteResult,
 } from './storageTypes'
@@ -18,10 +20,16 @@ import {
 let initPromise: Promise<{ history: SessionSummary[]; write: StorageWriteResult }> | null = null
 let historyWriteGeneration = 0
 const inFlightWrites = new Set<Promise<unknown>>()
+let historyMutexTail: Promise<void> = Promise.resolve()
+let afterAuthoritativeFenceForTests: (() => Promise<void>) | null = null
+
+function afterSettle(promise: Promise<unknown>, cleanup: () => void): void {
+  void promise.then(cleanup, cleanup)
+}
 
 function trackInFlight<T>(promise: Promise<T>): Promise<T> {
   inFlightWrites.add(promise)
-  void promise.finally(() => {
+  afterSettle(promise, () => {
     inFlightWrites.delete(promise)
   })
   return promise
@@ -35,10 +43,12 @@ export function resetHistoryDbConnection(): void {
   initPromise = null
   historyWriteGeneration = 0
   inFlightWrites.clear()
+  historyMutexTail = Promise.resolve()
+  afterAuthoritativeFenceForTests = null
   resetIdbConnection()
 }
 
-/** Invalidate queued/in-flight history writes so they cannot commit after Delete All Data. */
+/** Invalidate queued/in-flight history writes so they cannot commit after an authoritative history mutation. */
 export function invalidateHistoryWrites(): number {
   historyWriteGeneration += 1
   return historyWriteGeneration
@@ -50,8 +60,57 @@ export async function waitForInFlightHistoryWrites(): Promise<void> {
   }
 }
 
+export function getHistoryWriteGeneration(): number {
+  return historyWriteGeneration
+}
+
 export function abandonHistoryInitialization(): void {
   initPromise = null
+}
+
+/**
+ * Test-only hook: runs after an authoritative transition has the mutex,
+ * invalidated stale writers, and waited for already-started writes, but
+ * before clear/replace work. Production code must not use this.
+ */
+export function setAfterAuthoritativeFenceForTests(hook: (() => Promise<void>) | null): void {
+  afterAuthoritativeFenceForTests = hook
+}
+
+function withHistoryMutex<T>(work: () => Promise<T>): Promise<T> {
+  let release!: () => void
+  const previous = historyMutexTail
+  historyMutexTail = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  return previous.then(work, work).finally(() => {
+    release()
+  })
+}
+
+/**
+ * Authoritative history mutation barrier.
+ *
+ * Ordinary saveSession/replaceHistory wait on the same mutex, so a new write
+ * cannot start after invalidation and still interleave with clear/replace.
+ * Code inside `work` must use unlocked primitives (`replaceHistoryAt`,
+ * `transactSessions`, `loadHistoryFromDbOnly`) and must not call public
+ * `saveSession` / `replaceHistory` / `ensureHistoryInitialized`.
+ */
+export function runAuthoritativeHistoryTransition<T>(
+  work: (generation: number) => Promise<T>,
+): Promise<T> {
+  return withHistoryMutex(async () => {
+    const generation = invalidateHistoryWrites()
+    await waitForInFlightHistoryWrites()
+    abandonHistoryInitialization()
+    if (afterAuthoritativeFenceForTests) await afterAuthoritativeFenceForTests()
+    try {
+      return await trackInFlight(Promise.resolve().then(() => work(generation)))
+    } finally {
+      abandonHistoryInitialization()
+    }
+  })
 }
 
 export async function clearSessionsStore(): Promise<StorageWriteResult> {
@@ -144,30 +203,50 @@ export async function loadHistory(): Promise<SessionSummary[]> {
 }
 
 export async function saveSession(summary: SessionSummary): Promise<StorageWriteResult> {
+  return (await commitSessionWrite(summary)).write
+}
+
+/**
+ * Mutex-held session persist used by AppContext to reconcile React with durable order.
+ * `generation` is the write generation observed after acquiring the history mutex.
+ */
+export async function commitSessionWrite(
+  summary: SessionSummary,
+): Promise<{ write: StorageWriteResult; generation: number }> {
   const next = persistable(summary)
-  if (!next) return { ok: true }
-  const generation = historyWriteGeneration
-  if (!isCurrentGeneration(generation)) return { ok: true }
-  if (!isIndexedDbAvailable()) return indexedDbUnavailableResult()
-  return trackInFlight(
-    (async () => {
-      if (!isCurrentGeneration(generation)) return { ok: true }
-      try {
-        await transactSessions('readwrite', (store) => {
-          if (!isCurrentGeneration(generation)) return
-          store.put(next)
-        })
-        return { ok: true }
-      } catch (error) {
-        return classifyIdbError(error)
-      }
-    })(),
-  )
+  const generationAtCall = historyWriteGeneration
+  if (!next) return { write: { ok: true }, generation: generationAtCall }
+  return withHistoryMutex(async () => {
+    const generation = historyWriteGeneration
+    if (!isCurrentGeneration(generation)) return { write: { ok: true }, generation }
+    if (!isIndexedDbAvailable()) return { write: indexedDbUnavailableResult(), generation }
+    const write = await trackInFlight(
+      (async () => {
+        if (!isCurrentGeneration(generation)) return { ok: true } as StorageWriteResult
+        try {
+          await transactSessions('readwrite', (store) => {
+            if (!isCurrentGeneration(generation)) return
+            store.put(next)
+          })
+          return { ok: true } as StorageWriteResult
+        } catch (error) {
+          return classifyIdbError(error)
+        }
+      })(),
+    )
+    return { write, generation }
+  })
 }
 
 export async function replaceHistory(history: SessionSummary[]): Promise<StorageWriteResult> {
   const sessions = history.map(persistable).filter((item): item is SessionSummary => item != null)
-  const generation = historyWriteGeneration
+  return withHistoryMutex(async () => replaceHistoryAt(sessions, historyWriteGeneration))
+}
+
+export async function replaceHistoryAt(
+  sessions: SessionSummary[],
+  generation: number,
+): Promise<StorageWriteResult> {
   if (!isCurrentGeneration(generation)) return { ok: true }
   if (!isIndexedDbAvailable()) return indexedDbUnavailableResult()
   return trackInFlight(
@@ -191,34 +270,47 @@ export async function replaceHistory(history: SessionSummary[]): Promise<Storage
  * Clear durable history only after the canonical IndexedDB store can be opened
  * and cleared. Legacy localStorage is removed only after that commit succeeds,
  * so a failed clear cannot destroy the only remaining copy.
+ *
+ * Pre-clear session saves and initialization are invalidated and awaited so a
+ * write that began before this clear cannot commit afterward and resurrect a
+ * session once success is reported.
  */
 export async function clearHistory(): Promise<StorageWriteResult> {
   if (!isIndexedDbAvailable()) return indexedDbUnavailableResult()
 
-  let existing: SessionSummary[]
-  try {
-    const loaded = await loadHistoryFromDbOnly()
-    if (!loaded.ok) return loaded
-    existing = loaded.history
-  } catch (error) {
-    return classifyIdbError(error)
-  }
+  return runAuthoritativeHistoryTransition(async (generation) => {
+    let existing: SessionSummary[]
+    try {
+      const loaded = await loadHistoryFromDbOnly()
+      if (!loaded.ok) return loaded
+      existing = loaded.history
+    } catch (error) {
+      return classifyIdbError(error)
+    }
 
-  try {
-    await transactSessions('readwrite', (store) => {
-      store.clear()
-    })
-  } catch (error) {
-    return classifyIdbError(error)
-  }
+    if (!isCurrentGeneration(generation)) {
+      return { ok: false, reason: 'write-failed', message: STORAGE_WRITE_MESSAGES['write-failed'] }
+    }
 
-  const legacyRemoved = removeLegacyHistory()
-  if (!legacyRemoved.ok) {
-    const restored = await replaceHistory(existing)
-    if (!restored.ok) return restored
-    return legacyRemoved
-  }
-  return { ok: true }
+    try {
+      await transactSessions('readwrite', (store) => {
+        if (!isCurrentGeneration(generation)) return
+        store.clear()
+      })
+    } catch (error) {
+      return classifyIdbError(error)
+    }
+
+    const legacyRemoved = removeLegacyHistory()
+    if (!legacyRemoved.ok) {
+      const restored = await replaceHistoryAt(existing, generation)
+      if (!restored.ok) {
+        return { ...restored, message: HISTORY_CLEAR_RESTORE_FAILED_MESSAGE }
+      }
+      return legacyRemoved
+    }
+    return { ok: true }
+  })
 }
 
 function mergePreferIndexedDb(existing: SessionSummary[], legacy: SessionSummary[]): SessionSummary[] {
@@ -243,7 +335,7 @@ async function verifyContainsLegacy(
   return { ok: true, history: verified.history }
 }
 
-async function loadHistoryFromDbOnly(): Promise<
+export async function loadHistoryFromDbOnly(): Promise<
   { ok: true; history: SessionSummary[] } | Extract<StorageWriteResult, { ok: false }>
 > {
   try {
@@ -275,7 +367,11 @@ async function loadHistoryFromDbOnly(): Promise<
  * Legacy localStorage is removed only after the IndexedDB transaction completes and
  * every legacy session id is present in IndexedDB.
  */
-export async function initHistory(): Promise<{ history: SessionSummary[]; write: StorageWriteResult }> {
+export function initHistory(): Promise<{ history: SessionSummary[]; write: StorageWriteResult }> {
+  return withHistoryMutex(() => trackInFlight(runInitHistory()))
+}
+
+async function runInitHistory(): Promise<{ history: SessionSummary[]; write: StorageWriteResult }> {
   const generation = historyWriteGeneration
   const legacy = loadLegacyHistory()
 
@@ -312,7 +408,7 @@ export async function initHistory(): Promise<{ history: SessionSummary[]; write:
     if (!isCurrentGeneration(generation)) {
       return { history: [], write: { ok: true } }
     }
-    const putResult = await replaceOrPut(toInsert)
+    const putResult = await replaceOrPut(toInsert, generation)
     if (!putResult.ok) {
       return {
         history: mergePreferIndexedDb(existing, legacy),
@@ -326,29 +422,40 @@ export async function initHistory(): Promise<{ history: SessionSummary[]; write:
     return { history: mergePreferIndexedDb(existing, legacy), write: verified }
   }
 
-  removeLegacyHistory()
+  if (!isCurrentGeneration(generation)) {
+    return { history: verified.history, write: { ok: true } }
+  }
+
+  const legacyRemoved = removeLegacyHistory()
+  if (!legacyRemoved.ok) {
+    return {
+      history: verified.history,
+      write: { ...legacyRemoved, message: LEGACY_HISTORY_CLEANUP_MESSAGE },
+    }
+  }
   return { history: verified.history, write: { ok: true } }
 }
 
 export function ensureHistoryInitialized(): Promise<{ history: SessionSummary[]; write: StorageWriteResult }> {
-  if (!initPromise) {
-    const generation = historyWriteGeneration
-    initPromise = trackInFlight(
-      initHistory().then((result) => {
-        if (!isCurrentGeneration(generation)) {
-          initPromise = null
-        } else if (!result.write.ok) {
-          initPromise = null
-        }
-        return result
-      }),
-    )
-  }
-  return initPromise
+  return withHistoryMutex(async () => {
+    if (!initPromise) {
+      const generation = historyWriteGeneration
+      initPromise = trackInFlight(
+        runInitHistory().then((result) => {
+          if (!isCurrentGeneration(generation)) {
+            initPromise = null
+          } else if (!result.write.ok) {
+            initPromise = null
+          }
+          return result
+        }),
+      )
+    }
+    return initPromise
+  })
 }
 
-async function replaceOrPut(sessions: SessionSummary[]): Promise<StorageWriteResult> {
-  const generation = historyWriteGeneration
+async function replaceOrPut(sessions: SessionSummary[], generation: number): Promise<StorageWriteResult> {
   if (!isCurrentGeneration(generation)) return { ok: true }
   return trackInFlight(
     (async () => {

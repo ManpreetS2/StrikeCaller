@@ -1,6 +1,7 @@
 import { COMBO_MAP } from '../data/combos'
 import type { Combo, CustomCombo, SessionSummary } from '../types'
-import { customComboToRuntime } from './customCombo'
+import { isRuntimeComboSemanticallyValid } from './comboSemantics'
+import { tryCustomComboToRuntime } from './customCombo'
 
 export function resolveCombo(
   id: string,
@@ -10,11 +11,15 @@ export function resolveCombo(
   if (curated) return curated
 
   const custom = options.customCombos?.find((c) => c.id === id)
-  if (custom) return customComboToRuntime(custom)
+  if (custom) {
+    const runtime = tryCustomComboToRuntime(custom)
+    if (runtime) return runtime
+  }
 
   for (const summary of options.history ?? []) {
     const snap = summary.comboSnapshots?.find((c) => c.id === id)
-    if (snap) return snap
+    const expectedArt = summary.workoutConfig?.martialArt ?? summary.martialArt
+    if (snap && isRuntimeComboSemanticallyValid(snap, expectedArt)) return snap
   }
 
   return null

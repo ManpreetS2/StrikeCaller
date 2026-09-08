@@ -1,5 +1,34 @@
 # Changelog
 
+## 1.3.1 — 2026-09-08
+
+### Reliability & Data Integrity
+
+- Hardened workout-history clearing, importing, initialization, and legacy migration so stale or in-flight writes cannot silently resurrect old sessions.
+- Improved partial-failure handling so local storage and IndexedDB mutations report their real durable state instead of claiming success after incomplete cleanup.
+- Added stricter custom-combo validation across import, persistence, Train Again, historical reuse, and SessionEngine runtime execution.
+
+### Session & Training Correctness
+
+- Direct or malformed `/session` routes no longer fabricate a default workout; invalid session-start state now shows an honest unavailable-session screen.
+- Generator filters now remain authoritative across curated, rule-based, and fallback paths, including defense, movement, knees, elbows, clinch, head kicks, martial-art compatibility, and difficulty.
+- Finite Train Again queues safely finish without falling back to unrelated generated combinations.
+
+### Mobile & Daily Reliability
+
+- Hardened Screen Wake Lock ownership so overlapping requests, stale release callbacks, pending teardown, and release failures cannot leak or misreport wake-lock state.
+- Daily Drill phases now remain attached to the civil date on which they were started, including workouts that cross midnight and Daily pages left open overnight.
+
+### Summary Recovery
+
+- Saved summary routes now distinguish a truly missing workout from temporarily unavailable history storage and provide an explicit retry path.
+
+### Security / Maintenance
+
+- Includes the already-reviewed dev/build-only NanoID advisory remediation in the Vite → PostCSS chain (`3.3.16 → 3.3.18`). StrikeCaller source does not import NanoID; runtime dependencies are unchanged.
+
+StrikeCaller remains local-first. There is no account, cloud sync, service worker, or offline cache in this release.
+
 ## 1.3.0 — 2026-09-03
 
 ### Added

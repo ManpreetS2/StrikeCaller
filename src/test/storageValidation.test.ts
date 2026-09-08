@@ -628,7 +628,7 @@ describe('P1 #7 import is all-or-nothing', () => {
         {
           id: 'v2-combo',
           title: 'Legacy combo',
-          techniqueIds: ['jab', 'cross', 'jab', 'cross', 'hook-lead', 'cross', 'jab', 'cross'],
+          techniqueIds: ['jab', 'cross', 'jab', 'cross', 'lead-hook', 'cross', 'jab', 'cross'],
           createdAt: 10,
           updatedAt: 20,
           favorite: false,

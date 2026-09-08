@@ -1,14 +1,14 @@
 import type { CustomCombo, DailyDrillMap, SessionSummary, UserPreferences } from '../types'
 import { migrateDailyDrillMap, normalizeDailyDrillState } from '../utils/dailyDrill'
 import { MAX_COMBO_LENGTH } from '../engines/comboValidator'
+import { validateCustomComboSemantics } from '../utils/customCombo'
 import {
-  abandonHistoryInitialization,
   clearSessionsStore,
   ensureHistoryInitialized,
-  invalidateHistoryWrites,
   loadHistory,
-  replaceHistory,
-  waitForInFlightHistoryWrites,
+  loadHistoryFromDbOnly,
+  replaceHistoryAt,
+  runAuthoritativeHistoryTransition,
 } from './historyStore'
 import {
   EXPORT_VERSION,
@@ -35,7 +35,11 @@ import {
 } from './localStore'
 import { isPlainObject, hasOwn, nonNegativeInt } from './parseUnknown'
 import { isPersistableSession, validateSessionSummary } from './sessionValidation'
-import { DELETE_ALL_PARTIAL_MESSAGE } from './storageTypes'
+import {
+  DELETE_ALL_PARTIAL_MESSAGE,
+  IMPORT_EXECUTION_FAILED_MESSAGE,
+  IMPORT_RESTORE_FAILED_MESSAGE,
+} from './storageTypes'
 
 export type DeleteAllUserDataFailureClass = 'localStorage' | 'indexedDB'
 
@@ -50,10 +54,42 @@ export type DeleteAllUserDataResult =
     }
 
 let inFlightDelete: Promise<DeleteAllUserDataResult> | null = null
+let importTail: Promise<void> = Promise.resolve()
+let afterImportLocalWritesForTests: (() => Promise<void>) | null = null
+
+/**
+ * Test-only hook: runs after an import has written planned localStorage values
+ * and before the IndexedDB history replace. Production code must not use this.
+ */
+export function setAfterImportLocalWritesForTests(hook: (() => Promise<void>) | null): void {
+  afterImportLocalWritesForTests = hook
+}
+
+function rollbackImportResult(
+  restored: boolean,
+  write: StorageWriteResult,
+): ImportUserDataResult {
+  if (restored) {
+    return {
+      ok: false,
+      message: 'Import could not be saved. Existing data was left unchanged.',
+      write,
+    }
+  }
+  const failed = write.ok
+    ? { ok: false as const, reason: 'write-failed' as const, message: IMPORT_RESTORE_FAILED_MESSAGE }
+    : { ...write, message: IMPORT_RESTORE_FAILED_MESSAGE }
+  return {
+    ok: false,
+    applied: true,
+    message: IMPORT_RESTORE_FAILED_MESSAGE,
+    write: failed,
+  }
+}
 
 export type ImportUserDataResult =
   | { ok: true; message: string }
-  | { ok: false; message: string; write?: StorageWriteResult }
+  | { ok: false; message: string; write?: StorageWriteResult; applied?: boolean }
 
 type NormalizedImport = {
   preferences?: UserPreferences
@@ -145,6 +181,8 @@ function validateImportPayload(
       if (combo.repeatCount < 1 || combo.repeatCount > 20) {
         return { ok: false, message: 'Custom combo repeatCount must be 1–20.' }
       }
+      const semantic = validateCustomComboSemantics(combo)
+      if (!semantic.ok) return { ok: false, message: semantic.message }
       combos.push(combo)
     }
     normalized.customCombos = combos
@@ -186,13 +224,37 @@ function validateImportPayload(
   return { ok: true, value: normalized }
 }
 
-export async function importUserData(json: string): Promise<ImportUserDataResult> {
+export function importUserData(json: string): Promise<ImportUserDataResult> {
+  const run = importTail.then(() => performImportUserData(json), () => performImportUserData(json))
+  const guarded = run.then(
+    (result) => result,
+    () =>
+      ({
+        ok: false as const,
+        message: IMPORT_EXECUTION_FAILED_MESSAGE,
+      }) satisfies ImportUserDataResult,
+  )
+  importTail = guarded.then(
+    () => undefined,
+    () => undefined,
+  )
+  return guarded
+}
+
+async function performImportUserData(json: string): Promise<ImportUserDataResult> {
   if (typeof json !== 'string') return { ok: false, message: 'Import payload must be text.' }
   if (new TextEncoder().encode(json).length > MAX_IMPORT_BYTES) {
     return { ok: false, message: 'Import file exceeds the 2 MB limit.' }
   }
+
+  let parsed: unknown
   try {
-    const parsed: unknown = JSON.parse(json)
+    parsed = JSON.parse(json)
+  } catch {
+    return { ok: false, message: 'Could not parse JSON.' }
+  }
+
+  try {
     const validated = validateImportPayload(parsed)
     if (!validated.ok) return validated
 
@@ -203,6 +265,80 @@ export async function importUserData(json: string): Promise<ImportUserDataResult
     if (favorites) planned.push({ key: STORAGE_KEYS.favorites, write: () => saveFavorites(favorites) })
     if (combos) planned.push({ key: STORAGE_KEYS.customCombos, write: () => saveCustomCombos(combos) })
     if (daily) planned.push({ key: STORAGE_KEYS.daily, write: () => saveDailyDrillMap(daily) })
+
+    if (history) {
+      return await runAuthoritativeHistoryTransition(async (generation) => {
+        const idbSnapshot = await loadHistoryFromDbOnly()
+        if (!idbSnapshot.ok) {
+          return {
+            ok: false as const,
+            message: 'Import could not be saved. Existing data was left unchanged.',
+            write: idbSnapshot,
+          }
+        }
+
+        const snapshots: { key: string; value: string | null }[] = []
+        for (const item of planned) {
+          const snap = snapshotRaw(item.key)
+          if (!snap.ok) {
+            return {
+              ok: false as const,
+              message: 'Import could not be saved. Existing data was left unchanged.',
+              write: snap,
+            }
+          }
+          snapshots.push({ key: item.key, value: snap.value })
+        }
+
+        for (const item of planned) {
+          const result = item.write()
+          if (!result.ok) {
+            let restored = true
+            for (const snap of snapshots) {
+              if (!restoreRaw(snap.key, snap.value)) restored = false
+            }
+            return rollbackImportResult(restored, result)
+          }
+        }
+
+        if (afterImportLocalWritesForTests) await afterImportLocalWritesForTests()
+
+        const historyWrite = await replaceHistoryAt(history, generation)
+        if (!historyWrite.ok) {
+          let restored = true
+          for (const snap of snapshots) {
+            if (!restoreRaw(snap.key, snap.value)) restored = false
+          }
+          return rollbackImportResult(restored, historyWrite)
+        }
+
+        const legacyRemoved = removeLegacyHistory()
+        if (!legacyRemoved.ok) {
+          const restoredIdb = await replaceHistoryAt(idbSnapshot.history, generation)
+          let restoredLs = true
+          for (const snap of snapshots) {
+            if (!restoreRaw(snap.key, snap.value)) restoredLs = false
+          }
+          if (restoredIdb.ok && restoredLs) {
+            return {
+              ok: false as const,
+              message: 'Import could not be saved. Existing data was left unchanged.',
+              write: legacyRemoved,
+            }
+          }
+          return {
+            ok: false as const,
+            applied: true,
+            message: IMPORT_RESTORE_FAILED_MESSAGE,
+            write: restoredIdb.ok
+              ? { ...legacyRemoved, message: IMPORT_RESTORE_FAILED_MESSAGE }
+              : { ...restoredIdb, message: IMPORT_RESTORE_FAILED_MESSAGE },
+          }
+        }
+
+        return { ok: true as const, message: 'Import successful.' }
+      })
+    }
 
     const snapshots: { key: string; value: string | null }[] = []
     for (const item of planned) {
@@ -224,65 +360,35 @@ export async function importUserData(json: string): Promise<ImportUserDataResult
         for (const snap of snapshots) {
           if (!restoreRaw(snap.key, snap.value)) restored = false
         }
-        return {
-          ok: false,
-          message: restored
-            ? 'Import could not be saved. Existing data was left unchanged.'
-            : 'Import could not be saved. StrikeCaller could not restore all previous data.',
-          write: result,
-        }
+        return rollbackImportResult(restored, result)
       }
-    }
-
-    // localStorage writes happen first. IndexedDB replaceHistory is one transaction
-    // (clear + every put, resolved only on transaction oncomplete). If that
-    // transaction fails, small-state keys are restored. This is not ACID across
-    // localStorage and IndexedDB together.
-    if (history) {
-      const historyWrite = await replaceHistory(history)
-      if (!historyWrite.ok) {
-        let restored = true
-        for (const snap of snapshots) {
-          if (!restoreRaw(snap.key, snap.value)) restored = false
-        }
-        return {
-          ok: false,
-          message: restored
-            ? 'Import could not be saved. Existing data was left unchanged.'
-            : 'Import could not be saved. StrikeCaller could not restore all previous data.',
-          write: historyWrite,
-        }
-      }
-      removeLegacyHistory()
     }
 
     return { ok: true, message: 'Import successful.' }
   } catch {
-    return { ok: false, message: 'Could not parse JSON.' }
+    return { ok: false, message: IMPORT_EXECUTION_FAILED_MESSAGE }
   }
 }
 
 async function performDeleteAllUserData(): Promise<DeleteAllUserDataResult> {
-  invalidateHistoryWrites()
-  await waitForInFlightHistoryWrites()
+  return runAuthoritativeHistoryTransition(async () => {
+    const indexedDB = await clearSessionsStore()
+    const localStorageResult = removeAllUserDataKeys()
 
-  const indexedDB = await clearSessionsStore()
-  const localStorageResult = removeAllUserDataKeys()
-  abandonHistoryInitialization()
+    const failed: DeleteAllUserDataFailureClass[] = []
+    if (!localStorageResult.ok) failed.push('localStorage')
+    if (!indexedDB.ok) failed.push('indexedDB')
 
-  const failed: DeleteAllUserDataFailureClass[] = []
-  if (!localStorageResult.ok) failed.push('localStorage')
-  if (!indexedDB.ok) failed.push('indexedDB')
+    if (failed.length === 0) return { ok: true }
 
-  if (failed.length === 0) return { ok: true }
-
-  return {
-    ok: false,
-    message: DELETE_ALL_PARTIAL_MESSAGE,
-    localStorage: localStorageResult.ok ? { ok: true } : localStorageResult.result,
-    indexedDB,
-    failed,
-  }
+    return {
+      ok: false,
+      message: DELETE_ALL_PARTIAL_MESSAGE,
+      localStorage: localStorageResult.ok ? { ok: true } : localStorageResult.result,
+      indexedDB,
+      failed,
+    }
+  })
 }
 
 /**

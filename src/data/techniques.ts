@@ -1498,8 +1498,16 @@ export const TECHNIQUE_MAP: Record<string, Technique> = Object.fromEntries(
   TECHNIQUES.map((t) => [t.id, t]),
 )
 
+export function lookupTechnique(id: string): Technique | null {
+  return TECHNIQUE_MAP[id] ?? null
+}
+
+export function techniqueDisplayName(id: string): string {
+  return lookupTechnique(id)?.name ?? id
+}
+
 export function getTechnique(id: string): Technique {
-  const technique = TECHNIQUE_MAP[id]
+  const technique = lookupTechnique(id)
   if (!technique) {
     throw new Error(`Unknown technique: ${id}`)
   }

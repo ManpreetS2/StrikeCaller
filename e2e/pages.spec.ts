@@ -67,6 +67,11 @@ test.describe('GitHub Pages base path', () => {
     await expect(page.getByRole('navigation', { name: 'Primary' })).toBeVisible()
     await expect(page.locator('#main').getByRole('link', { name: 'Home' })).toBeVisible()
 
+    await openApp(page, '/session')
+    await expect(page).toHaveURL(/\/StrikeCaller\/.*#\/session/)
+    await expect(page.getByRole('heading', { name: 'Session unavailable' })).toBeVisible()
+    await expect(page.getByRole('toolbar', { name: 'Session controls' })).toHaveCount(0)
+
     expect(failed, `unexpected Pages asset failures:\n${failed.join('\n')}`).toEqual([])
   })
 

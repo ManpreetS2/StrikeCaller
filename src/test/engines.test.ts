@@ -9,6 +9,7 @@ import {
   MIN_TECHNIQUE_MS,
 } from '../engines/timingEngine'
 import { getComboStats, CURATED_COMBOS } from '../data/combos'
+import { validateRuntimeComboSemantics } from '../utils/comboSemantics'
 import { validatePreferences } from '../storage/localStore'
 import { nextCombo, getDemoCombos } from '../engines/comboGenerator'
 
@@ -147,6 +148,8 @@ describe('curated library and generator', () => {
       const ids = combo.techniques.map((t) => t.techniqueId)
       const result = validateTechniqueSequence(ids)
       expect(result.valid, `${combo.id}: ${result.issues.map((i) => i.message).join('; ')}`).toBe(true)
+      const semantic = validateRuntimeComboSemantics(combo, combo.martialArt)
+      expect(semantic.ok, `${combo.id}: ${semantic.ok ? '' : semantic.message}`).toBe(true)
     }
   })
 
@@ -176,8 +179,9 @@ describe('curated library and generator', () => {
       includeClinch: false,
       seed: 42,
     })
+    expect(combo).not.toBeNull()
     expect(
-      validateTechniqueSequence(combo.techniques.map((t) => t.techniqueId)).valid,
+      validateTechniqueSequence(combo!.techniques.map((t) => t.techniqueId)).valid,
     ).toBe(true)
   })
 })

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { getTechnique } from '../data/techniques'
 import { useApp } from '../context/useApp'
-import { getSessionById } from '../storage/historyStore'
+import { getSessionById, type SessionByIdResult } from '../storage/historyStore'
 import { parseSessionRouteId, validateSessionSummary } from '../storage/sessionValidation'
 import { buildTrainAgainPayload } from '../utils/trainAgain'
 import type { SessionSummary } from '../types'
@@ -11,6 +11,13 @@ type SummaryView =
   | { kind: 'loading' }
   | { kind: 'found'; summary: SessionSummary }
   | { kind: 'not-found' }
+  | { kind: 'unavailable' }
+
+function viewFromLookup(result: SessionByIdResult): SummaryView {
+  if (result.status === 'found') return { kind: 'found', summary: result.session }
+  if (result.status === 'unavailable') return { kind: 'unavailable' }
+  return { kind: 'not-found' }
+}
 
 function isDisplayableSummary(raw: unknown): raw is SessionSummary {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return false
@@ -51,6 +58,7 @@ export function SummaryPage() {
   const matchingStateId = matchingState?.id ?? null
 
   const [resolved, setResolved] = useState<{ lookupId: string; view: SummaryView } | null>(null)
+  const [retryToken, setRetryToken] = useState(0)
 
   useEffect(() => {
     if (matchingStateId) {
@@ -63,17 +71,22 @@ export function SummaryPage() {
 
     let cancelled = false
     setResolved({ lookupId: routeId, view: { kind: 'loading' } })
-    void getSessionById(routeId).then((result) => {
-      if (cancelled) return
-      setResolved({
-        lookupId: routeId,
-        view: result.status === 'found' ? { kind: 'found', summary: result.session } : { kind: 'not-found' },
+    void getSessionById(routeId)
+      .then((result) => {
+        if (cancelled) return
+        setResolved({
+          lookupId: routeId,
+          view: viewFromLookup(result),
+        })
       })
-    })
+      .catch(() => {
+        if (cancelled) return
+        setResolved({ lookupId: routeId, view: { kind: 'unavailable' } })
+      })
     return () => {
       cancelled = true
     }
-  }, [matchingStateId, routeId, routeParam])
+  }, [matchingStateId, routeId, routeParam, retryToken])
 
   const view: SummaryView = matchingState
     ? { kind: 'found', summary: matchingState }
@@ -116,6 +129,28 @@ export function SummaryPage() {
     )
   }
 
+  if (view.kind === 'unavailable') {
+    return (
+      <div className="space-y-4">
+        <h1 className="display text-5xl">Training history unavailable</h1>
+        <p className="text-[var(--text-muted)]">
+          StrikeCaller can’t access saved workout history right now. Your workout may still be available when storage access is restored.
+        </p>
+        <div className="flex flex-wrap gap-3">
+          <button type="button" className="btn btn-primary" onClick={() => setRetryToken((n) => n + 1)}>
+            Retry
+          </button>
+          <Link to="/" className="btn">
+            Home
+          </Link>
+          <Link to="/train" className="btn">
+            Start workout
+          </Link>
+        </div>
+      </div>
+    )
+  }
+
   const summary = view.summary
   const topTechniques = Object.entries(summary.techniqueCounts)
     .sort((a, b) => b[1] - a[1])
@@ -127,7 +162,7 @@ export function SummaryPage() {
       state: {
         config: payload.config,
         comboQueue: payload.comboQueue,
-        demo: summary.isDemo,
+        demo: payload.config.mode === 'demo',
       },
     })
   }

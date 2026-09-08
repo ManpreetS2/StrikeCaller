@@ -1,5 +1,6 @@
-import { getTechnique } from '../data/techniques'
+import { lookupTechnique } from '../data/techniques'
 import { getCombo } from '../data/combos'
+import { isRuntimeComboSemanticallyValid } from '../utils/comboSemantics'
 import { nextCombo, optionsFromWorkout, getDemoCombos } from './comboGenerator'
 import { computeTechniqueDurationMs } from './timingEngine'
 import { formatTechniqueCall, createSpeechEngine } from './speechEngine'
@@ -42,6 +43,11 @@ function canMutateCombo(phase: SessionPhase, paused: boolean): boolean {
   return !paused && phase === 'work'
 }
 
+/** Built-in/generated combos are expected valid; this still defends untrusted queue input. */
+function runtimeComboIsPlayable(combo: Combo, martialArt: MartialArt): boolean {
+  return isRuntimeComboSemanticallyValid(combo, martialArt)
+}
+
 export class SessionEngine {
   private config: WorkoutConfig
   private phase: SessionPhase = 'idle'
@@ -73,6 +79,9 @@ export class SessionEngine {
   private cancelled = false
   private events: SessionTechniqueEvent[] = []
   private wakeLock: WakeLockSentinel | null = null
+  private wakeLockRequest: Promise<void> | null = null
+  private wakeLockGeneration = 0
+  private wakeLockReleaseAttempted = new WeakSet<WakeLockSentinel>()
   private demoMode = false
   private runToken = 0
   private resumeInFlight = false
@@ -103,14 +112,17 @@ export class SessionEngine {
   }
 
   snapshot(): SessionSnapshot {
-    const next =
+    const nextId =
       this.combo && this.stepIndex + 1 < this.combo.techniques.length
-        ? formatTechniqueCall(
-            getTechnique(this.combo.techniques[this.stepIndex + 1]!.techniqueId),
-            this.config.callStyle,
-            { stance: this.config.stance, terminology: this.config.sideTerminology },
-          )
+        ? this.combo.techniques[this.stepIndex + 1]!.techniqueId
         : null
+    const nextTechnique = nextId ? lookupTechnique(nextId) : null
+    const next = nextTechnique
+      ? formatTechniqueCall(nextTechnique, this.config.callStyle, {
+          stance: this.config.stance,
+          terminology: this.config.sideTerminology,
+        })
+      : null
 
     return {
       phase: this.phase,
@@ -198,6 +210,7 @@ export class SessionEngine {
     }
     this.bindVisibility()
     await this.requestWakeLock()
+    if (this.cancelled) return
     const token = this.runToken
     await this.runCountdown(token)
     if (this.cancelled || token !== this.runToken) return
@@ -366,8 +379,10 @@ export class SessionEngine {
   }
 
   private pickCombo(): Combo | null {
-    if (this.comboQueue.length) {
+    const sessionArt = this.config.martialArt
+    while (this.comboQueue.length) {
       const next = this.comboQueue.shift()!
+      if (!runtimeComboIsPlayable(next, sessionArt)) continue
       this.rememberCombo(next)
       return next
     }
@@ -376,23 +391,32 @@ export class SessionEngine {
     }
     if (this.demoMode) {
       this.comboQueue = getDemoCombos(this.config.stance, this.config.martialArt ?? 'muay-thai')
-      const next = this.comboQueue.shift()!
-      this.rememberCombo(next)
-      return next
+      while (this.comboQueue.length) {
+        const next = this.comboQueue.shift()!
+        if (!runtimeComboIsPlayable(next, sessionArt)) continue
+        this.rememberCombo(next)
+        return next
+      }
+      return null
     }
     if (this.config.selectedComboIds?.length) {
       const id = this.config.selectedComboIds[this.combinationsCompleted % this.config.selectedComboIds.length]!
       try {
         const curated = getCombo(id)
-        this.rememberCombo(curated)
-        return curated
+        if (runtimeComboIsPlayable(curated, sessionArt)) {
+          this.rememberCombo(curated)
+          return curated
+        }
       } catch {
         // fall through to generator
       }
     }
     const generated = nextCombo(optionsFromWorkout(this.config), this.recentComboIds)
-    this.rememberCombo(generated)
-    return generated
+    if (generated && runtimeComboIsPlayable(generated, sessionArt)) {
+      this.rememberCombo(generated)
+      return generated
+    }
+    return null
   }
 
   private async playNextCombo(token: number) {
@@ -433,7 +457,14 @@ export class SessionEngine {
       return
     }
 
-    const technique = getTechnique(step.techniqueId)
+    const technique = lookupTechnique(step.techniqueId)
+    if (!technique) {
+      this.combo = null
+      this.current = null
+      this.stepIndex = 0
+      await this.playNextCombo(token)
+      return
+    }
     const spoken = formatTechniqueCall(technique, this.config.callStyle, {
       stance: this.config.stance,
       terminology: this.config.sideTerminology,
@@ -688,33 +719,96 @@ export class SessionEngine {
     })
   }
 
-  private async requestWakeLock() {
-    if (!this.wakeLockEnabled) {
+  private ownsActiveWakeLock(): boolean {
+    const sentinel = this.wakeLock
+    if (!sentinel) return false
+    if (sentinel.released === true) {
+      this.wakeLock = null
+      this.wakeLockActive = false
+      return false
+    }
+    return true
+  }
+
+  private safelyReleaseWakeLockSentinel(sentinel: WakeLockSentinel) {
+    if (this.wakeLockReleaseAttempted.has(sentinel)) return
+    this.wakeLockReleaseAttempted.add(sentinel)
+    if (sentinel.released === true) return
+    void Promise.resolve(sentinel.release()).catch(() => {
+      /* wake-lock release is best-effort */
+    })
+  }
+
+  private installOwnedWakeLock(sentinel: WakeLockSentinel) {
+    this.wakeLock = sentinel
+    this.wakeLockActive = true
+    const owned = sentinel
+    owned.addEventListener?.('release', () => {
+      if (this.wakeLock !== owned) return
+      this.wakeLock = null
+      this.wakeLockActive = false
+      this.emit()
+    })
+    this.emit()
+  }
+
+  private async acquireWakeLockSentinel(generation: number): Promise<void> {
+    let sentinel: WakeLockSentinel
+    try {
+      sentinel = await navigator.wakeLock.request('screen')
+    } catch {
+      if (generation === this.wakeLockGeneration) {
+        this.wakeLockActive = false
+        this.emit()
+      }
+      return
+    }
+
+    if (generation !== this.wakeLockGeneration) {
+      this.safelyReleaseWakeLockSentinel(sentinel)
+      return
+    }
+
+    if (sentinel.released === true) {
       this.wakeLockActive = false
       return
     }
-    if (typeof navigator === 'undefined') return
-    try {
-      if ('wakeLock' in navigator) {
-        this.wakeLock = await navigator.wakeLock.request('screen')
-        this.wakeLockActive = true
-        this.wakeLock.addEventListener?.('release', () => {
-          this.wakeLockActive = false
-          this.emit()
-        })
-        this.emit()
-      } else {
-        this.wakeLockActive = false
-      }
-    } catch {
+
+    this.installOwnedWakeLock(sentinel)
+  }
+
+  private requestWakeLock(): Promise<void> {
+    if (!this.wakeLockEnabled) {
       this.wakeLockActive = false
-      this.emit()
+      return Promise.resolve()
     }
+    if (typeof navigator === 'undefined') return Promise.resolve()
+    if (!('wakeLock' in navigator) || typeof navigator.wakeLock?.request !== 'function') {
+      this.wakeLockActive = false
+      return Promise.resolve()
+    }
+    if (this.ownsActiveWakeLock()) {
+      return Promise.resolve()
+    }
+    if (this.wakeLockRequest) {
+      return this.wakeLockRequest
+    }
+
+    const generation = this.wakeLockGeneration
+    const request = this.acquireWakeLockSentinel(generation).finally(() => {
+      if (this.wakeLockRequest === request) {
+        this.wakeLockRequest = null
+      }
+    })
+    this.wakeLockRequest = request
+    return request
   }
 
   private releaseWakeLock() {
-    void this.wakeLock?.release()
+    this.wakeLockGeneration += 1
+    const sentinel = this.wakeLock
     this.wakeLock = null
     this.wakeLockActive = false
+    if (sentinel) this.safelyReleaseWakeLockSentinel(sentinel)
   }
 }

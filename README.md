@@ -4,7 +4,7 @@
 
 StrikeCaller is a browser-based striking coach for **Muay Thai** and **Boxing**. It speaks realistic combinations during shadowboxing, bag work, pad work, or solo drills, with adaptive pacing, timed rounds, and local training stats.
 
-Current release: **1.3.0**. See [CHANGELOG.md](./CHANGELOG.md) for what’s new.
+Current release: **1.3.1**. See [CHANGELOG.md](./CHANGELOG.md) for what’s new.
 
 225+ realistic combinations across Muay Thai and Boxing. Free. No account. No download.
 

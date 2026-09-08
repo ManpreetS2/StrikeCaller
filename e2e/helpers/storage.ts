@@ -38,7 +38,7 @@ export type SeedOptions = {
    */
   seedOnboardingIfMissing?: boolean
   onboardingComplete?: boolean
-  /** Seeded only when `strikecaller:history` is missing, independent of prefs. */
+  /** Seeded once per browser context when `strikecaller:history` is missing. */
   legacyHistory?: LegacySessionSeed[]
 }
 
@@ -97,7 +97,13 @@ export async function seedOnboardingIfMissing(page: Page, options: SeedOptions =
           window.localStorage.setItem('strikecaller:preferences', JSON.stringify(prefs))
         }
         if (history.length > 0 && !window.localStorage.getItem('strikecaller:history')) {
-          window.localStorage.setItem('strikecaller:history', JSON.stringify(history))
+          // addInitScript runs on every navigation, including reload. After the
+          // app migrates and removes this key, re-seeding it would look like a
+          // leftover-legacy resurrection. Seed at most once per browsing context.
+          if (!window.sessionStorage.getItem('strikecaller:e2e-legacy-seeded')) {
+            window.sessionStorage.setItem('strikecaller:e2e-legacy-seeded', '1')
+            window.localStorage.setItem('strikecaller:history', JSON.stringify(history))
+          }
         }
       } catch {
         // Storage may be unavailable in exotic browser settings.

@@ -408,8 +408,9 @@ describe('v1.1.1 boxing generation and titles', () => {
         includeClinch: false,
         seed: i * 17,
       })
-      expect(combo.martialArt).toBe('boxing')
-      expect(combo.techniques.every((t) => !['rear-low-kick', 'lead-teep', 'curved-knee'].includes(t.techniqueId))).toBe(
+      expect(combo).not.toBeNull()
+      expect(combo!.martialArt).toBe('boxing')
+      expect(combo!.techniques.every((t) => !['rear-low-kick', 'lead-teep', 'curved-knee'].includes(t.techniqueId))).toBe(
         true,
       )
     }

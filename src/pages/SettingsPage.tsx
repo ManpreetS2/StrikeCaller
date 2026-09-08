@@ -6,7 +6,7 @@ import { createSpeechEngine } from '../engines/speechEngine'
 import { isAudioSessionSupported, prepareCoachingAudioSession } from '../engines/audioSession'
 import { DEFAULT_TIMING_MULTIPLIERS } from '../engines/timingEngine'
 import { MAX_IMPORT_BYTES, storageAvailable } from '../storage/localStore'
-import { DELETE_ALL_PARTIAL_MESSAGE, DELETE_ALL_SUCCESS_MESSAGE } from '../storage/storageTypes'
+import { DELETE_ALL_PARTIAL_MESSAGE, DELETE_ALL_SUCCESS_MESSAGE, IMPORT_EXECUTION_FAILED_MESSAGE } from '../storage/storageTypes'
 import type { CallStyle, MartialArt, MusicCompatibilityResult, SideTerminology, Stance } from '../types'
 
 const COMPAT_OPTIONS: { id: MusicCompatibilityResult; label: string }[] = [
@@ -28,10 +28,13 @@ export function SettingsPage() {
     deleteAllUserData,
     history,
     historyReady,
+    dataMutationPending,
     storageIssue,
   } = useApp()
   const [importMessage, setImportMessage] = useState('')
   const [confirmClear, setConfirmClear] = useState(false)
+  const [clearPending, setClearPending] = useState(false)
+  const clearPendingRef = useRef(false)
   const [confirmReset, setConfirmReset] = useState(false)
   const [confirmDeleteAll, setConfirmDeleteAll] = useState(false)
   const [deleteAllPending, setDeleteAllPending] = useState(false)
@@ -39,6 +42,9 @@ export function SettingsPage() {
     null,
   )
   const deleteAllPendingRef = useRef(false)
+  const dataBusy = !historyReady || dataMutationPending || clearPending || deleteAllPending
+  const mutationBusy = dataMutationPending || clearPending || deleteAllPending
+  const fieldsetClass = 'm-0 min-w-0 border-0 p-0 disabled:opacity-60'
 
   return (
     <div className="space-y-6">
@@ -49,7 +55,9 @@ export function SettingsPage() {
         </p>
       </header>
 
-      <section className="panel grid gap-4 p-5 md:grid-cols-2" aria-label="Training preferences">
+      <section className="panel p-5" aria-label="Training preferences">
+        <fieldset disabled={mutationBusy} className={`grid gap-4 md:grid-cols-2 ${fieldsetClass}`}>
+          <legend className="sr-only">Training preferences</legend>
         <Field label="Martial art">
           <select
             value={preferences.martialArt}
@@ -143,9 +151,12 @@ export function SettingsPage() {
             <option value="next-combo">Skip to next combo</option>
           </select>
         </Field>
+        </fieldset>
       </section>
 
       <section className="panel space-y-4 p-5" aria-label="Audio and feedback">
+        <fieldset disabled={mutationBusy} className={`space-y-4 ${fieldsetClass}`}>
+          <legend className="sr-only">Audio and feedback</legend>
         <h2 className="text-xl font-semibold">Audio & feedback</h2>
         <p className="text-sm text-[var(--text-muted)]">
           Spoken combo calls use the browser’s default English voice with a fixed clear rate. Calling style
@@ -207,9 +218,12 @@ export function SettingsPage() {
           />
           Vibration (supported devices)
         </label>
+        </fieldset>
       </section>
 
       <section className="panel space-y-4 p-5" aria-label="Music-friendly audio">
+        <fieldset disabled={mutationBusy} className={`space-y-4 ${fieldsetClass}`}>
+          <legend className="sr-only">Music-friendly audio</legend>
         <h2 className="text-xl font-semibold">Music-friendly voice calls</h2>
         <p className="text-sm text-[var(--text-muted)]">
           StrikeCaller will try to play short coaching calls over your music. Music behavior depends on your
@@ -234,10 +248,13 @@ export function SettingsPage() {
             ? 'available in this browser'
             : 'not available — captions and normal speech still work'}
         </p>
-        <MusicCompatibilityTest />
+        <MusicCompatibilityTest disabled={mutationBusy} />
+        </fieldset>
       </section>
 
-      <section className="panel grid gap-4 p-5 md:grid-cols-2" aria-label="Timing multipliers">
+      <section className="panel p-5" aria-label="Timing multipliers">
+        <fieldset disabled={mutationBusy} className={`grid gap-4 md:grid-cols-2 ${fieldsetClass}`}>
+          <legend className="sr-only">Timing multipliers</legend>
         <h2 className="md:col-span-2 text-xl font-semibold">Advanced timing multipliers</h2>
         {(
           [
@@ -276,6 +293,7 @@ export function SettingsPage() {
         >
           Reset timing multipliers
         </button>
+        </fieldset>
       </section>
 
       <section className="panel space-y-3 p-5" aria-label="Install on phone">
@@ -299,7 +317,7 @@ export function SettingsPage() {
           <button
             type="button"
             className="btn"
-            disabled={!historyReady}
+            disabled={dataBusy}
             onClick={() => {
               void (async () => {
                 const json = await exportData()
@@ -315,31 +333,49 @@ export function SettingsPage() {
           >
             Export JSON
           </button>
-          <label className="btn cursor-pointer">
+          <label className={`btn ${dataBusy ? 'opacity-60' : 'cursor-pointer'}`}>
             Import JSON
             <input
               type="file"
               accept="application/json,.json"
               className="sr-only"
+              aria-label="Import JSON"
+              disabled={dataBusy}
               onChange={async (e) => {
-                const file = e.target.files?.[0]
-                if (!file) return
-                if (file.size > MAX_IMPORT_BYTES) {
-                  setImportMessage('Import file exceeds the 2 MB limit.')
-                  e.target.value = ''
-                  return
+                const input = e.currentTarget
+                try {
+                  const file = input.files?.[0]
+                  if (!file) return
+                  if (dataBusy) return
+                  if (file.size > MAX_IMPORT_BYTES) {
+                    setImportMessage('Import file exceeds the 2 MB limit.')
+                    return
+                  }
+                  const text = await file.text()
+                  const result = await importData(text)
+                  setImportMessage(result.message)
+                } catch {
+                  setImportMessage(IMPORT_EXECUTION_FAILED_MESSAGE)
+                } finally {
+                  input.value = ''
                 }
-                const text = await file.text()
-                const result = await importData(text)
-                setImportMessage(result.message)
-                e.target.value = ''
               }}
             />
           </label>
-          <button type="button" className="btn" onClick={() => setConfirmClear(true)}>
+          <button
+            type="button"
+            className="btn"
+            disabled={dataBusy}
+            onClick={() => setConfirmClear(true)}
+          >
             Clear workout history
           </button>
-          <button type="button" className="btn btn-danger" onClick={() => setConfirmReset(true)}>
+          <button
+            type="button"
+            className="btn btn-danger"
+            disabled={mutationBusy}
+            onClick={() => setConfirmReset(true)}
+          >
             Reset preferences
           </button>
         </div>
@@ -359,6 +395,7 @@ export function SettingsPage() {
         <button
           type="button"
           className="btn btn-danger"
+          disabled={dataBusy}
           onClick={() => {
             setDeleteAllMessage(null)
             setConfirmDeleteAll(true)
@@ -381,13 +418,28 @@ export function SettingsPage() {
           title="Clear workout history?"
           confirmLabel="Clear history"
           danger
+          confirmDisabled={clearPending || dataMutationPending}
+          cancelDisabled={clearPending || dataMutationPending}
           onConfirm={() => {
+            if (clearPendingRef.current) return
+            clearPendingRef.current = true
+            setClearPending(true)
             void (async () => {
-              await clearHistory()
-              setConfirmClear(false)
+              try {
+                await clearHistory()
+                setConfirmClear(false)
+              } catch {
+                // Keep the dialog usable after an unexpected failure.
+              } finally {
+                clearPendingRef.current = false
+                setClearPending(false)
+              }
             })()
           }}
-          onCancel={() => setConfirmClear(false)}
+          onCancel={() => {
+            if (clearPendingRef.current) return
+            setConfirmClear(false)
+          }}
         >
           This permanently removes saved sessions from this device.
         </ConfirmDialog>
@@ -398,7 +450,10 @@ export function SettingsPage() {
           title="Reset preferences?"
           confirmLabel="Reset preferences"
           danger
+          confirmDisabled={mutationBusy}
+          cancelDisabled={mutationBusy}
           onConfirm={() => {
+            if (mutationBusy) return
             resetPreferences()
             setConfirmReset(false)
           }}
@@ -413,21 +468,26 @@ export function SettingsPage() {
           title="Delete all local data?"
           confirmLabel="Delete permanently"
           danger
-          confirmDisabled={deleteAllPending}
-          cancelDisabled={deleteAllPending}
+          confirmDisabled={deleteAllPending || dataMutationPending}
+          cancelDisabled={deleteAllPending || dataMutationPending}
           onConfirm={() => {
             if (deleteAllPendingRef.current) return
             deleteAllPendingRef.current = true
             setDeleteAllPending(true)
             void (async () => {
-              const result = await deleteAllUserData()
-              deleteAllPendingRef.current = false
-              setDeleteAllPending(false)
-              setConfirmDeleteAll(false)
-              if (result.ok) {
-                setDeleteAllMessage({ tone: 'success', text: DELETE_ALL_SUCCESS_MESSAGE })
-              } else {
-                setDeleteAllMessage({ tone: 'error', text: DELETE_ALL_PARTIAL_MESSAGE })
+              try {
+                const result = await deleteAllUserData()
+                setConfirmDeleteAll(false)
+                if (result.ok) {
+                  setDeleteAllMessage({ tone: 'success', text: DELETE_ALL_SUCCESS_MESSAGE })
+                } else {
+                  setDeleteAllMessage({ tone: 'error', text: DELETE_ALL_PARTIAL_MESSAGE })
+                }
+              } catch {
+                // Keep the dialog usable after an unexpected failure.
+              } finally {
+                deleteAllPendingRef.current = false
+                setDeleteAllPending(false)
               }
             })()
           }}
@@ -478,7 +538,7 @@ function StorageStatus({ issue }: { issue: StorageIssue | null }) {
   )
 }
 
-function MusicCompatibilityTest() {
+function MusicCompatibilityTest({ disabled = false }: { disabled?: boolean }) {
   const { preferences, updatePreferences } = useApp()
   const [phase, setPhase] = useState<'idle' | 'playing' | 'ask'>('idle')
   const [status, setStatus] = useState('')
@@ -528,7 +588,7 @@ function MusicCompatibilityTest() {
         <li>Play three sample calls: Jab, Cross, Rear low kick.</li>
         <li>Tell StrikeCaller what happened.</li>
       </ol>
-      <button type="button" className="btn" disabled={phase === 'playing'} onClick={() => void runTest()}>
+      <button type="button" className="btn" disabled={disabled || phase === 'playing'} onClick={() => void runTest()}>
         {phase === 'playing' ? 'Playing samples…' : 'Run compatibility test'}
       </button>
       {status && (
@@ -539,7 +599,13 @@ function MusicCompatibilityTest() {
       {phase === 'ask' && (
         <div className="grid gap-2 sm:grid-cols-2" role="group" aria-label="Music compatibility result">
           {COMPAT_OPTIONS.map((opt) => (
-            <button key={opt.id} type="button" className="btn justify-start" onClick={() => saveResult(opt.id)}>
+            <button
+              key={opt.id}
+              type="button"
+              className="btn justify-start"
+              disabled={disabled}
+              onClick={() => saveResult(opt.id)}
+            >
               {opt.label}
             </button>
           ))}

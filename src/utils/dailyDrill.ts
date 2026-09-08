@@ -1,7 +1,11 @@
-import type { DailyDrillMap, DailyDrillState, MartialArt } from '../types'
+import { BEGINNER_COMBOS, INTERMEDIATE_COMBOS, BOXING_COMBOS, getCombo } from '../data/combos'
+import { BOXING_BEGINNER, BOXING_INTERMEDIATE } from '../data/boxing'
+import type { Combo, DailyDrillMap, DailyDrillState, MartialArt } from '../types'
 import { booleanOr, defineOwn, hasOwn, isForbiddenKey, isPlainObject, nonEmptyString, oneOf, readBoolean } from '../storage/parseUnknown'
 import { MARTIAL_ARTS } from '../storage/sessionValidation'
 import { localDateKey } from './localDate'
+
+const DAILY_DRILL_KEY_PATTERN = /^(\d{4})-(\d{2})-(\d{2}):(boxing|muay-thai)$/
 
 /** Storage / lookup key: local civil date + martial art. Never shown in UI. */
 export function dailyDrillKey(dateKey: string, martialArt: MartialArt): string {
@@ -14,6 +18,56 @@ export function dailyDrillKey(dateKey: string, martialArt: MartialArt): string {
 
 export function todayDailyDrillKey(martialArt: MartialArt, now = new Date()): string {
   return dailyDrillKey(localDateKey(now), martialArt)
+}
+
+function isValidCivilDateParts(year: number, month: number, day: number): boolean {
+  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) return false
+  if (month < 1 || month > 12 || day < 1 || day > 31) return false
+  const probe = new Date(year, month - 1, day)
+  return probe.getFullYear() === year && probe.getMonth() === month - 1 && probe.getDate() === day
+}
+
+/**
+ * Strict route-boundary parser for Daily Drill origin keys.
+ * Validates canonical `YYYY-MM-DD:boxing|muay-thai` shape and a real civil date.
+ * Does not require the key to equal today — a previous-day origin is valid after midnight.
+ */
+export function parseDailyDrillKey(
+  raw: unknown,
+): { ok: true; key: string; civilDate: string; martialArt: MartialArt } | { ok: false } {
+  if (typeof raw !== 'string' || raw.length === 0) return { ok: false }
+  const match = DAILY_DRILL_KEY_PATTERN.exec(raw)
+  if (!match) return { ok: false }
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  if (!isValidCivilDateParts(year, month, day)) return { ok: false }
+  const martialArt = match[4] as MartialArt
+  return {
+    ok: true,
+    key: `${match[1]}-${match[2]}-${match[3]}:${martialArt}`,
+    civilDate: `${match[1]}-${match[2]}-${match[3]}`,
+    martialArt,
+  }
+}
+
+/** Deterministic Daily combo id for a storage key. Same algorithm as the Daily page. */
+export function pickDailyComboId(key: string, martialArt: MartialArt): string {
+  const pool =
+    martialArt === 'boxing'
+      ? [...BOXING_BEGINNER, ...BOXING_INTERMEDIATE]
+      : [...BEGINNER_COMBOS, ...INTERMEDIATE_COMBOS]
+  let hash = 0
+  for (let i = 0; i < key.length; i++) hash = (hash + key.charCodeAt(i) * (i + 1)) % pool.length
+  return pool[hash]!.id
+}
+
+export function resolveDailyDrillCombo(comboId: string, martialArt: MartialArt): Combo {
+  try {
+    return getCombo(comboId)
+  } catch {
+    return martialArt === 'boxing' ? BOXING_COMBOS[0]! : BEGINNER_COMBOS[0]!
+  }
 }
 
 export function martialArtLabel(art: MartialArt): string {

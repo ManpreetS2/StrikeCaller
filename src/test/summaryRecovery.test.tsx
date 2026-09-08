@@ -1,6 +1,6 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest'
 import { useEffect, useRef } from 'react'
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { createMemoryRouter, RouterProvider, useNavigate } from 'react-router-dom'
 import { AppProvider } from '../context/AppContext'
 import { useApp } from '../context/useApp'
@@ -18,6 +18,7 @@ import {
 } from '../storage/historyStore'
 import * as idb from '../storage/idb'
 import { transactSessions } from '../storage/idb'
+import type { SessionByIdResult } from '../storage/historyStore'
 import type { SessionSummary } from '../types'
 
 function session(id: string, extra: Partial<SessionSummary> = {}): SessionSummary {
@@ -168,10 +169,64 @@ async function expectNotFound() {
   await waitFor(() => {
     expect(screen.getByRole('heading', { name: 'Workout summary not found.' })).toBeInTheDocument()
   })
+  expect(screen.queryByRole('heading', { name: 'Training history unavailable' })).not.toBeInTheDocument()
   const main = within(document.getElementById('main') as HTMLElement)
   expect(main.getByRole('link', { name: 'Training Stats' })).toBeInTheDocument()
   expect(main.getByRole('link', { name: 'Home' })).toBeInTheDocument()
   expect(main.getByRole('link', { name: 'Start workout' })).toBeInTheDocument()
+}
+
+async function expectUnavailable() {
+  await waitFor(() => {
+    expect(screen.getByRole('heading', { name: 'Training history unavailable' })).toBeInTheDocument()
+  })
+  expect(screen.queryByRole('heading', { name: 'Workout summary not found.' })).not.toBeInTheDocument()
+  expect(
+    screen.getByText(
+      'StrikeCaller can’t access saved workout history right now. Your workout may still be available when storage access is restored.',
+    ),
+  ).toBeInTheDocument()
+  const main = within(document.getElementById('main') as HTMLElement)
+  expect(main.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
+  expect(main.getByRole('link', { name: 'Home' })).toBeInTheDocument()
+  expect(main.getByRole('link', { name: 'Start workout' })).toBeInTheDocument()
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
+}
+
+function trackUnhandled() {
+  const reasons: unknown[] = []
+  const onWindow = (event: PromiseRejectionEvent) => {
+    reasons.push(event.reason)
+  }
+  const onProcess = (reason: unknown) => {
+    reasons.push(reason)
+  }
+  window.addEventListener('unhandledrejection', onWindow)
+  const proc = (
+    globalThis as {
+      process?: {
+        on: (event: string, listener: (reason: unknown) => void) => void
+        off: (event: string, listener: (reason: unknown) => void) => void
+      }
+    }
+  ).process
+  proc?.on('unhandledRejection', onProcess)
+  return {
+    reasons,
+    stop() {
+      window.removeEventListener('unhandledrejection', onWindow)
+      proc?.off('unhandledRejection', onProcess)
+    },
+  }
 }
 
 describe('durable summary recovery by session id', () => {
@@ -265,9 +320,11 @@ describe('durable summary recovery by session id', () => {
     await expectNotFound()
   })
 
-  it('shows not found for an oversized route id without crashing', async () => {
+  it('shows not found for an oversized route id without touching IndexedDB', async () => {
+    const lookup = vi.spyOn(historyStore, 'getSessionById')
     renderSummary(`/summary/${'x'.repeat(201)}`)
     await expectNotFound()
+    expect(lookup).not.toHaveBeenCalled()
   })
 
   it('shows not found for a corrupt IndexedDB row and leaves that row in place', async () => {
@@ -298,11 +355,125 @@ describe('durable summary recovery by session id', () => {
     await expectFound(summary)
   })
 
-  it('shows not found when IndexedDB is unavailable and there is no matching state', async () => {
+  it('shows storage unavailable when IndexedDB is unavailable and there is no matching state', async () => {
     resetHistoryDbConnection()
     Object.defineProperty(globalThis, 'indexedDB', { value: undefined, configurable: true, writable: true })
     renderSummary('/summary/no-state-A')
+    await expectUnavailable()
+  })
+
+  it('shows storage unavailable when getSessionById returns unavailable', async () => {
+    vi.spyOn(historyStore, 'getSessionById').mockResolvedValue({ status: 'unavailable' })
+    renderSummary('/summary/explicit-unavailable')
+    await expectUnavailable()
+  })
+
+  it('maps an invalid-id lookup result to not found', async () => {
+    vi.spyOn(historyStore, 'getSessionById').mockResolvedValue({ status: 'invalid-id' })
+    renderSummary('/summary/invalid-id-result')
     await expectNotFound()
+  })
+
+  it('retries an unavailable lookup and renders the recovered summary', async () => {
+    const summary = session('retry-found', {
+      martialArt: 'boxing',
+      roundsCompleted: 2,
+      combinationsCompleted: 19,
+    })
+    const second = deferred<SessionByIdResult>()
+    const lookup = vi.spyOn(historyStore, 'getSessionById')
+    lookup.mockResolvedValueOnce({ status: 'unavailable' })
+    lookup.mockImplementationOnce(() => second.promise)
+    renderSummary(`/summary/${summary.id}`)
+    await expectUnavailable()
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    await waitFor(() => {
+      expect(screen.getByRole('status')).toHaveTextContent(/loading workout summary/i)
+    })
+    second.resolve({ status: 'found', session: summary })
+    await expectFound(summary)
+    expect(screen.queryByRole('heading', { name: 'Training history unavailable' })).not.toBeInTheDocument()
+    expect(lookup).toHaveBeenCalledTimes(2)
+    expect(lookup).toHaveBeenNthCalledWith(1, summary.id)
+    expect(lookup).toHaveBeenNthCalledWith(2, summary.id)
+  })
+
+  it('returns to storage unavailable when retry is still unavailable', async () => {
+    const lookup = vi.spyOn(historyStore, 'getSessionById').mockResolvedValue({ status: 'unavailable' })
+    renderSummary('/summary/still-unavailable')
+    await expectUnavailable()
+    expect(lookup).toHaveBeenCalledTimes(1)
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    await waitFor(() => expect(lookup).toHaveBeenCalledTimes(2))
+    await expectUnavailable()
+    expect(lookup).toHaveBeenNthCalledWith(1, 'still-unavailable')
+    expect(lookup).toHaveBeenNthCalledWith(2, 'still-unavailable')
+  })
+
+  it('shows not found when retry discovers the session is truly absent', async () => {
+    const lookup = vi.spyOn(historyStore, 'getSessionById')
+    lookup.mockResolvedValueOnce({ status: 'unavailable' })
+    lookup.mockResolvedValueOnce({ status: 'not-found' })
+    renderSummary('/summary/retry-absent')
+    await expectUnavailable()
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    await expectNotFound()
+    expect(lookup).toHaveBeenCalledTimes(2)
+  })
+
+  it('maps an unexpected lookup rejection to storage unavailable without an unhandled rejection', async () => {
+    const summary = session('reject-then-found', {
+      martialArt: 'boxing',
+      combinationsCompleted: 7,
+    })
+    const unhandled = trackUnhandled()
+    const lookup = vi.spyOn(historyStore, 'getSessionById')
+    lookup.mockRejectedValueOnce(new Error('unexpected lookup failure'))
+    lookup.mockResolvedValueOnce({ status: 'found', session: summary })
+    try {
+      renderSummary(`/summary/${summary.id}`)
+      await expectUnavailable()
+      expect(unhandled.reasons).toEqual([])
+      fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+      await expectFound(summary)
+      expect(unhandled.reasons).toEqual([])
+      expect(lookup).toHaveBeenCalledTimes(2)
+    } finally {
+      unhandled.stop()
+    }
+  })
+
+  it('does not let a stale lookup overwrite a newer summary route', async () => {
+    const a = session('stale-A', {
+      martialArt: 'boxing',
+      roundsCompleted: 3,
+      combinationsCompleted: 11,
+    })
+    const b = session('stale-B', {
+      martialArt: 'muay-thai',
+      roundsCompleted: 1,
+      combinationsCompleted: 22,
+    })
+    const deferredA = deferred<SessionByIdResult>()
+    const deferredB = deferred<SessionByIdResult>()
+    vi.spyOn(historyStore, 'getSessionById').mockImplementation(async (id) => {
+      if (id === a.id) return deferredA.promise
+      if (id === b.id) return deferredB.promise
+      return { status: 'not-found' }
+    })
+    const { router } = renderSummary(`/summary/${a.id}`)
+    await waitFor(() => {
+      expect(screen.getByRole('status')).toHaveTextContent(/loading workout summary/i)
+    })
+    await router.navigate(`/summary/${b.id}`)
+    await waitFor(() => {
+      expect(screen.getByRole('status')).toHaveTextContent(/loading workout summary/i)
+    })
+    deferredB.resolve({ status: 'found', session: b })
+    await expectFound(b)
+    deferredA.resolve({ status: 'found', session: a })
+    await expectFound(b)
+    expect(screen.queryByText('11')).not.toBeInTheDocument()
   })
 
   it('does not infer the latest workout for legacy /summary', async () => {
@@ -438,8 +609,8 @@ describe('summary completion persistence handshake', () => {
     const held = new Promise<void>((resolve) => {
       release = resolve
     })
-    const originalSave = historyStore.saveSession
-    const saveSpy = vi.spyOn(historyStore, 'saveSession').mockImplementation(async (next) => {
+    const originalSave = historyStore.commitSessionWrite
+    const saveSpy = vi.spyOn(historyStore, 'commitSessionWrite').mockImplementation(async (next) => {
       if (next.id === summary.id) await held
       return originalSave(next)
     })
@@ -469,8 +640,8 @@ describe('summary completion persistence handshake', () => {
     })
     const { release } = deferIndexedDbOpen()
     resetHistoryDbConnection()
-    const originalSave = historyStore.saveSession
-    const saveSpy = vi.spyOn(historyStore, 'saveSession').mockImplementation(async (next) => originalSave(next))
+    const originalSave = historyStore.commitSessionWrite
+    const saveSpy = vi.spyOn(historyStore, 'commitSessionWrite').mockImplementation(async (next) => originalSave(next))
     const putIds: string[] = []
     const originalPut = IDBObjectStore.prototype.put
     vi.spyOn(IDBObjectStore.prototype, 'put').mockImplementation(function (

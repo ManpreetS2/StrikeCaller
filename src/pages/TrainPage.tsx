@@ -16,6 +16,7 @@ import {
   validateWorkoutFields,
   WORKOUT_LIMITS,
 } from '../utils/workoutValidation'
+import { buildTechniqueCategories } from '../utils/techniqueCategories'
 import type {
   CallStyle,
   Difficulty,
@@ -186,9 +187,15 @@ export function TrainPage() {
       includeElbows: boxing ? false : includeElbows,
       includeHeadKicks: boxing ? false : includeHeadKicks,
       includeClinch: boxing ? false : includeClinch && equipment !== 'shadowboxing',
-      categories: boxing
-        ? ['punch', 'defense', 'movement', 'counter']
-        : ['punch', 'kick', 'teep', 'defense', 'movement'],
+      categories: buildTechniqueCategories({
+        martialArt,
+        defenseFrequency,
+        movementFrequency,
+        includeKnees: boxing ? false : includeKnees,
+        includeElbows: boxing ? false : includeElbows,
+        includeClinch: boxing ? false : includeClinch,
+        equipment,
+      }),
       speech: {
         ...preferences.speech,
         callStyle,
