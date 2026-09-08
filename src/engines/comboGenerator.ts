@@ -51,17 +51,20 @@ function pick<T>(list: T[], rand: () => number): T | undefined {
   return list[Math.floor(rand() * list.length)]
 }
 
-function allowedTechniques(options: GeneratorOptions): Technique[] {
-  const eligible = TECHNIQUES.filter((t) => isTechniqueEligibleForGenerator(t, options))
-  const atDifficulty = eligible.filter(
-    (t) =>
-      t.difficulty === options.difficulty ||
-      t.difficulty === 'beginner' ||
-      isReachableSpecialFamily(t),
-  )
-  return atDifficulty.length ? atDifficulty : eligible
+/** Pre-A6 rule-generator difficulty: requested level plus beginner. Never includes intermediate on beginner, or advanced on beginner/intermediate. */
+export function matchesRuleGeneratorDifficulty(technique: Technique, difficulty: Difficulty): boolean {
+  return technique.difficulty === difficulty || technique.difficulty === 'beginner'
 }
 
+function allowedTechniques(options: GeneratorOptions): Technique[] {
+  return TECHNIQUES.filter(
+    (t) =>
+      isTechniqueEligibleForGenerator(t, options) &&
+      matchesRuleGeneratorDifficulty(t, options.difficulty),
+  )
+}
+
+/** Enabled special-family techniques already in the difficulty-gated pool may appear as follow-ups. */
 function isReachableSpecialFamily(technique: Technique): boolean {
   return (
     technique.category === 'knee' ||

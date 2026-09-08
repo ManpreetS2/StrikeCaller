@@ -10,6 +10,7 @@ import { SessionEngine } from '../engines/sessionEngine'
 import {
   comboGeneration,
   generateRuleBasedCombo,
+  matchesRuleGeneratorDifficulty,
   nextCombo,
   selectCuratedCombos,
   type GeneratorOptions,
@@ -19,6 +20,7 @@ import {
   isTechniqueEligibleForGenerator,
   selectEligibleCuratedCombos,
 } from '../engines/generatorEligibility'
+import * as generatorEligibility from '../engines/generatorEligibility'
 import { validateTechniqueSequence } from '../engines/comboValidator'
 import { validateRuntimeComboSemantics } from '../utils/comboSemantics'
 import { buildTechniqueCategories } from '../utils/techniqueCategories'
@@ -86,19 +88,16 @@ function assertNeverCategories(combo: Combo, banned: TechniqueCategory[]) {
   expect(categoriesOf(combo).some((category) => banned.includes(category))).toBe(false)
 }
 
-function starterPool(options: GeneratorOptions): Technique[] {
-  const eligible = TECHNIQUES.filter((t) => isTechniqueEligibleForGenerator(t, options))
-  const allowed = eligible.filter(
+function ruleAllowed(options: GeneratorOptions): Technique[] {
+  return TECHNIQUES.filter(
     (t) =>
-      t.difficulty === options.difficulty ||
-      t.difficulty === 'beginner' ||
-      t.category === 'knee' ||
-      t.category === 'elbow' ||
-      t.category === 'clinch' ||
-      t.tags.includes('head-kick'),
+      isTechniqueEligibleForGenerator(t, options) &&
+      matchesRuleGeneratorDifficulty(t, options.difficulty),
   )
-  const pool = allowed.length ? allowed : eligible
-  return pool.filter((t) =>
+}
+
+function starterPool(options: GeneratorOptions): Technique[] {
+  return ruleAllowed(options).filter((t) =>
     ['punch', 'teep', 'defense', 'kick', 'knee', 'elbow', 'clinch', 'counter'].includes(t.category),
   )
 }
@@ -377,6 +376,7 @@ describe('A6 knees, elbows, clinch, and head kicks', () => {
 
   it('includeKnees true is eligible and reachable despite stale categories omitting knee', () => {
     const options = baseOptions({
+      difficulty: 'intermediate',
       categories: ['punch', 'kick', 'teep'],
       includeKnees: true,
       includeElbows: false,
@@ -386,12 +386,15 @@ describe('A6 knees, elbows, clinch, and head kicks', () => {
       equipment: 'heavy-bag',
       preferCurated: false,
     })
-    expect(TECHNIQUES.some((t) => t.category === 'knee' && isTechniqueEligibleForGenerator(t, options))).toBe(
-      true,
-    )
+    const leadKnee = lookupTechnique('lead-knee')!
+    expect(leadKnee.difficulty).toBe('intermediate')
+    expect(isTechniqueEligibleForGenerator(leadKnee, options)).toBe(true)
+    expect(matchesRuleGeneratorDifficulty(leadKnee, options.difficulty)).toBe(true)
+    expect(ruleAllowed(options).some((t) => t.category === 'knee')).toBe(true)
     const combo = generateStartingAt(options, (t) => t.category === 'knee')
     expect(combo).not.toBeNull()
     expect(categoriesOf(combo!).includes('knee')).toBe(true)
+    expect(techniquesOf(combo!).every((t) => matchesRuleGeneratorDifficulty(t, options.difficulty))).toBe(true)
     assertComboRespectsOptions(combo!, options)
   })
 
@@ -412,6 +415,7 @@ describe('A6 knees, elbows, clinch, and head kicks', () => {
 
   it('includeElbows true is eligible and reachable despite stale categories omitting elbow', () => {
     const options = baseOptions({
+      difficulty: 'advanced',
       categories: ['punch', 'kick', 'teep'],
       includeElbows: true,
       includeKnees: false,
@@ -421,12 +425,15 @@ describe('A6 knees, elbows, clinch, and head kicks', () => {
       equipment: 'heavy-bag',
       preferCurated: false,
     })
-    expect(TECHNIQUES.some((t) => t.category === 'elbow' && isTechniqueEligibleForGenerator(t, options))).toBe(
-      true,
-    )
+    const leadElbow = lookupTechnique('lead-horizontal-elbow')!
+    expect(leadElbow.difficulty).toBe('advanced')
+    expect(isTechniqueEligibleForGenerator(leadElbow, options)).toBe(true)
+    expect(matchesRuleGeneratorDifficulty(leadElbow, options.difficulty)).toBe(true)
+    expect(ruleAllowed(options).some((t) => t.category === 'elbow')).toBe(true)
     const combo = generateStartingAt(options, (t) => t.category === 'elbow')
     expect(combo).not.toBeNull()
     expect(categoriesOf(combo!).includes('elbow')).toBe(true)
+    expect(techniquesOf(combo!).every((t) => matchesRuleGeneratorDifficulty(t, options.difficulty))).toBe(true)
     assertComboRespectsOptions(combo!, options)
   })
 
@@ -448,6 +455,7 @@ describe('A6 knees, elbows, clinch, and head kicks', () => {
 
   it('includeClinch true is reachable with compatible equipment despite omitted category', () => {
     const options = baseOptions({
+      difficulty: 'intermediate',
       categories: ['punch', 'kick', 'teep'],
       includeClinch: true,
       includeKnees: false,
@@ -457,12 +465,15 @@ describe('A6 knees, elbows, clinch, and head kicks', () => {
       equipment: 'partner',
       preferCurated: false,
     })
-    expect(TECHNIQUES.some((t) => t.category === 'clinch' && isTechniqueEligibleForGenerator(t, options))).toBe(
-      true,
-    )
+    const exitClinch = lookupTechnique('exit-clinch')!
+    expect(exitClinch.difficulty).toBe('intermediate')
+    expect(isTechniqueEligibleForGenerator(exitClinch, options)).toBe(true)
+    expect(matchesRuleGeneratorDifficulty(exitClinch, options.difficulty)).toBe(true)
+    expect(ruleAllowed(options).some((t) => t.category === 'clinch')).toBe(true)
     const combo = generateStartingAt(options, (t) => t.category === 'clinch')
     expect(combo).not.toBeNull()
     expect(categoriesOf(combo!).includes('clinch')).toBe(true)
+    expect(techniquesOf(combo!).every((t) => matchesRuleGeneratorDifficulty(t, options.difficulty))).toBe(true)
     assertComboRespectsOptions(combo!, options)
   })
 
@@ -510,6 +521,7 @@ describe('A6 knees, elbows, clinch, and head kicks', () => {
 
   it('includeHeadKicks true is reachable in Muay Thai when kick is allowed', () => {
     const options = baseOptions({
+      difficulty: 'advanced',
       categories: ['punch', 'kick', 'teep'],
       includeHeadKicks: true,
       includeKnees: false,
@@ -518,12 +530,15 @@ describe('A6 knees, elbows, clinch, and head kicks', () => {
       equipment: 'open-space',
       preferCurated: false,
     })
-    expect(
-      TECHNIQUES.some((t) => t.tags.includes('head-kick') && isTechniqueEligibleForGenerator(t, options)),
-    ).toBe(true)
+    const leadHeadKick = lookupTechnique('lead-head-kick')!
+    expect(leadHeadKick.difficulty).toBe('advanced')
+    expect(isTechniqueEligibleForGenerator(leadHeadKick, options)).toBe(true)
+    expect(matchesRuleGeneratorDifficulty(leadHeadKick, options.difficulty)).toBe(true)
+    expect(ruleAllowed(options).some((t) => t.tags.includes('head-kick'))).toBe(true)
     const combo = generateStartingAt(options, (t) => t.tags.includes('head-kick'))
     expect(combo).not.toBeNull()
     expect(techniquesOf(combo!).some((t) => t.tags.includes('head-kick'))).toBe(true)
+    expect(techniquesOf(combo!).every((t) => matchesRuleGeneratorDifficulty(t, options.difficulty))).toBe(true)
     assertComboRespectsOptions(combo!, options)
   })
 })
@@ -631,6 +646,263 @@ describe('A6 boxing isolation, reaction mode, and last-resort', () => {
       }),
     )
     expect((engine as unknown as { pickCombo: () => Combo | null }).pickCombo()).toBeNull()
+  })
+})
+
+describe('A6 rule-generator difficulty gating', () => {
+  it('beginner + includeHeadKicks does not make advanced head kicks rule-eligible or generated', () => {
+    const options = baseOptions({
+      difficulty: 'beginner',
+      categories: ['punch', 'kick', 'teep'],
+      includeHeadKicks: true,
+      includeKnees: false,
+      includeElbows: false,
+      includeClinch: false,
+      defenseFrequency: 0,
+      movementFrequency: 0,
+      equipment: 'open-space',
+      preferCurated: false,
+    })
+    const leadHeadKick = lookupTechnique('lead-head-kick')!
+    const rearHeadKick = lookupTechnique('rear-head-kick')!
+    expect(leadHeadKick.difficulty).toBe('advanced')
+    expect(rearHeadKick.difficulty).toBe('advanced')
+    expect(isTechniqueEligibleForGenerator(leadHeadKick, options)).toBe(true)
+    expect(matchesRuleGeneratorDifficulty(leadHeadKick, 'beginner')).toBe(false)
+    expect(ruleAllowed(options).some((t) => t.tags.includes('head-kick'))).toBe(false)
+    for (let seed = 0; seed < 40; seed++) {
+      const combo = generateRuleBasedCombo(options, mulberry32(seed))
+      if (!combo) continue
+      expect(techniquesOf(combo).some((t) => t.tags.includes('head-kick'))).toBe(false)
+      expect(techniquesOf(combo).every((t) => matchesRuleGeneratorDifficulty(t, 'beginner'))).toBe(true)
+      assertComboRespectsOptions(combo, options)
+    }
+  })
+
+  it('intermediate + includeHeadKicks does not select advanced head kicks', () => {
+    const options = baseOptions({
+      difficulty: 'intermediate',
+      categories: ['punch', 'kick', 'teep'],
+      includeHeadKicks: true,
+      includeKnees: false,
+      includeElbows: false,
+      includeClinch: false,
+      defenseFrequency: 0,
+      movementFrequency: 0,
+      equipment: 'open-space',
+      preferCurated: false,
+    })
+    expect(ruleAllowed(options).some((t) => t.tags.includes('head-kick'))).toBe(false)
+    for (let seed = 0; seed < 40; seed++) {
+      const combo = generateRuleBasedCombo(options, mulberry32(seed))
+      if (!combo) continue
+      expect(techniquesOf(combo).some((t) => t.tags.includes('head-kick'))).toBe(false)
+      expect(techniquesOf(combo).every((t) => matchesRuleGeneratorDifficulty(t, 'intermediate'))).toBe(true)
+    }
+  })
+
+  it('advanced + includeHeadKicks keeps registry head kicks reachable', () => {
+    const options = baseOptions({
+      difficulty: 'advanced',
+      categories: ['punch', 'kick', 'teep'],
+      includeHeadKicks: true,
+      defenseFrequency: 0,
+      movementFrequency: 0,
+      equipment: 'open-space',
+      preferCurated: false,
+    })
+    expect(ruleAllowed(options).some((t) => t.id === 'lead-head-kick' || t.id === 'rear-head-kick')).toBe(true)
+    const combo = generateStartingAt(options, (t) => t.tags.includes('head-kick'))
+    expect(combo).not.toBeNull()
+    expect(techniquesOf(combo!).some((t) => t.tags.includes('head-kick'))).toBe(true)
+  })
+
+  it('enabling knees does not make intermediate/advanced knees beginner-eligible', () => {
+    const options = baseOptions({
+      difficulty: 'beginner',
+      categories: ['punch', 'kick', 'teep'],
+      includeKnees: true,
+      defenseFrequency: 0,
+      movementFrequency: 0,
+      equipment: 'heavy-bag',
+      preferCurated: false,
+    })
+    const knees = TECHNIQUES.filter((t) => t.category === 'knee')
+    expect(knees.length).toBeGreaterThan(0)
+    expect(knees.every((t) => t.difficulty !== 'beginner')).toBe(true)
+    expect(knees.some((t) => isTechniqueEligibleForGenerator(t, options))).toBe(true)
+    expect(ruleAllowed(options).some((t) => t.category === 'knee')).toBe(false)
+    for (let seed = 0; seed < 30; seed++) {
+      const combo = generateRuleBasedCombo(options, mulberry32(seed))
+      if (!combo) continue
+      assertNeverCategories(combo, ['knee'])
+      expect(techniquesOf(combo).every((t) => matchesRuleGeneratorDifficulty(t, 'beginner'))).toBe(true)
+    }
+  })
+
+  it('enabling elbows does not make advanced elbows beginner-eligible', () => {
+    const options = baseOptions({
+      difficulty: 'beginner',
+      categories: ['punch', 'kick', 'teep'],
+      includeElbows: true,
+      defenseFrequency: 0,
+      movementFrequency: 0,
+      equipment: 'heavy-bag',
+      preferCurated: false,
+    })
+    const elbows = TECHNIQUES.filter((t) => t.category === 'elbow')
+    expect(elbows.every((t) => t.difficulty === 'advanced')).toBe(true)
+    expect(elbows.some((t) => isTechniqueEligibleForGenerator(t, options))).toBe(true)
+    expect(ruleAllowed(options).some((t) => t.category === 'elbow')).toBe(false)
+    for (let seed = 0; seed < 30; seed++) {
+      const combo = generateRuleBasedCombo(options, mulberry32(seed))
+      if (!combo) continue
+      assertNeverCategories(combo, ['elbow'])
+    }
+  })
+
+  it('enabling clinch does not make intermediate/advanced clinch beginner-eligible', () => {
+    const options = baseOptions({
+      difficulty: 'beginner',
+      categories: ['punch', 'kick', 'teep'],
+      includeClinch: true,
+      defenseFrequency: 0,
+      movementFrequency: 0,
+      equipment: 'partner',
+      preferCurated: false,
+    })
+    const clinch = TECHNIQUES.filter((t) => t.category === 'clinch')
+    expect(clinch.every((t) => t.difficulty !== 'beginner')).toBe(true)
+    expect(clinch.some((t) => isTechniqueEligibleForGenerator(t, options))).toBe(true)
+    expect(ruleAllowed(options).some((t) => t.category === 'clinch')).toBe(false)
+    for (let seed = 0; seed < 30; seed++) {
+      const combo = generateRuleBasedCombo(options, mulberry32(seed))
+      if (!combo) continue
+      assertNeverCategories(combo, ['clinch'])
+    }
+  })
+
+  it('intermediate does not receive advanced elbows or clinch-entry when those families are enabled', () => {
+    const options = baseOptions({
+      difficulty: 'intermediate',
+      categories: ['punch', 'kick', 'teep'],
+      includeElbows: true,
+      includeClinch: true,
+      includeKnees: true,
+      includeHeadKicks: true,
+      defenseFrequency: 0,
+      movementFrequency: 0,
+      equipment: 'partner',
+      preferCurated: false,
+    })
+    expect(ruleAllowed(options).some((t) => t.difficulty === 'advanced')).toBe(false)
+    expect(ruleAllowed(options).some((t) => t.category === 'knee' && t.difficulty === 'intermediate')).toBe(true)
+    expect(ruleAllowed(options).some((t) => t.id === 'exit-clinch')).toBe(true)
+    expect(ruleAllowed(options).some((t) => t.id === 'clinch-entry')).toBe(false)
+    for (let seed = 0; seed < 40; seed++) {
+      const combo = generateRuleBasedCombo(options, mulberry32(seed))
+      if (!combo) continue
+      expect(techniquesOf(combo).every((t) => t.difficulty !== 'advanced')).toBe(true)
+      expect(techniquesOf(combo).every((t) => matchesRuleGeneratorDifficulty(t, 'intermediate'))).toBe(true)
+    }
+  })
+
+  it('advanced can still reach registry elbows, switch-knee, and clinch-entry when enabled', () => {
+    const options = baseOptions({
+      difficulty: 'advanced',
+      categories: ['punch', 'kick', 'teep'],
+      includeElbows: true,
+      includeKnees: true,
+      includeClinch: true,
+      defenseFrequency: 0,
+      movementFrequency: 0,
+      equipment: 'partner',
+      preferCurated: false,
+    })
+    expect(ruleAllowed(options).some((t) => t.category === 'elbow')).toBe(true)
+    expect(ruleAllowed(options).some((t) => t.id === 'switch-knee')).toBe(true)
+    expect(ruleAllowed(options).some((t) => t.id === 'clinch-entry')).toBe(true)
+    const elbowCombo = generateStartingAt(options, (t) => t.category === 'elbow')
+    expect(elbowCombo).not.toBeNull()
+    expect(categoriesOf(elbowCombo!).includes('elbow')).toBe(true)
+    const clinchCombo = generateStartingAt(options, (t) => t.id === 'clinch-entry')
+    expect(clinchCombo).not.toBeNull()
+    expect(techniquesOf(clinchCombo!).some((t) => t.id === 'clinch-entry')).toBe(true)
+    const switchKnee = generateStartingAt(options, (t) => t.id === 'switch-knee')
+    expect(switchKnee).not.toBeNull()
+    expect(techniquesOf(switchKnee!).some((t) => t.id === 'switch-knee')).toBe(true)
+  })
+
+  it('rule generation does not broaden to arbitrary difficulty when no at-difficulty technique survives', () => {
+    const options = baseOptions({
+      difficulty: 'beginner',
+      categories: [],
+      defenseFrequency: 0,
+      movementFrequency: 0,
+      includeElbows: true,
+      includeKnees: false,
+      includeClinch: false,
+      includeHeadKicks: false,
+      equipment: 'heavy-bag',
+      preferCurated: false,
+    })
+    expect(TECHNIQUES.some((t) => t.category === 'elbow' && isTechniqueEligibleForGenerator(t, options))).toBe(
+      true,
+    )
+    expect(ruleAllowed(options)).toEqual([])
+    for (let seed = 0; seed < 20; seed++) {
+      expect(generateRuleBasedCombo(options, mulberry32(seed))).toBeNull()
+    }
+  })
+
+  it('emergency fallback does not use above-policy techniques', () => {
+    const options = baseOptions({
+      difficulty: 'beginner',
+      categories: ['punch', 'kick', 'teep'],
+      includeHeadKicks: true,
+      includeElbows: true,
+      includeKnees: true,
+      includeClinch: true,
+      defenseFrequency: 0,
+      movementFrequency: 0,
+      equipment: 'partner',
+      preferCurated: false,
+    })
+    const curatedSpy = vi.spyOn(generatorEligibility, 'selectEligibleCuratedCombos').mockReturnValue([])
+    const ruleSpy = vi.spyOn(comboGeneration, 'generateRuleBasedCombo').mockReturnValue(null)
+    const combo = nextCombo(options)
+    curatedSpy.mockRestore()
+    ruleSpy.mockRestore()
+    expect(combo).not.toBeNull()
+    for (const technique of techniquesOf(combo!)) {
+      expect(matchesRuleGeneratorDifficulty(technique, 'beginner')).toBe(true)
+      expect(technique.tags.includes('head-kick')).toBe(false)
+      expect(['knee', 'elbow', 'clinch']).not.toContain(technique.category)
+    }
+  })
+
+  it('curated broadened-difficulty fallback still obeys non-difficulty filters', () => {
+    const options = baseOptions({
+      martialArt: 'boxing',
+      difficulty: 'advanced',
+      mode: 'reaction',
+      categories: ['punch', 'defense', 'counter'],
+      defenseFrequency: 0,
+      movementFrequency: 0,
+      includeKnees: true,
+      includeElbows: true,
+      includeHeadKicks: true,
+      includeClinch: true,
+      comboLength: { min: 2, max: 2 },
+    })
+    const selected = selectEligibleCuratedCombos(options, { broadenDifficulty: true })
+    expect(selected.length).toBeGreaterThan(0)
+    expect(selected.some((combo) => combo.difficulty !== 'advanced')).toBe(true)
+    for (const combo of selected) {
+      assertNeverCategories(combo, ['defense', 'counter', 'movement', 'knee', 'elbow', 'clinch', 'kick', 'teep'])
+      expect(techniquesOf(combo).some((t) => t.tags.includes('head-kick'))).toBe(false)
+      assertComboRespectsOptions(combo, options)
+    }
   })
 })
 
