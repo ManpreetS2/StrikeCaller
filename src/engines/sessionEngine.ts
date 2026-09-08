@@ -79,6 +79,9 @@ export class SessionEngine {
   private cancelled = false
   private events: SessionTechniqueEvent[] = []
   private wakeLock: WakeLockSentinel | null = null
+  private wakeLockRequest: Promise<void> | null = null
+  private wakeLockGeneration = 0
+  private wakeLockReleaseAttempted = new WeakSet<WakeLockSentinel>()
   private demoMode = false
   private runToken = 0
   private resumeInFlight = false
@@ -207,6 +210,7 @@ export class SessionEngine {
     }
     this.bindVisibility()
     await this.requestWakeLock()
+    if (this.cancelled) return
     const token = this.runToken
     await this.runCountdown(token)
     if (this.cancelled || token !== this.runToken) return
@@ -715,33 +719,96 @@ export class SessionEngine {
     })
   }
 
-  private async requestWakeLock() {
-    if (!this.wakeLockEnabled) {
+  private ownsActiveWakeLock(): boolean {
+    const sentinel = this.wakeLock
+    if (!sentinel) return false
+    if (sentinel.released === true) {
+      this.wakeLock = null
+      this.wakeLockActive = false
+      return false
+    }
+    return true
+  }
+
+  private safelyReleaseWakeLockSentinel(sentinel: WakeLockSentinel) {
+    if (this.wakeLockReleaseAttempted.has(sentinel)) return
+    this.wakeLockReleaseAttempted.add(sentinel)
+    if (sentinel.released === true) return
+    void Promise.resolve(sentinel.release()).catch(() => {
+      /* wake-lock release is best-effort */
+    })
+  }
+
+  private installOwnedWakeLock(sentinel: WakeLockSentinel) {
+    this.wakeLock = sentinel
+    this.wakeLockActive = true
+    const owned = sentinel
+    owned.addEventListener?.('release', () => {
+      if (this.wakeLock !== owned) return
+      this.wakeLock = null
+      this.wakeLockActive = false
+      this.emit()
+    })
+    this.emit()
+  }
+
+  private async acquireWakeLockSentinel(generation: number): Promise<void> {
+    let sentinel: WakeLockSentinel
+    try {
+      sentinel = await navigator.wakeLock.request('screen')
+    } catch {
+      if (generation === this.wakeLockGeneration) {
+        this.wakeLockActive = false
+        this.emit()
+      }
+      return
+    }
+
+    if (generation !== this.wakeLockGeneration) {
+      this.safelyReleaseWakeLockSentinel(sentinel)
+      return
+    }
+
+    if (sentinel.released === true) {
       this.wakeLockActive = false
       return
     }
-    if (typeof navigator === 'undefined') return
-    try {
-      if ('wakeLock' in navigator) {
-        this.wakeLock = await navigator.wakeLock.request('screen')
-        this.wakeLockActive = true
-        this.wakeLock.addEventListener?.('release', () => {
-          this.wakeLockActive = false
-          this.emit()
-        })
-        this.emit()
-      } else {
-        this.wakeLockActive = false
-      }
-    } catch {
+
+    this.installOwnedWakeLock(sentinel)
+  }
+
+  private requestWakeLock(): Promise<void> {
+    if (!this.wakeLockEnabled) {
       this.wakeLockActive = false
-      this.emit()
+      return Promise.resolve()
     }
+    if (typeof navigator === 'undefined') return Promise.resolve()
+    if (!('wakeLock' in navigator) || typeof navigator.wakeLock?.request !== 'function') {
+      this.wakeLockActive = false
+      return Promise.resolve()
+    }
+    if (this.ownsActiveWakeLock()) {
+      return Promise.resolve()
+    }
+    if (this.wakeLockRequest) {
+      return this.wakeLockRequest
+    }
+
+    const generation = this.wakeLockGeneration
+    const request = this.acquireWakeLockSentinel(generation).finally(() => {
+      if (this.wakeLockRequest === request) {
+        this.wakeLockRequest = null
+      }
+    })
+    this.wakeLockRequest = request
+    return request
   }
 
   private releaseWakeLock() {
-    void this.wakeLock?.release()
+    this.wakeLockGeneration += 1
+    const sentinel = this.wakeLock
     this.wakeLock = null
     this.wakeLockActive = false
+    if (sentinel) this.safelyReleaseWakeLockSentinel(sentinel)
   }
 }
