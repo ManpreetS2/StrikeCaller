@@ -45,6 +45,49 @@ function getEnabledFocusables(root: HTMLElement): HTMLElement[] {
   )].filter((el) => !isElementDisabled(el) && el.tabIndex >= 0)
 }
 
+let nextModalId = 0
+const modalStack: number[] = []
+let shellEl: Element | null = null
+let inertSnap: AttrSnapshot | null = null
+let hiddenSnap: AttrSnapshot | null = null
+
+function acquireShell() {
+  const shell = document.querySelector('.app-shell') ?? document.getElementById('main')
+  if (!shell) return
+  shellEl = shell
+  inertSnap = snapshotAttr(shell, 'inert')
+  hiddenSnap = snapshotAttr(shell, 'aria-hidden')
+  shell.setAttribute('inert', '')
+  shell.setAttribute('aria-hidden', 'true')
+}
+
+function releaseShell() {
+  if (!shellEl) return
+  if (inertSnap) restoreAttr(shellEl, 'inert', inertSnap)
+  if (hiddenSnap) restoreAttr(shellEl, 'aria-hidden', hiddenSnap)
+  shellEl = null
+  inertSnap = null
+  hiddenSnap = null
+}
+
+function registerModal(): number {
+  const id = ++nextModalId
+  const first = modalStack.length === 0
+  modalStack.push(id)
+  if (first) acquireShell()
+  return id
+}
+
+function unregisterModal(id: number) {
+  const index = modalStack.indexOf(id)
+  if (index >= 0) modalStack.splice(index, 1)
+  if (modalStack.length === 0) releaseShell()
+}
+
+function isTopModal(id: number): boolean {
+  return modalStack[modalStack.length - 1] === id
+}
+
 export function ConfirmDialog({
   title,
   children,
@@ -62,21 +105,18 @@ export function ConfirmDialog({
   const panelRef = useRef<HTMLDivElement>(null)
   const confirmRef = useRef<HTMLButtonElement>(null)
   const cancelRef = useRef<HTMLButtonElement>(null)
+  const modalIdRef = useRef(0)
   const focusTarget = initialFocus ?? (danger ? 'cancel' : 'confirm')
 
   useEffect(() => {
     const previouslyFocused = document.activeElement
-    const shell = document.querySelector('.app-shell') ?? document.getElementById('main')
-    const inertSnap = shell ? snapshotAttr(shell, 'inert') : null
-    const hiddenSnap = shell ? snapshotAttr(shell, 'aria-hidden') : null
-    if (shell) {
-      shell.setAttribute('inert', '')
-      shell.setAttribute('aria-hidden', 'true')
+    modalIdRef.current = registerModal()
+    if (overlayRef.current) {
+      overlayRef.current.style.zIndex = String(60 + modalStack.length)
     }
 
     return () => {
-      if (shell && inertSnap) restoreAttr(shell, 'inert', inertSnap)
-      if (shell && hiddenSnap) restoreAttr(shell, 'aria-hidden', hiddenSnap)
+      unregisterModal(modalIdRef.current)
       if (canRestoreFocus(previouslyFocused)) {
         previouslyFocused.focus()
       }
@@ -104,6 +144,7 @@ export function ConfirmDialog({
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (!isTopModal(modalIdRef.current)) return
       if (event.key === 'Escape') {
         event.preventDefault()
         if (!cancelDisabled) onCancel()

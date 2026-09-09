@@ -1,5 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createMemoryRouter, RouterProvider } from 'react-router-dom'
 import { AppProvider } from '../context/AppContext'
@@ -244,6 +244,68 @@ describe('v1.1.3 session navigation blocking', () => {
           screen.queryByRole('heading', { name: /^strikecaller$/i }),
       ).toBeTruthy()
     })
+  }, 20000)
+
+  it('does not stack End session and Leave workout dialogs', async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    const { router } = renderApp({
+      pathname: '/session',
+      state: {
+        config: createDefaultWorkout({
+          mode: 'coach',
+          sessionDurationSec: 120,
+          roundDurationSec: 120,
+          speech: {
+            ...DEFAULT_SPEECH,
+            volume: 0,
+            countdownEnabled: false,
+            roundCallsEnabled: false,
+            coachingCuesEnabled: false,
+            spokenCallsEnabled: false,
+          },
+          sound: {
+            bellsEnabled: false,
+            tonesEnabled: false,
+            vibrationEnabled: false,
+            masterVolume: 0,
+          },
+          timingMultipliers: {
+            ...createDefaultWorkout().timingMultipliers,
+            pauseBetweenCombosMs: 20,
+            punch: 0.7,
+          },
+        }),
+      },
+    })
+
+    await assertSessionVisible()
+    await vi.advanceTimersByTimeAsync(5000)
+    await waitFor(() => {
+      expect(screen.getByLabelText(/end session/i)).toBeEnabled()
+    })
+    await user.click(screen.getByLabelText(/end session/i))
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /end this session/i })).toBeInTheDocument()
+    })
+    expect(screen.getAllByRole('dialog')).toHaveLength(1)
+
+    await act(async () => {
+      await router.navigate('/')
+    })
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /leave this workout/i })).toBeInTheDocument()
+    })
+    expect(screen.getAllByRole('dialog')).toHaveLength(1)
+    expect(screen.queryByRole('heading', { name: /end this session/i })).not.toBeInTheDocument()
+    expect(document.querySelector('.app-shell')).toHaveAttribute('inert')
+    expect(screen.getByRole('button', { name: /^stay$/i })).toHaveFocus()
+
+    await user.click(screen.getByRole('button', { name: /^stay$/i }))
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    })
+    expect(screen.getByLabelText(/end session/i)).toBeInTheDocument()
+    expect(document.querySelector('.app-shell')?.hasAttribute('inert')).toBe(false)
   }, 20000)
 
   it('finite custom queue reaches Summary', async () => {

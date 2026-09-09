@@ -404,3 +404,231 @@ describe('S2 ConfirmDialog focus and inert', () => {
     }
   })
 })
+
+function StackHost({
+  lowerOpen,
+  upperOpen,
+  onLowerCancel,
+  onUpperCancel,
+}: {
+  lowerOpen: boolean
+  upperOpen: boolean
+  onLowerCancel?: () => void
+  onUpperCancel?: () => void
+}) {
+  return (
+    <div className="app-shell">
+      <button type="button">Shell button</button>
+      {lowerOpen ? (
+        <ConfirmDialog
+          title="Lower?"
+          confirmLabel="Lower confirm"
+          cancelLabel="Lower cancel"
+          danger
+          onConfirm={() => undefined}
+          onCancel={onLowerCancel ?? (() => undefined)}
+        >
+          Lower body
+        </ConfirmDialog>
+      ) : null}
+      {upperOpen ? (
+        <ConfirmDialog
+          title="Upper?"
+          confirmLabel="Upper confirm"
+          cancelLabel="Upper cancel"
+          danger
+          onConfirm={() => undefined}
+          onCancel={onUpperCancel ?? (() => undefined)}
+        >
+          Upper body
+        </ConfirmDialog>
+      ) : null}
+    </div>
+  )
+}
+
+describe('S2 ConfirmDialog stacking', () => {
+  it('sends Escape only to the topmost dialog', () => {
+    const onLowerCancel = vi.fn()
+    const onUpperCancel = vi.fn()
+    render(<StackHost lowerOpen upperOpen onLowerCancel={onLowerCancel} onUpperCancel={onUpperCancel} />)
+    expect(screen.getAllByRole('dialog')).toHaveLength(2)
+    pressEscape()
+    expect(onUpperCancel).toHaveBeenCalledTimes(1)
+    expect(onLowerCancel).not.toHaveBeenCalled()
+  })
+
+  it('keeps Tab containment on the topmost dialog', () => {
+    render(<StackHost lowerOpen upperOpen />)
+    const upper = screen.getByRole('dialog', { name: 'Upper?' })
+    const lowerConfirm = screen.getByRole('button', { name: 'Lower confirm' })
+    const lowerCancel = screen.getByRole('button', { name: 'Lower cancel' })
+    const lowerConfirmFocus = vi.spyOn(lowerConfirm, 'focus')
+    const lowerCancelFocus = vi.spyOn(lowerCancel, 'focus')
+    within(upper).getByRole('button', { name: 'Upper cancel' }).focus()
+    pressTab()
+    expect(within(upper).getByRole('button', { name: 'Upper confirm' })).toHaveFocus()
+    expect(lowerConfirmFocus).not.toHaveBeenCalled()
+    expect(lowerCancelFocus).not.toHaveBeenCalled()
+    pressTab(true)
+    expect(within(upper).getByRole('button', { name: 'Upper cancel' })).toHaveFocus()
+    expect(lowerConfirmFocus).not.toHaveBeenCalled()
+    expect(lowerCancelFocus).not.toHaveBeenCalled()
+  })
+
+  it('leaves the shell inert after closing only the topmost dialog', () => {
+    function Host() {
+      const [upperOpen, setUpperOpen] = useState(true)
+      return (
+        <StackHost
+          lowerOpen
+          upperOpen={upperOpen}
+          onUpperCancel={() => setUpperOpen(false)}
+        />
+      )
+    }
+    render(<Host />)
+    expect(document.querySelector('.app-shell')).toHaveAttribute('inert')
+    pressEscape()
+    expect(screen.queryByRole('dialog', { name: 'Upper?' })).not.toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'Lower?' })).toBeInTheDocument()
+    expect(document.querySelector('.app-shell')).toHaveAttribute('inert')
+    expect(document.querySelector('.app-shell')).toHaveAttribute('aria-hidden', 'true')
+  })
+
+  it('restores the original shell when the final dialog closes', () => {
+    function Host() {
+      const [lowerOpen, setLowerOpen] = useState(true)
+      const [upperOpen, setUpperOpen] = useState(true)
+      return (
+        <StackHost
+          lowerOpen={lowerOpen}
+          upperOpen={upperOpen}
+          onUpperCancel={() => setUpperOpen(false)}
+          onLowerCancel={() => setLowerOpen(false)}
+        />
+      )
+    }
+    render(<Host />)
+    pressEscape()
+    expect(screen.getByRole('dialog', { name: 'Lower?' })).toBeInTheDocument()
+    pressEscape()
+    expect(screen.queryAllByRole('dialog')).toHaveLength(0)
+    const shell = document.querySelector('.app-shell')
+    expect(shell?.hasAttribute('inert')).toBe(false)
+    expect(shell?.hasAttribute('aria-hidden')).toBe(false)
+  })
+
+  it('restores the shell after closing both dialogs in the same update', () => {
+    function Host() {
+      const [lowerOpen, setLowerOpen] = useState(true)
+      const [upperOpen, setUpperOpen] = useState(true)
+      return (
+        <>
+          <button
+            type="button"
+            onClick={() => {
+              setLowerOpen(false)
+              setUpperOpen(false)
+            }}
+          >
+            Close both
+          </button>
+          <StackHost lowerOpen={lowerOpen} upperOpen={upperOpen} />
+        </>
+      )
+    }
+    render(<Host />)
+    expect(document.querySelector('.app-shell')).toHaveAttribute('inert')
+    fireEvent.click(screen.getByRole('button', { name: 'Close both' }))
+    expect(screen.queryAllByRole('dialog')).toHaveLength(0)
+    const shell = document.querySelector('.app-shell')
+    expect(shell?.hasAttribute('inert')).toBe(false)
+    expect(shell?.hasAttribute('aria-hidden')).toBe(false)
+  })
+
+  it('preserves a pre-existing inert attribute after the stack unmounts', () => {
+    function Host() {
+      const [open, setOpen] = useState(true)
+      return (
+        <div className="app-shell" inert={true}>
+          {open ? (
+            <>
+              <ConfirmDialog title="Lower?" confirmLabel="A" onConfirm={() => setOpen(false)} onCancel={() => setOpen(false)}>
+                L
+              </ConfirmDialog>
+              <ConfirmDialog title="Upper?" confirmLabel="B" onConfirm={() => setOpen(false)} onCancel={() => setOpen(false)}>
+                U
+              </ConfirmDialog>
+            </>
+          ) : null}
+        </div>
+      )
+    }
+    render(<Host />)
+    expect(document.querySelector('.app-shell')).toHaveAttribute('inert')
+    fireEvent.click(screen.getByRole('button', { name: 'B' }))
+    expect(document.querySelector('.app-shell')).toHaveAttribute('inert')
+  })
+
+  it('preserves a pre-existing aria-hidden value after the stack unmounts', () => {
+    function Host() {
+      const [open, setOpen] = useState(true)
+      return (
+        <div className="app-shell" aria-hidden="false">
+          {open ? (
+            <>
+              <ConfirmDialog title="Lower?" confirmLabel="A" onConfirm={() => setOpen(false)} onCancel={() => setOpen(false)}>
+                L
+              </ConfirmDialog>
+              <ConfirmDialog title="Upper?" confirmLabel="B" onConfirm={() => setOpen(false)} onCancel={() => setOpen(false)}>
+                U
+              </ConfirmDialog>
+            </>
+          ) : null}
+        </div>
+      )
+    }
+    render(<Host />)
+    expect(document.querySelector('.app-shell')).toHaveAttribute('aria-hidden', 'true')
+    fireEvent.click(screen.getByRole('button', { name: 'B' }))
+    expect(document.querySelector('.app-shell')).toHaveAttribute('aria-hidden', 'false')
+  })
+
+  it('survives 20 stacked open and close cycles', () => {
+    for (let i = 0; i < 20; i += 1) {
+      const onLowerCancel = vi.fn()
+      const onUpperCancel = vi.fn()
+      function Host() {
+        const [lowerOpen, setLowerOpen] = useState(true)
+        const [upperOpen, setUpperOpen] = useState(true)
+        return (
+          <StackHost
+            lowerOpen={lowerOpen}
+            upperOpen={upperOpen}
+            onLowerCancel={() => {
+              onLowerCancel()
+              setLowerOpen(false)
+            }}
+            onUpperCancel={() => {
+              onUpperCancel()
+              setUpperOpen(false)
+            }}
+          />
+        )
+      }
+      const view = render(<Host />)
+      expect(screen.getAllByRole('dialog')).toHaveLength(2)
+      expect(document.querySelector('.app-shell')).toHaveAttribute('inert')
+      pressEscape()
+      expect(onUpperCancel).toHaveBeenCalledTimes(1)
+      expect(onLowerCancel).not.toHaveBeenCalled()
+      expect(document.querySelector('.app-shell')).toHaveAttribute('inert')
+      pressEscape()
+      expect(onLowerCancel).toHaveBeenCalledTimes(1)
+      expect(screen.queryAllByRole('dialog')).toHaveLength(0)
+      expect(document.querySelector('.app-shell')?.hasAttribute('inert')).toBe(false)
+      view.unmount()
+    }
+  })
+})

@@ -141,6 +141,10 @@ function ActiveSessionPage({ start }: { start: SessionStartState }) {
   )
 
   useEffect(() => {
+    if (blocker.state === 'blocked') setConfirmEnd(false)
+  }, [blocker.state])
+
+  useEffect(() => {
     let alive = true
     const engine = new SessionEngine(config, { wakeLock: preferences.wakeLock })
     engineRef.current = engine
@@ -447,7 +451,7 @@ function ActiveSessionPage({ start }: { start: SessionStartState }) {
         endButtonRef={endButtonRef}
       />
 
-      {confirmEnd && (
+      {confirmEnd && blocker.state !== 'blocked' && (
         <ConfirmDialog
           title="End this session?"
           confirmLabel="End session"
