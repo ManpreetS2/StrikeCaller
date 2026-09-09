@@ -185,6 +185,11 @@ function validateImportPayload(
       if (!semantic.ok) return { ok: false, message: semantic.message }
       combos.push(combo)
     }
+    const comboIds = new Set<string>()
+    for (const combo of combos) {
+      if (comboIds.has(combo.id)) return { ok: false, message: 'customCombos contains duplicate IDs.' }
+      comboIds.add(combo.id)
+    }
     normalized.customCombos = combos
   }
 
@@ -197,6 +202,11 @@ function validateImportPayload(
       const summary = validateSessionSummary(raw)
       if (!summary) return { ok: false, message: 'One or more history records are invalid.' }
       if (isPersistableSession(summary)) history.push(summary)
+    }
+    const sessionIds = new Set<string>()
+    for (const row of history) {
+      if (sessionIds.has(row.id)) return { ok: false, message: 'History contains duplicate session IDs.' }
+      sessionIds.add(row.id)
     }
     normalized.history = history
   }

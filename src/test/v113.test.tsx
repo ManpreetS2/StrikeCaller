@@ -307,10 +307,10 @@ describe('v1.1.3 session navigation blocking', () => {
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /train again/i })).toBeInTheDocument()
     })
-    expect(router.state.location.pathname).toMatch(/^\/summary\/session-\d+$/)
+    expect(router.state.location.pathname).toMatch(/^\/summary\/session-\d+-[0-9a-f]+$/)
     expect(router.state.location.state).toEqual(
       expect.objectContaining({
-        summary: expect.objectContaining({ id: expect.stringMatching(/^session-\d+$/) }),
+        summary: expect.objectContaining({ id: expect.stringMatching(/^session-\d+-[0-9a-f]+$/) }),
       }),
     )
     expect(screen.getByRole('heading', { name: 'Summary' })).toBeInTheDocument()

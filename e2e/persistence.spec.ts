@@ -30,7 +30,7 @@ test.describe('completed session persistence', () => {
 
     const summaryUrl = page.url()
     const sessionId = decodeURIComponent(summaryUrl.split('#/summary/')[1] ?? '').replace(/\/$/, '')
-    expect(sessionId).toMatch(/^session-\d+$/)
+    expect(sessionId).toMatch(/^session-\d+-[0-9a-f]+$/)
     await expect
       .poll(async () => (await readIndexedDbSessions(page)).map((row) => row.id), { timeout: 15_000 })
       .toEqual([sessionId])
