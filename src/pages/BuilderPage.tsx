@@ -430,8 +430,12 @@ export function BuilderPage() {
           confirmLabel="Delete"
           danger
           onConfirm={() => {
-            removeCustomCombo(deleteId)
+            const deletedId = deleteId
+            removeCustomCombo(deletedId)
             setDeleteId(null)
+            if (deletedId && deletedId === editingId) {
+              resetBuilder()
+            }
           }}
           onCancel={() => setDeleteId(null)}
         >
