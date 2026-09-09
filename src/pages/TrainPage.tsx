@@ -735,6 +735,7 @@ function SelectableCard({
     <InteractiveCard
       role="radio"
       aria-checked={selected}
+      tabIndex={selected ? 0 : -1}
       selected={selected}
       title={title}
       body={body}
@@ -753,7 +754,22 @@ function SelectableCard({
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault()
           onSelect()
+          return
         }
+        if (e.key !== 'ArrowRight' && e.key !== 'ArrowDown' && e.key !== 'ArrowLeft' && e.key !== 'ArrowUp') {
+          return
+        }
+        const group = (e.currentTarget as HTMLElement).closest('[role="radiogroup"]')
+        if (!(group instanceof HTMLElement)) return
+        const radios = [...group.querySelectorAll<HTMLElement>('[role="radio"]')]
+        const index = radios.indexOf(e.currentTarget as HTMLElement)
+        if (index < 0 || radios.length === 0) return
+        const delta = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : -1
+        const next = radios[(index + delta + radios.length) % radios.length]
+        if (!next) return
+        e.preventDefault()
+        next.click()
+        next.focus()
       }}
     />
   )
