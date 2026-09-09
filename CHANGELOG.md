@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.3.2 — 2026-09-08
+## 1.3.2 — 2026-09-09
 
 ### Data & Identity Integrity
 
