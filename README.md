@@ -2,39 +2,181 @@
 
 **Hear the combo. Set the pace. Build the reaction.**
 
-StrikeCaller is a browser-based striking coach for **Muay Thai** and **Boxing**. It speaks realistic combinations during shadowboxing, bag work, pad work, or solo drills, with adaptive pacing, timed rounds, and local training stats.
+StrikeCaller is a local-first spoken combo coach for **Boxing** and **Muay Thai**. It calls realistic combinations during shadowboxing, bag work, pad work, or solo drills — with adaptive pacing, timed rounds, and training stats that stay in the browser.
 
-Current release: **1.3.2**. See [CHANGELOG.md](./CHANGELOG.md) for what’s new.
+Current release: **1.3.2**. See [CHANGELOG.md](./CHANGELOG.md) for release history.
 
-225+ realistic combinations across Muay Thai and Boxing. Free. No account. No download.
+<p align="center">
+  <img src="./docs/screenshots/01-home-desktop.png" alt="StrikeCaller home: v1.3.2, Quick Train, Guided Demo, Customize Workout, hanging-gloves hero, and local weekly stats" width="900">
+</p>
+
+<p align="center">
+  <a href="https://manpreets2.github.io/StrikeCaller/"><strong>Live Demo</strong></a>
+  ·
+  <a href="https://github.com/ManpreetS2/StrikeCaller/releases/tag/v1.3.2">v1.3.2 Release</a>
+</p>
+
+| | |
+|---|---|
+| **Live** | [GitHub Pages](https://manpreets2.github.io/StrikeCaller/) |
+| **Stack** | React · TypeScript · Vite |
+| **Quality** | 610 Vitest · 69 Playwright E2E (v1.3.2) |
+| **Browsers** | Chromium · Firefox · WebKit · Mobile WebKit |
+| **Storage** | IndexedDB + localStorage |
+| **Privacy** | No account · No backend · No analytics |
+| **Release** | [v1.3.2](https://github.com/ManpreetS2/StrikeCaller/releases/tag/v1.3.2) |
+
+225 curated combinations (125 Muay Thai, 100 Boxing). Free. No account. No download.
 
 StrikeCaller tracks training activity, not technique quality or accuracy.
 
-## Live demo
+## Why I built it
 
-**[Launch StrikeCaller](https://manpreets2.github.io/StrikeCaller/)**
+Most combo timers treat every strike the same. A jab and a rear body kick do not deserve the same pause. Random technique strings also ignore stance, weight transfer, range, and safe exits.
 
-Public site: [manpreets2.github.io/StrikeCaller](https://manpreets2.github.io/StrikeCaller/)  
-Repository: [github.com/ManpreetS2/StrikeCaller](https://github.com/ManpreetS2/StrikeCaller)
+StrikeCaller is built so every call is trainable — curated first, generated only under explicit compatibility rules, and spoken on a pace that respects the technique.
 
-No GitHub login is required to use the app.
+## What it does
 
-## Problem
+- **Spoken coaching** — names, boxing numbers, or hybrid calls via the Web Speech API, with on-screen captions if speech is unavailable
+- **Training modes** — Learn, Coach, Round, Reaction, Daily Drill, Custom Combo Builder, and a 60-second Guided Demo
+- **Adaptive timing** — each technique carries execution, recovery, and transition timing; kicks and committed strikes get more time than jabs
+- **Stance-aware** — orthodox and southpaw as first-class; lead/rear by default, optional left/right
+- **Local stats** — session history, streaks, and durable workout summaries after refresh
 
-Most combo timers treat every strike the same. A jab and a rear body kick do not deserve the same pause. Random technique strings also ignore stance, weight transfer, range, and safe exits. StrikeCaller is built so every call is trainable — not just noisy.
+## Product walkthrough
 
-## Realistic combo philosophy
+<p align="center">
+  <img src="./docs/screenshots/03-session-desktop.png" alt="Active desktop session: Round 1 work clock, current call One, next Body cross, southpaw technical Coach mode, session control dock" width="900">
+</p>
+
+| Customize a workout | Daily Drill |
+|---|---|
+| <img src="./docs/screenshots/02-train-desktop.png" alt="Train screen with Boxing selected, Round Mode, southpaw stance, and a 3×180s technical session summary"> | <img src="./docs/screenshots/04-daily-desktop.png" alt="Daily Drill showing Jab jab rear low kick with Slow practice unlocked and later phases locked"> |
+
+| Custom Combo Builder | Training Stats |
+|---|---|
+| <img src="./docs/screenshots/05-builder-desktop.png" alt="Custom Combo Builder with Boxing selected, Jab Cross titled sequence Jab then Cross, punch palette, and Save combo"> | <img src="./docs/screenshots/06-stats-desktop.png" alt="Training Stats local-only page with two sessions, Boxing and Muay Thai breakdown, and one saved custom combo"> |
+
+<p align="center">
+  <img src="./docs/screenshots/07-summary-desktop.png" alt="Durable workout summary after a completed Boxing southpaw technical Coach session, with work time, combinations, and frequent techniques" width="900">
+</p>
+
+Gym-oriented Session layout (mobile):
+
+<p align="center">
+  <img src="./docs/screenshots/08-session-mobile.png" alt="Mobile session: large current call, work timer, combo path, and thumb-zone Pause Repeat Skip End dock" width="390">
+  &nbsp;
+  <img src="./docs/screenshots/09-home-mobile.png" alt="Mobile home: StrikeCaller title, Quick Train, Guided Demo, and Customize Workout on a narrow viewport" width="390">
+</p>
+
+## Engineering highlights
+
+### Session engine
+
+Round and rest lifecycle, pause/resume, technique-aware timing, session summaries, and collision-resistant session IDs (`session-<timestamp>-<entropy>`). Legacy timestamp IDs still open.
+
+### Training generation
+
+Curated combos are the primary source. A rule-based generator may only assemble techniques using explicit compatibility rules — stance, side, weight transfer, range, recovery, defensive responsibility, and exits. Difficulty and category filters stay authoritative; finite Train Again queues do not fall back to unrelated generated work.
+
+### Local persistence
+
+Workout history lives in IndexedDB. Preferences, favorites, custom combos, and Daily Drill state use localStorage. Imports are strictly validated. Summary routes (`#/summary/<id>`) reload from storage after refresh. Direct `#/session` without start state shows an honest unavailable screen instead of fabricating a workout.
+
+### Audio
+
+Web Speech for calls, Web Audio for bells and tones after a user-gesture start, visibility handling that pauses and cancels stale speech, and Screen Wake Lock ownership that does not leak overlapping requests.
+
+## Architecture
+
+The app is a client-only browser application. There is no StrikeCaller server.
+
+```mermaid
+flowchart TD
+  UI[React UI] --> Routes[Home / Train / Daily / Builder / Stats]
+  Routes --> Config[Session configuration]
+  Config --> Library[Curated combo library]
+  Config --> Generator[Rule-based generator]
+  Config --> Custom[Saved custom combos]
+  Library --> Engine[SessionEngine]
+  Generator --> Engine
+  Custom --> Engine
+  Engine --> Speech[Web Speech and Web Audio]
+  Engine --> Wake[Screen Wake Lock]
+  Engine --> Timing[Round, rest, and pace timing]
+  Engine --> Persist[Persistence]
+  Persist --> IDB[IndexedDB session history]
+  Persist --> LS[localStorage prefs, Daily, custom combos]
+  IDB --> Review[Stats / Summary / Train Again]
+```
+
+Production delivery on `main`:
+
+```mermaid
+flowchart LR
+  PR[Pull request] --> Verify[verify]
+  PR --> E2E[e2e]
+  PR --> Pages[Pages build]
+  Verify --> Merge[merge to main]
+  E2E --> Merge
+  Pages --> Merge
+  Merge --> Deploy[deploy]
+  Deploy --> Live[verify-live]
+```
+
+Pull requests run verify, e2e, and Pages build. Deploy and live verification run only on `main`.
+
+## Reliability and testing
+
+v1.3.2 protected CI evidence:
+
+- **610** Vitest tests across **34** files
+- **69** Playwright tests passed, **21** skipped, **0** failed
+- Chromium, Firefox, WebKit, and mobile WebKit
+- lint, typecheck, unit/integration tests, Pages artifact verification, E2E, deploy, and post-deploy `verify-live`
+
+These counts describe the current release. They are not a permanent guarantee.
+
+Selected hardening (see [CHANGELOG.md](./CHANGELOG.md) for the full history):
+
+- Collision-resistant session IDs; existing timestamp-based summary links remain valid
+- Strict imports reject duplicate session and custom-combo identities before writes
+- Direct or malformed `/session` routes do not fabricate a default workout
+- Generator filters remain authoritative across curated, generated, and fallback paths
+- Daily Drill phases stay attached to the civil date they started, including midnight crossings
+- Guarded primary actions recover after synchronous throws or rejected async work
+- Wake-lock request ownership does not leak overlapping or stale releases
+
+## Local-first privacy
+
+- No account
+- No backend
+- No analytics
+- No advertising
+- No cloud sync
+- Training data stays in browser storage (IndexedDB + localStorage)
+
+The live site may load Google Fonts. StrikeCaller does not send training data off-device.
+
+Home-screen install is available through the web manifest (`display: standalone`). There is **no service worker and no offline cache** — this is not an offline-first PWA.
+
+An already-open tab may need a refresh to reflect changes made in another tab. Multi-tab live sync is out of scope.
+
+## Tech stack
+
+React, TypeScript, Vite, React Router (`HashRouter`), IndexedDB, localStorage, Web Speech API, Web Audio API, Screen Wake Lock API, Vitest, Testing Library, Playwright, GitHub Actions, GitHub Pages.
+
+## Training system
 
 Combinations are curated first and generated second.
 
-- Curated combos are the primary source and are manually reviewable as structured data.
-- The generator may only assemble techniques using explicit compatibility rules.
-- Sequences respect stance, side, weight transfer, range, recovery, defensive responsibility, and exits.
-- Beginner work stays simple and repeatable; advanced work adds layers, not empty length.
+- Curated combos are manually reviewable structured data
+- The generator may only assemble techniques using explicit compatibility rules
+- Sequences respect stance, side, weight transfer, range, recovery, defensive responsibility, and exits
+- Beginner work stays simple and repeatable; advanced work adds layers, not empty length
 
 Most combinations contain 2–5 offensive techniques, with optional defense and movement.
-
-## Names, numbers, and hybrid calls
 
 | Mode | Behavior |
 |------|----------|
@@ -44,61 +186,25 @@ Most combinations contain 2–5 offensive techniques, with optional defense and 
 
 Numbers are never forced onto techniques where numbering would confuse the athlete.
 
-## Training modes
+Pace presets: Learn · Slow · Technical · Normal · Fast · Fight pace · Custom. Unsafe or unusably fast timing is clamped.
 
-- **Learn Mode** — study one combo, step through techniques, practice with slow calls
-- **Coach Mode** — continuous combinations with adaptive pacing
-- **Round Mode** — rounds, rest, bells, ten-second warning, summaries
-- **Reaction Mode** — offense, defense, counters, and movement with valid sequences
-- **Custom Combo Builder** — tap techniques, validate transitions, save locally
-- **Daily Drill** — one focused combo across slow, normal, and fight-pace attempts
-- **Guided Demo** — 60-second recruiter-friendly round using the real engines
+Orthodox and southpaw are first-class. Technique language stays lead/rear by default, with optional left/right. Movement directions mirror for southpaw.
 
-## Adaptive timing
+Technique library: punches, kicks, teeps, knees, elbows, defense, movement, counters, and clinch — each with timing, range, difficulty, follow-up rules, and safety notes where appropriate.
 
-Each technique carries execution, recovery, and transition timing. Kicks, knees, defense, and movement receive more time than jabs. Pace presets:
+## Browser and device support
 
-Learn · Slow · Technical · Normal · Fast · Fight pace · Custom
+- Best on current Chrome, Edge, Firefox, and Safari
+- Spoken calls use the Web Speech API when available; captions and tones remain usable when speech is unsupported
+- Round bells and countdown tones use the Web Audio API after a user gesture starts a session
+- Vibration and screen wake lock are optional and device-dependent
+- Voice quality depends on voices installed in the browser/OS
+- Add to Home Screen uses the web manifest; offline use is not supported
 
-Category multipliers and a global pace control are available. Unsafe or unusably fast timing is clamped, with a warning when pace may be too fast for technical practice.
-
-## Stance support
-
-Orthodox and southpaw are first-class. Technique language stays lead/rear by default, with an optional left/right display mode. Movement directions mirror for southpaw so left/right calls stay coherent.
-
-## Technique library
-
-Strongly typed techniques across:
-
-Punches · Kicks · Teeps · Knees · Elbows · Defense · Movement · Counters · Clinch
-
-Each technique includes timing, range, difficulty, follow-up rules, coaching cues, and safety notes where appropriate. Head kicks, elbows, knees, and clinch work can be filtered by equipment and preference.
-
-## Combo validation
-
-Validation checks:
-
-- stance consistency
-- side / weight-transfer consistency
-- range transitions
-- incompatible follow-ups
-- recovery after committed strikes
-- reasonable length
-- defensive responsibility warnings
-- valid exits for clinch sequences
-
-## Themes
-
-Dark, Light, and System themes with persistence. Dark is a fight-gym charcoal identity; light uses warm concrete tones with the same professional structure.
-
-## Privacy
-
-Everything runs in the browser. Preferences, favorites, custom combos, and session history store locally on the device. There is no backend, account system, analytics, advertising, or remote sync in this MVP.
-
-## Local development
+## Run locally
 
 ```bash
-npm install
+npm ci
 npm run dev
 ```
 
@@ -108,6 +214,7 @@ Other scripts:
 npm run lint
 npm run typecheck
 npm test
+npm run test:e2e
 npm run build
 npm run build:pages
 npm run verify:pages
@@ -115,92 +222,28 @@ npm run verify:release
 npm run preview
 ```
 
-- `npm run lint` — Oxlint with `--deny-warnings` across source, tests, E2E, and committed tooling
-- `npm run build` — production build with base `/` for local or root hosting
-- `npm run build:pages` — production build for GitHub Pages; the base path is derived from GitHub's canonical Pages URL via `PAGES_BASE_URL` (falling back to `/StrikeCaller/` locally)
-- `npm run verify:pages` — validate the generated `dist/` artifact (correct base, existing local assets, expected title) before deploy
-- `npm run verify:release` — lint, typecheck, tests, Pages build, and Pages artifact verification (the local equivalent of the production gates)
+`npm run verify:release` is the local equivalent of the production lint / typecheck / test / Pages gates (E2E is a separate `npm run test:e2e` / CI job).
 
 Requirements: Node.js 20+ (22 LTS recommended) and a modern browser.
 
-## GitHub Pages deployment
+## Deployment
 
-The public site is published to GitHub Pages at the canonical URL **https://manpreets2.github.io/StrikeCaller/**. GitHub Pages paths are case-sensitive, so the exact casing matters.
+The public site is [https://manpreets2.github.io/StrikeCaller/](https://manpreets2.github.io/StrikeCaller/). GitHub Pages paths are case-sensitive.
 
-There is exactly one authoritative deployment path:
+CI (`.github/workflows/ci.yml`) runs lint, typecheck, tests, Pages build, and `verify:pages` on pull requests and on `main`. Artifact upload, deploy, and `verify-live` run only for `refs/heads/main`. Pages source must be **GitHub Actions**, not a `gh-pages` branch.
 
-- **CI** (`.github/workflows/ci.yml`) — lint, typecheck, test, Pages build, and `verify:pages` on pull requests, pushes to `main`, and manual `workflow_dispatch`. Production artifact upload and deploy run only for `refs/heads/main` (never a PR, never a feature-branch dispatch). A `verify-live` job then fails unless the public URL and its JS/CSS assets return HTTP 200.
-- **Pages Diagnostics** (`.github/workflows/pages-diagnostics.yml`) — a manual (`workflow_dispatch`), read-only workflow that inspects the live Pages configuration and asset availability without rebuilding.
-
-Pages source must be **Settings → Pages → Build and deployment → Source → GitHub Actions**. Do not publish from a `gh-pages` branch; that would create a second, competing publication system.
-
-Routing uses `HashRouter` so deep links and refresh work on GitHub Pages without server rewrites (for example `https://manpreets2.github.io/StrikeCaller/#/train`).
-
-Local Pages build:
-
-```bash
-npm run build:pages
-npm run verify:pages
-```
-
-## Supported browsers and feature limits
-
-- Best on current Chrome, Edge, Firefox, and Safari
-- Spoken calls use the Web Speech API when available; captions and tones remain usable when speech is unsupported
-- Round bells and countdown tones use the Web Audio API after a user gesture starts a session
-- Vibration and screen wake lock are optional and device-dependent
-- Voice quality depends on voices installed in the browser/OS
-
-## Testing
-
-Deterministic Vitest + Testing Library coverage includes combo validation, timing, call styles, storage safety, training surfaces, session controls, and accessibility labels. Tests do not require the public internet.
-
-## Release notes — v1.2.2
-
-GitHub Pages availability hotfix:
-
-- The Vite Pages base is derived from GitHub's canonical Pages URL (`PAGES_BASE_URL` from `actions/configure-pages`) instead of a hardcoded, mis-cased `/strikecaller/`. This restores the app's JavaScript/CSS on the case-sensitive Pages path and fixes the blank page / generic 404 seen on the public site.
-- The deploy workflow now configures Pages before building, validates the built artifact (`scripts/verify-pages-build.mjs`), and adds a post-deploy `verify-live` job that confirms the public URL and its assets return HTTP 200.
-- Added a manual, read-only `Pages Diagnostics` workflow.
-- Web manifest `start_url` now opens the app's root hash route under the project base; all displayed links use the canonical `https://manpreets2.github.io/StrikeCaller/`.
-- No changes to workout generation, Session behavior, audio timing, hash routing, stats, storage, or onboarding.
-
-## Release notes — v1.2.1
-
-Mobile gym experience:
-
-- Session rebuilt for portrait phones: large technique, large timer with labeled states, thumb-zone control dock, safe-area padding
-- Active Session hides app navigation; End Session + blocker remain the exit path
-- Minimal Mode trimmed for gym use and preference persistence
-- Audio primed from Start gestures; visibility interruptions pause safely and cancel stale speech
-- Wake lock tip (dismissible); optional home-screen install via web manifest
-- Home, Onboarding, Train, Builder, and Stats tuned for one-handed phone use
-
-Workout generation, finite queues, Train Again, Daily Drill, stats math, and hash routing are unchanged.
-
-## Release notes — v1.2.0
-
-Interactive visual polish only:
-
-- Dimensional inline SVG icon system for sports, modes, categories, metrics, and presets
-- Restrained motion (press, select, technique change, stats count-up, milestone unlock)
-- Home hero illustration, sport/Quick Start identity, clearer empty states
-- Onboarding step illustrations with progress chips
-- Customize Workout sport/mode visuals and collapsible section icons
-- Session call-change flash, timer warning states, category cue (non-minimal)
-- Combo Display progression path; Builder sport/category identity
-- Full `prefers-reduced-motion` support
-
-Workout logic, routing, speech, stats math, and data schemas are unchanged from v1.1.3.
+Routing uses `HashRouter` so deep links and refresh work without server rewrites (for example `https://manpreets2.github.io/StrikeCaller/#/train`).
 
 ## Limitations
 
-- StrikeCaller does **not** evaluate technique quality, power, speed, accuracy, or calories burned.
-- There is **no motion tracking** in the MVP.
-- Combinations are training drills and common tactical sequences — **not** guarantees of fight performance.
-- Clinch, elbows, and some knee work need appropriate equipment or a partner; the app will warn or filter where practical.
-- Voice quality depends on the browser’s installed speech voices.
-- Visual polish uses CSS/SVG only — no WebGL or 3D scene.
+- Does **not** evaluate technique quality, power, speed, accuracy, or calories
+- **No** motion tracking
+- Combinations are training drills — **not** fight-performance guarantees
+- Speech voice quality is browser/OS dependent
+- Wake lock and vibration support vary by device
+- Clinch, elbows, and some knee work need appropriate equipment or coaching; the app warns or filters where practical
+
+Muay Thai and Boxing are available now. Kickboxing, MMA Striking, Karate, and Taekwondo are labeled **Coming soon** in the product — no fake functionality is exposed.
 
 ## Safety
 
@@ -208,16 +251,20 @@ Warm up. Use appropriate equipment. Keep enough clear space. Prioritize balance 
 
 StrikeCaller is a training aid, not medical advice, sparring supervision, or a replacement for a coach.
 
-## Future martial arts
+## Future work
 
-Muay Thai and Boxing are available now. Kickboxing, MMA striking, Karate, and Taekwondo are labeled **Coming soon** — no fake functionality is exposed.
+Possible later investigations (not committed for a timeline):
+
+- Multi-tab UI synchronization
+- Bundle-size / route-level code splitting if it improves first load
+- Physical-device testing (iPhone Safari, headphones, lock/wake)
 
 ## Author
 
 **Manpreet Singh**  
 Computer Science Student at De Anza College
 
-Built as a portfolio project exploring adaptive audio coaching, structured combat-sport training data, rule-based combination generation, accessible workout design, and full-stack product engineering.
+Built as a portfolio project exploring browser application engineering, adaptive audio coaching, structured combat-sport data, rule-based generation, reliability, and accessible workout UX.
 
 ## License
 
