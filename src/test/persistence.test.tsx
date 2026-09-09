@@ -163,7 +163,7 @@ function PersistenceHarness() {
           void importData(
             JSON.stringify({
               version: 3,
-              history: [session('imported-B', { startedAt: 2_000_000_000_000 })],
+              history: [session('imported-B', { startedAt: 1_720_000_000_000 })],
             }),
           ).then((result) => {
             setImportMessage(result.message)

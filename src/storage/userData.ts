@@ -35,6 +35,7 @@ import {
 } from './localStore'
 import { isPlainObject, hasOwn, nonNegativeInt } from './parseUnknown'
 import { isPersistableSession, validateSessionSummary } from './sessionValidation'
+import { isTemporallyPlausibleSession } from '../utils/sessionTime'
 import {
   DELETE_ALL_PARTIAL_MESSAGE,
   IMPORT_EXECUTION_FAILED_MESSAGE,
@@ -201,6 +202,9 @@ function validateImportPayload(
     for (const raw of data.history) {
       const summary = validateSessionSummary(raw)
       if (!summary) return { ok: false, message: 'One or more history records are invalid.' }
+      if (!isTemporallyPlausibleSession(summary)) {
+        return { ok: false, message: 'One or more history records have timestamps in the future.' }
+      }
       if (isPersistableSession(summary)) history.push(summary)
     }
     const sessionIds = new Set<string>()

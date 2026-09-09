@@ -7,7 +7,7 @@ import { SafetyNotice } from '../components/SafetyNotice'
 import { InteractiveCard } from '../components/InteractiveCard'
 import { getComboStats } from '../data/combos'
 import { getQuickStartPresets, type QuickStartId } from '../data/quickStart'
-import { computeStatsPreview } from '../engines/statsEngine'
+import { computeStatsPreview, isUserFacingHistoryEntry } from '../engines/statsEngine'
 import { APP_VERSION } from '../data/defaults'
 import { HeroVisual, SportVisual, PresetVisual, ModeVisual, MetricVisual } from '../components/visual'
 import { primeTrainingAudio } from '../utils/primeAudio'
@@ -20,10 +20,9 @@ export function HomePage() {
   const navigate = useNavigate()
   const { preferences, updatePreferences, history, historyReady, favorites, customCombos } = useApp()
   const stats = getComboStats()
-  const preview = computeStatsPreview(history)
-  const recent = history.find(
-    (h) => !h.excludeFromStats && !h.isDemo && h.mode !== 'demo' && !h.cancelled,
-  )
+  const now = Date.now()
+  const preview = computeStatsPreview(history, now)
+  const recent = history.find((h) => isUserFacingHistoryEntry(h, now))
   const favoriteCombo = favorites[0]
     ? resolveCombo(favorites[0], { customCombos, history })
     : null
