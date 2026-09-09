@@ -1,5 +1,5 @@
 import type { CustomCombo, DailyDrillMap, SessionSummary, UserPreferences } from '../types'
-import { migrateDailyDrillMap, normalizeDailyDrillState } from '../utils/dailyDrill'
+import { validateImportedDailyDrill, validateImportedDailyDrills } from '../utils/dailyDrill'
 import { MAX_COMBO_LENGTH } from '../engines/comboValidator'
 import { validateCustomComboSemantics } from '../utils/customCombo'
 import {
@@ -185,6 +185,11 @@ function validateImportPayload(
       if (!semantic.ok) return { ok: false, message: semantic.message }
       combos.push(combo)
     }
+    const comboIds = new Set<string>()
+    for (const combo of combos) {
+      if (comboIds.has(combo.id)) return { ok: false, message: 'customCombos contains duplicate IDs.' }
+      comboIds.add(combo.id)
+    }
     normalized.customCombos = combos
   }
 
@@ -198,27 +203,27 @@ function validateImportPayload(
       if (!summary) return { ok: false, message: 'One or more history records are invalid.' }
       if (isPersistableSession(summary)) history.push(summary)
     }
+    const sessionIds = new Set<string>()
+    for (const row of history) {
+      if (sessionIds.has(row.id)) return { ok: false, message: 'History contains duplicate session IDs.' }
+      sessionIds.add(row.id)
+    }
     normalized.history = history
   }
 
   if (data.dailyDrill != null) {
     if (!isPlainObject(data.dailyDrill)) return { ok: false, message: 'dailyDrill must be an object.' }
-    if (!normalizeDailyDrillState(data.dailyDrill)) {
-      return { ok: false, message: 'dailyDrill is missing required fields.' }
-    }
+    const daily = validateImportedDailyDrill(data.dailyDrill)
+    if (!daily.ok) return daily
   }
   if (data.dailyDrills != null) {
-    if (!isPlainObject(data.dailyDrills)) return { ok: false, message: 'dailyDrills must be an object.' }
-    for (const value of Object.values(data.dailyDrills)) {
-      if (!normalizeDailyDrillState(value)) {
-        return { ok: false, message: 'One or more dailyDrills records are invalid.' }
-      }
-    }
-  }
-  if (data.dailyDrills != null && isPlainObject(data.dailyDrills)) {
-    normalized.daily = migrateDailyDrillMap(data.dailyDrills)
+    const daily = validateImportedDailyDrills(data.dailyDrills)
+    if (!daily.ok) return daily
+    normalized.daily = daily.value
   } else if (data.dailyDrill != null && isPlainObject(data.dailyDrill)) {
-    normalized.daily = migrateDailyDrillMap(data.dailyDrill)
+    const daily = validateImportedDailyDrill(data.dailyDrill)
+    if (!daily.ok) return daily
+    normalized.daily = { [daily.value.dateKey]: daily.value }
   }
 
   return { ok: true, value: normalized }

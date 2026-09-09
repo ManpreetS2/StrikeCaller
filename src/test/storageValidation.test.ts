@@ -683,7 +683,7 @@ describe('P1 #7 import is all-or-nothing', () => {
         }),
       ],
       dailyDrills: {
-        '2026-04-01:boxing': dailyState('2026-04-01:boxing', 'beg-01', { martialArt: 'boxing', fightDone: true }),
+        '2026-04-01:boxing': dailyState('2026-04-01:boxing', 'bx-b01', { martialArt: 'boxing', fightDone: true }),
       },
     }
     const v3Result = await importUserData(JSON.stringify(v3))
@@ -718,7 +718,7 @@ describe('P1 #7 import is all-or-nothing', () => {
     ])
     saveDailyDrillMap({
       '2026-05-01:muay-thai': dailyState('2026-05-01:muay-thai', 'beg-01', { slowDone: false, normalDone: true }),
-      '2026-05-01:boxing': dailyState('2026-05-01:boxing', 'beg-02', { martialArt: 'boxing', fightDone: true }),
+      '2026-05-01:boxing': dailyState('2026-05-01:boxing', 'bx-b01', { martialArt: 'boxing', fightDone: true }),
     })
     expect(
       await saveSession(

@@ -1,4 +1,4 @@
-import { BEGINNER_COMBOS, INTERMEDIATE_COMBOS, BOXING_COMBOS, getCombo } from '../data/combos'
+import { BEGINNER_COMBOS, INTERMEDIATE_COMBOS, COMBO_MAP, getCombo } from '../data/combos'
 import { BOXING_BEGINNER, BOXING_INTERMEDIATE } from '../data/boxing'
 import type { Combo, DailyDrillMap, DailyDrillState, MartialArt } from '../types'
 import { booleanOr, defineOwn, hasOwn, isForbiddenKey, isPlainObject, nonEmptyString, oneOf, readBoolean } from '../storage/parseUnknown'
@@ -62,12 +62,86 @@ export function pickDailyComboId(key: string, martialArt: MartialArt): string {
   return pool[hash]!.id
 }
 
-export function resolveDailyDrillCombo(comboId: string, martialArt: MartialArt): Combo {
-  try {
-    return getCombo(comboId)
-  } catch {
-    return martialArt === 'boxing' ? BOXING_COMBOS[0]! : BEGINNER_COMBOS[0]!
+function curatedComboForArt(comboId: string, martialArt: MartialArt): Combo | null {
+  const combo = COMBO_MAP[comboId]
+  if (!combo || combo.martialArt !== martialArt) return null
+  return combo
+}
+
+/**
+ * Display/session resolver. Never returns a known combo from the wrong sport.
+ * Unknown or cross-sport IDs recover to the deterministic Daily pick for that key.
+ */
+export function resolveDailyDrillCombo(comboId: string, martialArt: MartialArt, dateKey?: string): Combo {
+  const matched = curatedComboForArt(comboId, martialArt)
+  if (matched) return matched
+  const parsed = dateKey ? parseDailyDrillKey(dateKey) : { ok: false as const }
+  const key = parsed.ok ? parsed.key : dailyDrillKey('1970-01-01', martialArt)
+  return getCombo(pickDailyComboId(key, martialArt))
+}
+
+function salvageDailyDrillState(state: DailyDrillState): DailyDrillState {
+  const parsed = parseDailyDrillKey(state.dateKey)
+  const martialArt = parsed.ok ? parsed.martialArt : state.martialArt
+  const key = parsed.ok ? parsed.key : dailyDrillKey(state.dateKey, martialArt)
+  const comboId = curatedComboForArt(state.comboId, martialArt)
+    ? state.comboId
+    : pickDailyComboId(key, martialArt)
+  return {
+    ...state,
+    dateKey: key,
+    martialArt,
+    comboId,
   }
+}
+
+export function validateImportedDailyDrill(
+  raw: unknown,
+  outerKey?: string,
+): { ok: true; value: DailyDrillState } | { ok: false; message: string } {
+  const normalized = normalizeDailyDrillState(raw)
+  if (!normalized) return { ok: false, message: 'One or more dailyDrills records are invalid.' }
+
+  const parsed = parseDailyDrillKey(normalized.dateKey)
+  if (!parsed.ok) return { ok: false, message: 'Daily drill dateKey is invalid.' }
+  if (normalized.martialArt !== parsed.martialArt) {
+    return { ok: false, message: 'Daily drill dateKey does not match martialArt.' }
+  }
+  if (outerKey !== undefined && outerKey !== parsed.key) {
+    return { ok: false, message: 'dailyDrills map key does not match dateKey.' }
+  }
+
+  const combo = COMBO_MAP[normalized.comboId]
+  if (!combo) return { ok: false, message: 'Daily drill combo ID is unknown.' }
+  if (combo.martialArt !== parsed.martialArt) {
+    return { ok: false, message: 'Daily drill combo does not match its martial art.' }
+  }
+
+  return {
+    ok: true,
+    value: {
+      ...normalized,
+      dateKey: parsed.key,
+      martialArt: parsed.martialArt,
+    },
+  }
+}
+
+export function validateImportedDailyDrills(
+  raw: unknown,
+): { ok: true; value: DailyDrillMap } | { ok: false; message: string } {
+  if (!isPlainObject(raw)) return { ok: false, message: 'dailyDrills must be an object.' }
+  const map: DailyDrillMap = {}
+  for (const [key, value] of Object.entries(raw)) {
+    if (isForbiddenKey(key)) return { ok: false, message: 'dailyDrills contains an invalid key.' }
+    const validated = validateImportedDailyDrill(value, key)
+    if (!validated.ok) return validated
+    if (hasOwn(map, validated.value.dateKey)) {
+      return { ok: false, message: 'dailyDrills contains duplicate date keys.' }
+    }
+    defineOwn(map, validated.value.dateKey, validated.value)
+  }
+  return { ok: true, value: map }
 }
 
 export function martialArtLabel(art: MartialArt): string {
@@ -136,7 +210,8 @@ export function migrateDailyDrillMap(raw: unknown): DailyDrillMap {
   if (typeof raw.dateKey === 'string' && typeof raw.comboId === 'string') {
     const state = normalizeDailyDrillState(raw)
     if (!state) return {}
-    return { [state.dateKey]: state }
+    const salvaged = salvageDailyDrillState(state)
+    return { [salvaged.dateKey]: salvaged }
   }
 
   const map: DailyDrillMap = {}
@@ -144,9 +219,9 @@ export function migrateDailyDrillMap(raw: unknown): DailyDrillMap {
     if (isForbiddenKey(key)) continue
     const state = normalizeDailyDrillState(value)
     if (!state) continue
-    const storageKey = dailyDrillKey(state.dateKey, state.martialArt)
-    if (isForbiddenKey(storageKey)) continue
-    defineOwn(map, storageKey, { ...state, dateKey: storageKey })
+    const salvaged = salvageDailyDrillState(state)
+    if (isForbiddenKey(salvaged.dateKey)) continue
+    defineOwn(map, salvaged.dateKey, salvaged)
   }
   return map
 }

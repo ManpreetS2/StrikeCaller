@@ -1,6 +1,7 @@
 import { lookupTechnique } from '../data/techniques'
 import { getCombo } from '../data/combos'
 import { isRuntimeComboSemanticallyValid } from '../utils/comboSemantics'
+import { createSessionId } from '../utils/sessionId'
 import { nextCombo, optionsFromWorkout, getDemoCombos } from './comboGenerator'
 import { computeTechniqueDurationMs } from './timingEngine'
 import { formatTechniqueCall, createSpeechEngine } from './speechEngine'
@@ -70,6 +71,7 @@ export class SessionEngine {
   private stepTimerId: number | null = null
   private waitResolve: (() => void) | null = null
   private startedAt = 0
+  private sessionId: string | null = null
   private workElapsedMs = 0
   private lastTick = 0
   private paused = false
@@ -180,6 +182,7 @@ export class SessionEngine {
     this.resumeInFlight = false
     this.runToken += 1
     this.startedAt = Date.now()
+    this.sessionId = createSessionId(this.startedAt)
     this.workElapsedMs = 0
     this.combinationsCompleted = 0
     this.techniquesCalled = 0
@@ -655,7 +658,7 @@ export class SessionEngine {
     const isDemo = this.demoMode || this.config.mode === 'demo'
 
     return {
-      id: `session-${this.startedAt}`,
+      id: this.sessionId ?? `session-${this.startedAt}`,
       startedAt: this.startedAt,
       endedAt,
       martialArt: (this.config.martialArt ?? 'muay-thai') as MartialArt,
