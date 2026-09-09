@@ -1,5 +1,5 @@
 import type { CustomCombo, DailyDrillMap, SessionSummary, UserPreferences } from '../types'
-import { migrateDailyDrillMap, normalizeDailyDrillState } from '../utils/dailyDrill'
+import { validateImportedDailyDrill, validateImportedDailyDrills } from '../utils/dailyDrill'
 import { MAX_COMBO_LENGTH } from '../engines/comboValidator'
 import { validateCustomComboSemantics } from '../utils/customCombo'
 import {
@@ -213,22 +213,17 @@ function validateImportPayload(
 
   if (data.dailyDrill != null) {
     if (!isPlainObject(data.dailyDrill)) return { ok: false, message: 'dailyDrill must be an object.' }
-    if (!normalizeDailyDrillState(data.dailyDrill)) {
-      return { ok: false, message: 'dailyDrill is missing required fields.' }
-    }
+    const daily = validateImportedDailyDrill(data.dailyDrill)
+    if (!daily.ok) return daily
   }
   if (data.dailyDrills != null) {
-    if (!isPlainObject(data.dailyDrills)) return { ok: false, message: 'dailyDrills must be an object.' }
-    for (const value of Object.values(data.dailyDrills)) {
-      if (!normalizeDailyDrillState(value)) {
-        return { ok: false, message: 'One or more dailyDrills records are invalid.' }
-      }
-    }
-  }
-  if (data.dailyDrills != null && isPlainObject(data.dailyDrills)) {
-    normalized.daily = migrateDailyDrillMap(data.dailyDrills)
+    const daily = validateImportedDailyDrills(data.dailyDrills)
+    if (!daily.ok) return daily
+    normalized.daily = daily.value
   } else if (data.dailyDrill != null && isPlainObject(data.dailyDrill)) {
-    normalized.daily = migrateDailyDrillMap(data.dailyDrill)
+    const daily = validateImportedDailyDrill(data.dailyDrill)
+    if (!daily.ok) return daily
+    normalized.daily = { [daily.value.dateKey]: daily.value }
   }
 
   return { ok: true, value: normalized }

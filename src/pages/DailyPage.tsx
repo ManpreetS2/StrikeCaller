@@ -33,7 +33,7 @@ export function DailyPage() {
     return pickDailyComboId(key, martialArt)
   }, [getDailyDrill, key, martialArt])
 
-  const combo = useMemo(() => resolveDailyDrillCombo(comboId, martialArt), [comboId, martialArt])
+  const combo = useMemo(() => resolveDailyDrillCombo(comboId, martialArt, key), [comboId, martialArt, key])
 
   const state = getDailyDrill(key) ?? emptyDailyDrill(localDateKey(), martialArt, comboId)
 
@@ -42,7 +42,7 @@ export function DailyPage() {
     const originKey = dailyDrillKey(originCivilDate, martialArt)
     const existing = getDailyDrill(originKey)
     const originComboId = existing?.comboId ?? pickDailyComboId(originKey, martialArt)
-    const originCombo = resolveDailyDrillCombo(originComboId, martialArt)
+    const originCombo = resolveDailyDrillCombo(originComboId, martialArt, originKey)
     const originState = existing ?? emptyDailyDrill(originCivilDate, martialArt, originCombo.id)
 
     if (!existing) {
