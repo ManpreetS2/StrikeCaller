@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.3.2 — 2026-09-08
+
+### Data & Identity Integrity
+
+- Session summaries now use collision-resistant IDs minted once per session while legacy timestamp IDs remain compatible.
+- Strict import rejects duplicate session and custom-combo identities before writes.
+
+### Daily Drill Integrity
+
+- Strict Daily Drill imports now enforce canonical date-key, martial-art, combo, and map-key consistency.
+- Corrupted local Daily combo IDs recover deterministically to the correct martial art without discarding phase progress.
+
+### Action Reliability
+
+- Guarded primary actions recover after synchronous throws and rejected async work without permanent lockout or hook-created unhandled rejections.
+
+### Security / Maintenance
+
+- Updated Vitest and `@vitest/mocker` to 4.1.11 to remediate GHSA-82fw-gwwq-j7x9 in dev/test tooling.
+- `npm audit` and `npm audit --omit=dev` report 0 vulnerabilities.
+
+StrikeCaller remains local-first. Multi-tab state synchronization remains out of scope.
+
 ## 1.3.1 — 2026-09-08
 
 ### Reliability & Data Integrity
