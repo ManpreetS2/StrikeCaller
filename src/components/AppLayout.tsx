@@ -79,7 +79,7 @@ export function AppLayout() {
                 <Link to="/settings" className="underline underline-offset-2">
                   Open Settings
                 </Link>{' '}
-                to export your data or clear older history.
+                to export a backup before reloading or closing this tab.
               </p>
             </div>
             <button
