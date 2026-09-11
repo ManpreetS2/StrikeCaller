@@ -310,7 +310,9 @@ export function SettingsPage() {
         <p className="text-sm text-[var(--text-muted)]">
           {!historyReady && history.length === 0
             ? 'Loading saved sessions…'
-            : `${history.length} saved sessions on this device.`}
+            : storageIssue?.source === 'history'
+              ? `${history.length} sessions available in this tab. The latest may not be saved to browser storage.`
+              : `${history.length} saved sessions on this device.`}
         </p>
         <StorageStatus issue={storageIssue} />
         <div className="flex flex-wrap gap-2">
