@@ -385,7 +385,7 @@ function ActiveSessionPage({ start }: { start: SessionStartState }) {
         largeText={preferences.largeText || config.largeText}
         captionsEnabled={config.speech.captionsEnabled !== false}
         nextLabel={ui.nextTechniqueLabel}
-        showNext={Boolean(workActive && (minimal ? ui.nextTechniqueLabel : true))}
+        showNext={Boolean(workActive && !minimal)}
         speechSupported={ui.speechSupported}
       />
 
