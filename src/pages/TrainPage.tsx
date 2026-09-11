@@ -213,7 +213,7 @@ export function TrainPage() {
       timingMultipliers: preferences.timingMultipliers,
       sideTerminology,
       largeText,
-      minimalMode: minimalMode || preferences.preferMinimalMode,
+      minimalMode,
       resumeBehavior: preferences.resumeBehavior,
       showNextTechnique: !minimalMode,
     })

@@ -120,7 +120,7 @@ function ActiveSessionPage({ start }: { start: SessionStartState }) {
   const [timerMs, setTimerMs] = useState(0)
   const [ui, setUi] = useState<SessionUi | null>(null)
   const [confirmEnd, setConfirmEnd] = useState(false)
-  const [minimal, setMinimal] = useState(config.minimalMode || preferences.preferMinimalMode)
+  const [minimal, setMinimal] = useState(config.minimalMode)
   const [callFlash, setCallFlash] = useState(false)
   const [showWakeTip, setShowWakeTip] = useState(false)
   const [timerAnnounce, setTimerAnnounce] = useState(false)
