@@ -48,7 +48,7 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   wakeLockNoticeDismissed: false,
 }
 
-export const APP_VERSION = '1.3.2'
+export const APP_VERSION = '1.3.3'
 
 /** Resolve workout display flags: seed wins, otherwise the saved preference. */
 export function resolveWorkoutDisplayPrefs(
