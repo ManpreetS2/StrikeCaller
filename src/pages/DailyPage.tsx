@@ -1,9 +1,9 @@
-import { useMemo } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { ComboDisplay } from '../components/ComboDisplay'
 import { useApp } from '../context/useApp'
 import { createDefaultWorkout, definedPartial } from '../data/defaults'
-import { localDateKey } from '../utils/localDate'
+import { localDateKey, msUntilNextLocalMidnight } from '../utils/localDate'
 import {
   dailyDrillCompleteMessage,
   dailyDrillKey,
@@ -25,7 +25,44 @@ export function DailyPage() {
   const seed = (location.state as DailyLocationState | null)?.workoutSeed
   const { preferences, getDailyDrill, setDailyDrill } = useApp()
   const martialArt = seed?.martialArt ?? preferences.martialArt
-  const key = dailyDrillKey(localDateKey(), martialArt)
+  const [displayedCivilDate, setDisplayedCivilDate] = useState(() => localDateKey())
+
+  const refreshCivilDate = useCallback(() => {
+    const next = localDateKey()
+    setDisplayedCivilDate((prev) => (prev === next ? prev : next))
+  }, [])
+
+  useEffect(() => {
+    let timeoutId = 0
+    let cancelled = false
+
+    const arm = () => {
+      timeoutId = window.setTimeout(() => {
+        if (cancelled) return
+        refreshCivilDate()
+        arm()
+      }, msUntilNextLocalMidnight())
+    }
+    arm()
+
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') refreshCivilDate()
+    }
+    const onFocus = () => {
+      refreshCivilDate()
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    window.addEventListener('focus', onFocus)
+
+    return () => {
+      cancelled = true
+      window.clearTimeout(timeoutId)
+      document.removeEventListener('visibilitychange', onVisibility)
+      window.removeEventListener('focus', onFocus)
+    }
+  }, [refreshCivilDate])
+
+  const key = dailyDrillKey(displayedCivilDate, martialArt)
 
   const comboId = useMemo(() => {
     const existing = getDailyDrill(key)
@@ -35,10 +72,16 @@ export function DailyPage() {
 
   const combo = useMemo(() => resolveDailyDrillCombo(comboId, martialArt, key), [comboId, martialArt, key])
 
-  const state = getDailyDrill(key) ?? emptyDailyDrill(localDateKey(), martialArt, comboId)
+  const state = getDailyDrill(key) ?? emptyDailyDrill(displayedCivilDate, martialArt, comboId)
 
   const startPhase = (pace: PacePreset, field: 'slowDone' | 'normalDone' | 'fightDone') => {
-    const originCivilDate = localDateKey()
+    const actualCivilDate = localDateKey()
+    if (actualCivilDate !== displayedCivilDate) {
+      setDisplayedCivilDate(actualCivilDate)
+      return
+    }
+
+    const originCivilDate = displayedCivilDate
     const originKey = dailyDrillKey(originCivilDate, martialArt)
     const existing = getDailyDrill(originKey)
     const originComboId = existing?.comboId ?? pickDailyComboId(originKey, martialArt)

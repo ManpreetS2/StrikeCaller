@@ -180,12 +180,14 @@ describe('A8 Daily origin date at click time', () => {
     expect(state.config.martialArt).toBe('boxing')
   })
 
-  it('stale /daily page across midnight uses the new civil date at click time', async () => {
+  it('stale /daily page across midnight refreshes before a second click starts today', async () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(new Date(2026, 8, 8, 23, 59, 0))
     const { router } = renderApp('/daily')
     await screen.findByRole('heading', { name: /daily drill/i })
     vi.setSystemTime(new Date(2026, 8, 9, 0, 1, 0))
+    fireEvent.click(screen.getAllByRole('button', { name: /^slow practice/i })[0]!)
+    expect(router.state.location.pathname).toBe('/daily')
     fireEvent.click(screen.getAllByRole('button', { name: /^slow practice/i })[0]!)
     expect(router.state.location.pathname).toBe('/session')
     const state = router.state.location.state as {
@@ -209,7 +211,7 @@ describe('A8 Daily origin date at click time', () => {
     vi.setSystemTime(new Date(2026, 8, 9, 0, 1, 0))
     fireEvent.click(screen.getAllByRole('button', { name: /^normal practice/i })[0]!)
     expect(router.state.location.pathname).toBe('/daily')
-    expect(loadDailyDrillMap()['2026-09-09:boxing']?.slowDone).toBe(false)
+    expect(screen.getAllByRole('button', { name: /^normal practice/i })[0]).toBeDisabled()
     expect(loadDailyDrillMap()['2026-09-08:boxing']?.slowDone).toBe(true)
 
     fireEvent.click(screen.getAllByRole('button', { name: /^slow practice/i })[0]!)
@@ -229,6 +231,8 @@ describe('A8 Daily origin date at click time', () => {
     const { router } = renderApp('/daily')
     await screen.findByRole('heading', { name: /daily drill/i })
     vi.setSystemTime(new Date(2026, 8, 9, 0, 1, 0))
+    fireEvent.click(screen.getAllByRole('button', { name: /^normal practice/i })[0]!)
+    expect(router.state.location.pathname).toBe('/daily')
     fireEvent.click(screen.getAllByRole('button', { name: /^normal practice/i })[0]!)
     expect(router.state.location.pathname).toBe('/session')
     const state = router.state.location.state as {
