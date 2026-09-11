@@ -686,9 +686,7 @@ describe('AppContext persistence health and visible warning', () => {
       await router.navigate('/settings')
     })
     expect(screen.getByText('Storage issue: Browser storage is full.')).toBeInTheDocument()
-    expect(
-      screen.getByText(/Export a backup before reloading or closing this tab/i),
-    ).toBeInTheDocument()
+    expect(screen.getAllByText(/export a backup before reloading or closing this tab/i)).toHaveLength(2)
   })
 
   it('does not show a warning when persistence succeeds', async () => {
