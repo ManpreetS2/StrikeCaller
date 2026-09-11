@@ -687,7 +687,7 @@ describe('AppContext persistence health and visible warning', () => {
     })
     expect(screen.getByText('Storage issue: Browser storage is full.')).toBeInTheDocument()
     expect(
-      screen.getByText(/Export JSON or clear workout history to free space/i),
+      screen.getByText(/Export a backup before reloading or closing this tab/i),
     ).toBeInTheDocument()
   })
 

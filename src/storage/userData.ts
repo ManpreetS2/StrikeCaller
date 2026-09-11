@@ -5,10 +5,10 @@ import { validateCustomComboSemantics } from '../utils/customCombo'
 import {
   clearSessionsStore,
   ensureHistoryInitialized,
-  loadHistory,
   loadHistoryFromDbOnly,
   replaceHistoryAt,
   runAuthoritativeHistoryTransition,
+  sortHistory,
 } from './historyStore'
 import {
   EXPORT_VERSION,
@@ -100,17 +100,45 @@ type NormalizedImport = {
   daily?: DailyDrillMap
 }
 
-export async function exportUserData(): Promise<string> {
-  await ensureHistoryInitialized()
-  const history = await loadHistory()
-  const dailyDrills = loadDailyDrillMap()
+export type CanonicalUserData = {
+  preferences: UserPreferences
+  favorites: string[]
+  customCombos: CustomCombo[]
+  history: SessionSummary[]
+  dailyDrills: DailyDrillMap
+}
+
+function mergeHistoryPreferMemory(durable: SessionSummary[], memory: SessionSummary[]): SessionSummary[] {
+  const byId = new Map<string, SessionSummary>()
+  for (const row of durable) byId.set(row.id, row)
+  for (const row of memory) byId.set(row.id, row)
+  return sortHistory([...byId.values()])
+}
+
+/** History included in an app-generated backup. Future salvage is excluded, not rewritten. */
+export function historyForGeneratedExport(history: SessionSummary[], now = Date.now()): SessionSummary[] {
+  const seen = new Set<string>()
+  const out: SessionSummary[] = []
+  for (const row of history) {
+    if (!isPersistableSession(row)) continue
+    if (!isTemporallyPlausibleSession(row, now)) continue
+    if (seen.has(row.id)) continue
+    seen.add(row.id)
+    out.push(row)
+  }
+  return sortHistory(out)
+}
+
+export function serializeUserDataExport(state: CanonicalUserData, now = Date.now()): string {
+  const history = historyForGeneratedExport(state.history, now)
+  const dailyDrills = state.dailyDrills
   return JSON.stringify(
     {
       version: EXPORT_VERSION,
-      exportedAt: new Date().toISOString(),
-      preferences: loadPreferences(),
-      favorites: loadFavorites(),
-      customCombos: loadCustomCombos(),
+      exportedAt: new Date(now).toISOString(),
+      preferences: state.preferences,
+      favorites: state.favorites,
+      customCombos: state.customCombos,
       history,
       dailyDrills,
       dailyDrill: Object.values(dailyDrills)[0] ?? null,
@@ -118,6 +146,25 @@ export async function exportUserData(): Promise<string> {
     null,
     2,
   )
+}
+
+export async function exportCanonicalUserData(snapshot: CanonicalUserData): Promise<string> {
+  const initialized = await ensureHistoryInitialized()
+  return serializeUserDataExport({
+    ...snapshot,
+    history: mergeHistoryPreferMemory(initialized.history, snapshot.history),
+  })
+}
+
+export async function exportUserData(): Promise<string> {
+  const initialized = await ensureHistoryInitialized()
+  return serializeUserDataExport({
+    preferences: loadPreferences(),
+    favorites: loadFavorites(),
+    customCombos: loadCustomCombos(),
+    history: initialized.history,
+    dailyDrills: loadDailyDrillMap(),
+  })
 }
 
 /**
