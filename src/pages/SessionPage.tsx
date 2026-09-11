@@ -108,7 +108,9 @@ function ActiveSessionPage({ start }: { start: SessionStartState }) {
   const config = start.config
 
   const engineRef = useRef<SessionEngine | null>(null)
-  const endedRef = useRef(false)
+  const finalizingRef = useRef(false)
+  const navigationReleasedRef = useRef(false)
+  const navigateOnceRef = useRef(false)
   const endButtonRef = useRef<HTMLButtonElement>(null)
   const lastUiKey = useRef('')
   const lastCaptionRef = useRef<string | null>(null)
@@ -120,7 +122,8 @@ function ActiveSessionPage({ start }: { start: SessionStartState }) {
   const [timerMs, setTimerMs] = useState(0)
   const [ui, setUi] = useState<SessionUi | null>(null)
   const [confirmEnd, setConfirmEnd] = useState(false)
-  const [minimal, setMinimal] = useState(config.minimalMode || preferences.preferMinimalMode)
+  const [finalizing, setFinalizing] = useState(false)
+  const [minimal, setMinimal] = useState(config.minimalMode)
   const [callFlash, setCallFlash] = useState(false)
   const [showWakeTip, setShowWakeTip] = useState(false)
   const [timerAnnounce, setTimerAnnounce] = useState(false)
@@ -135,10 +138,19 @@ function ActiveSessionPage({ start }: { start: SessionStartState }) {
 
   const blocker = useBlocker(
     ({ currentLocation, nextLocation }) =>
-      !endedRef.current &&
-      hasMeaningfulProgress &&
+      !navigationReleasedRef.current &&
+      (finalizingRef.current || hasMeaningfulProgress) &&
       currentLocation.pathname !== nextLocation.pathname,
   )
+
+  useEffect(() => {
+    if (blocker.state !== 'blocked') return
+    if (finalizingRef.current) {
+      blocker.reset?.()
+      return
+    }
+    setConfirmEnd(false)
+  }, [blocker, blocker.state])
 
   useEffect(() => {
     let alive = true
@@ -155,7 +167,7 @@ function ActiveSessionPage({ start }: { start: SessionStartState }) {
         void _t
         setUi(rest)
       }
-      if (next.phase === 'summary' && !endedRef.current) {
+      if (next.phase === 'summary' && !finalizingRef.current) {
         finalizeRef.current(false)
       }
     })
@@ -232,7 +244,8 @@ function ActiveSessionPage({ start }: { start: SessionStartState }) {
 
   useEffect(() => {
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
-      if (endedRef.current || !hasMeaningfulProgress) return
+      if (navigationReleasedRef.current) return
+      if (!finalizingRef.current && !hasMeaningfulProgress) return
       event.preventDefault()
       event.returnValue = ''
     }
@@ -255,12 +268,27 @@ function ActiveSessionPage({ start }: { start: SessionStartState }) {
     return { ...summary, dailyPhase: phase, dailyDrillCompleted: completed }
   }
 
+  const goToSummary = (summary: SessionSummary, persisted: boolean) => {
+    if (navigateOnceRef.current) return
+    navigateOnceRef.current = true
+    navigationReleasedRef.current = true
+    if (persisted) {
+      navigate(`/summary/${encodeURIComponent(summary.id)}`, { state: { summary }, replace: true })
+      return
+    }
+    navigate('/summary', { state: { summary }, replace: true })
+  }
+
   const finalize = (cancelled: boolean) => {
-    if (endedRef.current) return
-    endedRef.current = true
+    if (finalizingRef.current) return
+    finalizingRef.current = true
+    setFinalizing(true)
+    setConfirmEnd(false)
     if (cancelled) engineRef.current?.stop()
     let summary = engineRef.current?.getSummary()
+    if (!cancelled) engineRef.current?.stop()
     if (!summary) {
+      navigationReleasedRef.current = true
       navigate('/train', { replace: true })
       return
     }
@@ -268,12 +296,14 @@ function ActiveSessionPage({ start }: { start: SessionStartState }) {
     summary = applyDailyPhase(summary, cancelled)
 
     void (async () => {
-      const result = await addHistory(summary)
-      if (result.status === 'persisted') {
-        navigate(`/summary/${encodeURIComponent(summary.id)}`, { state: { summary }, replace: true })
-        return
+      let persisted = false
+      try {
+        const result = await addHistory(summary)
+        persisted = result.status === 'persisted'
+      } catch {
+        persisted = false
       }
-      navigate('/summary', { state: { summary }, replace: true })
+      goToSummary(summary, persisted)
     })()
   }
   finalizeRef.current = finalize
@@ -290,6 +320,20 @@ function ActiveSessionPage({ start }: { start: SessionStartState }) {
       return next
     })
   }, [updatePreferences])
+
+  if (finalizing) {
+    return (
+      <div
+        className="session-shell session-finishing"
+        role="status"
+        aria-busy="true"
+        aria-label="Finishing workout…"
+      >
+        <h1 className="session-phase">Finishing workout…</h1>
+        <p className="text-[var(--text-muted)]">Saving your training summary.</p>
+      </div>
+    )
+  }
 
   if (preparing || !ui) {
     return (
@@ -341,7 +385,7 @@ function ActiveSessionPage({ start }: { start: SessionStartState }) {
         largeText={preferences.largeText || config.largeText}
         captionsEnabled={config.speech.captionsEnabled !== false}
         nextLabel={ui.nextTechniqueLabel}
-        showNext={Boolean(workActive && (minimal ? ui.nextTechniqueLabel : true))}
+        showNext={Boolean(workActive && !minimal)}
         speechSupported={ui.speechSupported}
       />
 
@@ -447,7 +491,7 @@ function ActiveSessionPage({ start }: { start: SessionStartState }) {
         endButtonRef={endButtonRef}
       />
 
-      {confirmEnd && (
+      {confirmEnd && blocker.state !== 'blocked' && (
         <ConfirmDialog
           title="End this session?"
           confirmLabel="End session"
@@ -463,7 +507,7 @@ function ActiveSessionPage({ start }: { start: SessionStartState }) {
         </ConfirmDialog>
       )}
 
-      {blocker.state === 'blocked' && (
+      {blocker.state === 'blocked' && !finalizing && (
         <ConfirmDialog
           title="Leave this workout?"
           confirmLabel="Leave session"

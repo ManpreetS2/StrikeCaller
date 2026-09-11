@@ -163,7 +163,7 @@ function PersistenceHarness() {
           void importData(
             JSON.stringify({
               version: 3,
-              history: [session('imported-B', { startedAt: 2_000_000_000_000 })],
+              history: [session('imported-B', { startedAt: 1_720_000_000_000 })],
             }),
           ).then((result) => {
             setImportMessage(result.message)
@@ -686,9 +686,7 @@ describe('AppContext persistence health and visible warning', () => {
       await router.navigate('/settings')
     })
     expect(screen.getByText('Storage issue: Browser storage is full.')).toBeInTheDocument()
-    expect(
-      screen.getByText(/Export JSON or clear workout history to free space/i),
-    ).toBeInTheDocument()
+    expect(screen.getAllByText(/export a backup before reloading or closing this tab/i)).toHaveLength(2)
   })
 
   it('does not show a warning when persistence succeeds', async () => {

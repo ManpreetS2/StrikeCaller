@@ -4,27 +4,27 @@
 
 StrikeCaller is a local-first spoken combo coach for **Boxing** and **Muay Thai**. It calls realistic combinations during shadowboxing, bag work, pad work, or solo drills — with adaptive pacing, timed rounds, and training stats that stay in the browser.
 
-Current release: **1.3.2**. See [CHANGELOG.md](./CHANGELOG.md) for release history.
+Current release: **[v1.3.3](https://github.com/ManpreetS2/StrikeCaller/releases/tag/v1.3.3)**. See [CHANGELOG.md](./CHANGELOG.md) for what’s new.
 
 <p align="center">
-  <img src="./docs/screenshots/01-home-desktop.png" alt="StrikeCaller home: v1.3.2, Quick Train, Guided Demo, Customize Workout, hanging-gloves hero, and local weekly stats" width="900">
+  <img src="./docs/screenshots/01-home-desktop.png" alt="StrikeCaller home: v1.3.3, Quick Train, Guided Demo, Customize Workout, hanging-gloves hero, and local weekly stats" width="900">
 </p>
 
 <p align="center">
   <a href="https://manpreets2.github.io/StrikeCaller/"><strong>Live Demo</strong></a>
   ·
-  <a href="https://github.com/ManpreetS2/StrikeCaller/releases/tag/v1.3.2">v1.3.2 Release</a>
+  <a href="https://github.com/ManpreetS2/StrikeCaller/releases/tag/v1.3.3">v1.3.3 Release</a>
 </p>
 
 | | |
 |---|---|
 | **Live** | [GitHub Pages](https://manpreets2.github.io/StrikeCaller/) |
 | **Stack** | React · TypeScript · Vite |
-| **Quality** | 610 Vitest · 69 Playwright E2E (v1.3.2) |
+| **Quality** | 712 Vitest / 46 files · 69 Playwright passed / 21 skipped / 0 failed |
 | **Browsers** | Chromium · Firefox · WebKit · Mobile WebKit |
 | **Storage** | IndexedDB + localStorage |
-| **Privacy** | No account · No backend · No analytics |
-| **Release** | [v1.3.2](https://github.com/ManpreetS2/StrikeCaller/releases/tag/v1.3.2) |
+| **Privacy** | No account · No backend · No analytics · No cloud sync |
+| **Release** | [v1.3.3](https://github.com/ManpreetS2/StrikeCaller/releases/tag/v1.3.3) |
 
 225 curated combinations (125 Muay Thai, 100 Boxing). Free. No account. No download.
 
@@ -129,9 +129,9 @@ Pull requests run verify, e2e, and Pages build. Deploy and live verification run
 
 ## Reliability and testing
 
-v1.3.2 protected CI evidence:
+v1.3.3 protected CI evidence:
 
-- **610** Vitest tests across **34** files
+- **712** Vitest tests across **46** files
 - **69** Playwright tests passed, **21** skipped, **0** failed
 - Chromium, Firefox, WebKit, and mobile WebKit
 - lint, typecheck, unit/integration tests, Pages artifact verification, E2E, deploy, and post-deploy `verify-live`
@@ -145,6 +145,10 @@ Selected hardening (see [CHANGELOG.md](./CHANGELOG.md) for the full history):
 - Direct or malformed `/session` routes do not fabricate a default workout
 - Generator filters remain authoritative across curated, generated, and fallback paths
 - Daily Drill phases stay attached to the civil date they started, including midnight crossings
+- Daily Drill pages refresh on local date change so a stale post-midnight click cannot start a different combo
+- Session finalization uses a dedicated finishing state; Back cannot yank the user to Summary after leaving
+- Saved Minimal Mode, timing multipliers, and Builder custom pace apply across workout entry points
+- Export can recover valid in-tab state after a failed durable write; implausible future history is rejected or excluded
 - Guarded primary actions recover after synchronous throws or rejected async work
 - Wake-lock request ownership does not leak overlapping or stale releases
 
@@ -232,7 +236,7 @@ The public site is [https://manpreets2.github.io/StrikeCaller/](https://manpreet
 
 CI (`.github/workflows/ci.yml`) runs lint, typecheck, tests, Pages build, and `verify:pages` on pull requests and on `main`. Artifact upload, deploy, and `verify-live` run only for `refs/heads/main`. Pages source must be **GitHub Actions**, not a `gh-pages` branch.
 
-Routing uses `HashRouter` so deep links and refresh work without server rewrites (for example `https://manpreets2.github.io/StrikeCaller/#/train`).
+Routing uses `HashRouter` so deep links and refresh work without server rewrites (for example `https://manpreets2.github.io/StrikeCaller/#/train`). Historical release notes live in [CHANGELOG.md](./CHANGELOG.md).
 
 ## Limitations
 

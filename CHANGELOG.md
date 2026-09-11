@@ -1,5 +1,51 @@
 # Changelog
 
+## 1.3.3 — 2026-09-11
+
+### Reliability, Recovery & Workout Consistency
+
+#### Workout configuration integrity
+
+- Saved Minimal Mode now applies consistently across Quick Start, Daily, Learn, Builder, and onboarding, while explicit Train overrides stay authoritative.
+- Timing multipliers follow new workouts from every entry point, and Builder custom pace uses the saved custom multiplier.
+
+#### Builder integrity
+
+- Deleting a combo that is currently being edited no longer resurrects the deleted ID on Save.
+
+#### Daily Drill reliability
+
+- Open Daily pages refresh safely across local date changes.
+- A stale post-midnight click cannot start a different invisible combo.
+- Original-session midnight completion behavior is unchanged.
+
+#### Session lifecycle
+
+- Ending or completing a workout uses a dedicated finishing state instead of live Round chrome.
+- Back cannot leave Session during save and later get yanked to Summary.
+- Summary navigation and history write happen once.
+- Minimal mode hides the next-technique preview whether it is set before start or toggled live.
+
+#### Storage and backup integrity
+
+- Export can recover valid current in-tab state after a failed durable write.
+- Current-generated backups remain importable.
+- Invalid salvaged future history cannot poison generated backups.
+
+#### Stats/time integrity
+
+- Implausibly future imports are rejected.
+- Future salvaged rows stay out of Stats, Home, streaks, and milestones.
+- Stats use a deterministic supplied clock.
+
+#### Accessibility
+
+- Pending confirmation dialogs contain focus correctly, including when both actions are disabled.
+- Stacked dialogs coordinate ownership.
+- Train radio groups support arrow-key navigation.
+
+StrikeCaller remains local-first. There is no account, cloud sync, service worker, or offline cache in this release.
+
 ## 1.3.2 — 2026-09-09
 
 ### Data & Identity Integrity

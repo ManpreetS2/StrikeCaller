@@ -310,7 +310,9 @@ export function SettingsPage() {
         <p className="text-sm text-[var(--text-muted)]">
           {!historyReady && history.length === 0
             ? 'Loading saved sessions…'
-            : `${history.length} saved sessions on this device.`}
+            : storageIssue?.source === 'history'
+              ? `${history.length} sessions available in this tab. The latest may not be saved to browser storage.`
+              : `${history.length} saved sessions on this device.`}
         </p>
         <StorageStatus issue={storageIssue} />
         <div className="flex flex-wrap gap-2">
@@ -531,7 +533,7 @@ function StorageStatus({ issue }: { issue: StorageIssue | null }) {
       <p role="status">{status}</p>
       {issue?.reason === 'quota-exceeded' ? (
         <p className="text-[var(--text-muted)]">
-          Export JSON or clear workout history to free space before closing the app.
+          Export a backup before reloading or closing this tab.
         </p>
       ) : null}
     </div>

@@ -8,7 +8,7 @@ export const STORAGE_WRITE_MESSAGES: Record<StorageWriteReason, string> = {
   unavailable:
     "StrikeCaller couldn't save your latest data. It may be lost after you close or reload this page.",
   'quota-exceeded':
-    'StrikeCaller storage is full. Your latest change may not be saved. Export your data or clear older history before closing the app.',
+    'StrikeCaller storage is full. Your latest change may exist only in this tab. Export a backup before reloading or clearing data.',
   serialization:
     "StrikeCaller couldn't save your latest data. It may be lost after you close or reload this page.",
   'write-failed':
@@ -16,7 +16,7 @@ export const STORAGE_WRITE_MESSAGES: Record<StorageWriteReason, string> = {
 }
 
 export const HISTORY_QUOTA_MESSAGE =
-  'StrikeCaller storage is full. Your latest workout may not be saved. Export your data or clear older history before closing the app.'
+  'StrikeCaller storage is full. Your latest workout may exist only in this tab. Export a backup before reloading or clearing data.'
 
 export const DELETE_ALL_PARTIAL_MESSAGE =
   'Some StrikeCaller data could not be deleted. Data already removed cannot be restored.'

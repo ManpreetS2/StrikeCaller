@@ -48,7 +48,17 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   wakeLockNoticeDismissed: false,
 }
 
-export const APP_VERSION = '1.3.2'
+export const APP_VERSION = '1.3.3'
+
+/** Resolve workout display flags: seed wins, otherwise the saved preference. */
+export function resolveWorkoutDisplayPrefs(
+  seed: { minimalMode?: boolean; showNextTechnique?: boolean } | null | undefined,
+  preferMinimalMode: boolean,
+): { minimalMode: boolean; showNextTechnique: boolean } {
+  const minimalMode = seed?.minimalMode ?? preferMinimalMode
+  const showNextTechnique = seed?.showNextTechnique ?? !minimalMode
+  return { minimalMode, showNextTechnique }
+}
 
 /** Keep only own properties whose values are not undefined. */
 export function definedPartial<T extends object>(partial?: Partial<T>): Partial<T> {
