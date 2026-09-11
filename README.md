@@ -4,7 +4,7 @@
 
 StrikeCaller is a local-first spoken combo coach for **Boxing** and **Muay Thai**. It calls realistic combinations during shadowboxing, bag work, pad work, or solo drills — with adaptive pacing, timed rounds, and training stats that stay in the browser.
 
-Current release: **[v1.3.3](https://github.com/ManpreetS2/StrikeCaller/releases/tag/v1.3.3)**. See [CHANGELOG.md](./CHANGELOG.md) for what’s new.
+Current release: **1.3.3**. See [CHANGELOG.md](./CHANGELOG.md) for what’s new.
 
 <p align="center">
   <img src="./docs/screenshots/01-home-desktop.png" alt="StrikeCaller home: v1.3.3, Quick Train, Guided Demo, Customize Workout, hanging-gloves hero, and local weekly stats" width="900">
