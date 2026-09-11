@@ -123,6 +123,8 @@ export function BuilderPage() {
       difficulty: preferences.experience,
       callStyle: preferences.callStyle,
       pace: preferences.pace,
+      customPaceMultiplier: preferences.customPaceMultiplier,
+      timingMultipliers: preferences.timingMultipliers,
       sessionDurationSec: Math.max(60, repeats * 20),
       roundDurationSec: Math.max(60, repeats * 20),
       rounds: 1,
@@ -134,6 +136,7 @@ export function BuilderPage() {
       sideTerminology: preferences.sideTerminology,
       resumeBehavior: preferences.resumeBehavior,
       minimalMode: preferences.preferMinimalMode,
+      showNextTechnique: !preferences.preferMinimalMode,
       categories:
         runtime.martialArt === 'boxing'
           ? ['punch', 'defense', 'movement', 'counter']
@@ -430,8 +433,12 @@ export function BuilderPage() {
           confirmLabel="Delete"
           danger
           onConfirm={() => {
-            removeCustomCombo(deleteId)
+            const deletedId = deleteId
+            removeCustomCombo(deletedId)
             setDeleteId(null)
+            if (deletedId && deletedId === editingId) {
+              resetBuilder()
+            }
           }}
           onCancel={() => setDeleteId(null)}
         >

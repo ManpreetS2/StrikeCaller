@@ -9,6 +9,7 @@ import type {
   UnlockedMilestone,
 } from '../types'
 import { addLocalDays, startOfLocalDay } from '../utils/localDate'
+import { isTemporallyPlausibleSession } from '../utils/sessionTime'
 import { getPaceMultiplier } from './timingEngine'
 import { getTechnique } from '../data/techniques'
 import { COMBO_MAP } from '../data/combos'
@@ -47,6 +48,10 @@ function isGenuineSession(summary: SessionSummary): boolean {
   return true
 }
 
+export function isUserFacingHistoryEntry(summary: SessionSummary, now = Date.now()): boolean {
+  return isGenuineSession(summary) && isTemporallyPlausibleSession(summary, now)
+}
+
 function inRange(summary: SessionSummary, range: StatsRange, now = Date.now()): boolean {
   if (range === 'all') return true
   const start = startOfLocalDay(now)
@@ -57,12 +62,18 @@ function inRange(summary: SessionSummary, range: StatsRange, now = Date.now()): 
 
 export function filterHistory(
   history: SessionSummary[],
-  options: { range?: StatsRange; martialArt?: MartialArt | 'all'; mode?: TrainingMode | 'all' } = {},
+  options: {
+    range?: StatsRange
+    martialArt?: MartialArt | 'all'
+    mode?: TrainingMode | 'all'
+    now?: number
+  } = {},
 ): SessionSummary[] {
   const range = options.range ?? 'all'
+  const now = options.now ?? Date.now()
   return history.filter((h) => {
-    if (!isGenuineSession(h)) return false
-    if (!inRange(h, range)) return false
+    if (!isUserFacingHistoryEntry(h, now)) return false
+    if (!inRange(h, range, now)) return false
     if (options.martialArt && options.martialArt !== 'all' && h.martialArt !== options.martialArt) return false
     if (options.mode && options.mode !== 'all' && h.mode !== options.mode) return false
     return true
@@ -70,7 +81,9 @@ export function filterHistory(
 }
 
 export function computeStreaks(history: SessionSummary[], now = Date.now()): { current: number; longest: number } {
-  const days = new Set(history.filter(isGenuineSession).map((h) => startOfLocalDay(h.startedAt)))
+  const days = new Set(
+    history.filter((h) => isUserFacingHistoryEntry(h, now)).map((h) => startOfLocalDay(h.startedAt)),
+  )
   if (days.size === 0) return { current: 0, longest: 0 }
 
   const sorted = [...days].sort((a, b) => a - b)
@@ -99,7 +112,7 @@ export function computeStreaks(history: SessionSummary[], now = Date.now()): { c
 }
 
 export function computeStatsPreview(history: SessionSummary[], now = Date.now()) {
-  const week = filterHistory(history, { range: '7d' })
+  const week = filterHistory(history, { range: '7d', now })
   const overall = computeStreaks(history, now)
   return {
     sessionsThisWeek: week.length,
@@ -204,7 +217,7 @@ export function computeTrainingStats(
   options: { range?: StatsRange; martialArt?: MartialArt | 'all' } = {},
   now = Date.now(),
 ): TrainingStats {
-  const filtered = filterHistory(history, options)
+  const filtered = filterHistory(history, { ...options, now })
   const streaks = computeStreaks(filtered, now)
   const techniqueCounts: Record<string, number> = {}
   const categoryCounts: Record<string, number> = {}
@@ -348,7 +361,9 @@ export function computeTrainingStats(
 }
 
 export function unlockMilestones(history: SessionSummary[], now = Date.now()): UnlockedMilestone[] {
-  const active = history.filter(isGenuineSession).sort((a, b) => a.startedAt - b.startedAt)
+  const active = history
+    .filter((h) => isUserFacingHistoryEntry(h, now))
+    .sort((a, b) => a.startedAt - b.startedAt)
   if (!active.length) return []
 
   const unlocked: UnlockedMilestone[] = []

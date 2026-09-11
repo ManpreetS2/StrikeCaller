@@ -253,7 +253,7 @@ describe('v1.1.1 history and stats', () => {
     const history: SessionSummary[] = [0, 1, 2].map((offset) => ({
       id: `d-${offset}`,
       startedAt: addLocalDays(day0, -offset) + 12 * 3600_000,
-      endedAt: addLocalDays(day0, -offset) + 13 * 3600_000,
+      endedAt: addLocalDays(day0, -offset) + 12 * 3600_000 + 60_000,
       martialArt: 'muay-thai',
       mode: 'coach',
       stance: 'orthodox',

@@ -27,3 +27,8 @@ export function addLocalDays(ts: number, days: number): number {
 export function isNextLocalDay(earlier: number, later: number): boolean {
   return startOfLocalDay(later) === addLocalDays(earlier, 1)
 }
+
+/** Milliseconds until the next local midnight. DST-safe via `addLocalDays`. */
+export function msUntilNextLocalMidnight(now = Date.now()): number {
+  return Math.max(1, addLocalDays(now, 1) - now)
+}

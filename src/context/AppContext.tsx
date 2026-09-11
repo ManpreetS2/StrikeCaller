@@ -86,6 +86,49 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const dataMutationTailRef = useRef(Promise.resolve())
   const dataMutationCountRef = useRef(0)
   const [dataMutationPending, setDataMutationPending] = useState(false)
+  const canonicalRef = useRef({
+    preferences,
+    favorites,
+    customCombos,
+    history,
+    dailyDrills,
+  })
+
+  const commitPreferences = (next: UserPreferences | ((prev: UserPreferences) => UserPreferences)) => {
+    setPreferencesState((prev) => {
+      const value = typeof next === 'function' ? next(prev) : next
+      canonicalRef.current.preferences = value
+      return value
+    })
+  }
+  const commitFavorites = (next: string[] | ((prev: string[]) => string[])) => {
+    setFavorites((prev) => {
+      const value = typeof next === 'function' ? next(prev) : next
+      canonicalRef.current.favorites = value
+      return value
+    })
+  }
+  const commitCustomCombos = (next: CustomCombo[] | ((prev: CustomCombo[]) => CustomCombo[])) => {
+    setCustomCombos((prev) => {
+      const value = typeof next === 'function' ? next(prev) : next
+      canonicalRef.current.customCombos = value
+      return value
+    })
+  }
+  const commitHistory = (next: SessionSummary[] | ((prev: SessionSummary[]) => SessionSummary[])) => {
+    setHistory((prev) => {
+      const value = typeof next === 'function' ? next(prev) : next
+      canonicalRef.current.history = value
+      return value
+    })
+  }
+  const commitDailyDrills = (next: DailyDrillMap | ((prev: DailyDrillMap) => DailyDrillMap)) => {
+    setDailyDrillsState((prev) => {
+      const value = typeof next === 'function' ? next(prev) : next
+      canonicalRef.current.dailyDrills = value
+      return value
+    })
+  }
 
   const runLocalDataMutation = useCallback(<T,>(work: () => Promise<T>): Promise<T> => {
     dataMutationCountRef.current += 1
@@ -131,7 +174,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const setPreferences = useCallback(
     (next: UserPreferences | ((p: UserPreferences) => UserPreferences)) => {
       enqueueAfterLocalData(() => {
-        setPreferencesState((prev) => {
+        commitPreferences((prev) => {
           const value = typeof next === 'function' ? next(prev) : next
           const result = savePreferences(value)
           queueMicrotask(() => applyWrite(result, 'preferences'))
@@ -161,7 +204,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const pending = pendingSavesRef.current
       pendingSavesRef.current = []
 
-      setHistory((prev) => {
+      commitHistory((prev) => {
         const byId = new Map<string, SessionSummary>()
         for (const session of loaded) byId.set(session.id, session)
         for (const item of pending) {
@@ -240,7 +283,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       favorites,
       toggleFavorite: (comboId) => {
         enqueueAfterLocalData(() => {
-          setFavorites((prev) => {
+          commitFavorites((prev) => {
             const next = prev.includes(comboId) ? prev.filter((id) => id !== comboId) : [...prev, comboId]
             const result = saveFavorites(next)
             queueMicrotask(() => applyWrite(result, 'favorites'))
@@ -256,7 +299,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             applyWrite({ ok: false, reason: 'write-failed', message: semantic.message }, 'custom-combos')
             return
           }
-          setCustomCombos((prev) => {
+          commitCustomCombos((prev) => {
             const idx = prev.findIndex((c) => c.id === combo.id)
             const next = idx >= 0 ? prev.map((c) => (c.id === combo.id ? combo : c)) : [...prev, combo]
             const result = saveCustomCombos(next)
@@ -267,7 +310,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       },
       removeCustomCombo: (id) => {
         enqueueAfterLocalData(() => {
-          setCustomCombos((prev) => {
+          commitCustomCombos((prev) => {
             const next = prev.filter((c) => c.id !== id)
             const result = saveCustomCombos(next)
             queueMicrotask(() => applyWrite(result, 'custom-combos'))
@@ -302,7 +345,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const persistNow = async () => {
           try {
             if (!historyReadyRef.current) {
-              setHistory((prev) => {
+              commitHistory((prev) => {
                 if (prev.some((h) => h.id === summary.id)) return prev
                 return [summary, ...prev]
               })
@@ -310,7 +353,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
               return
             }
 
-            setHistory((prev) => {
+            commitHistory((prev) => {
               if (prev.some((h) => h.id === summary.id)) return prev
               return [summary, ...prev]
             })
@@ -325,14 +368,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
             if (historyStore.getHistoryWriteGeneration() !== committed.generation) {
               const durable = await historyStore.ensureHistoryInitialized()
               if (!durable.history.some((session) => session.id === summary.id)) {
-                setHistory((prev) => prev.filter((session) => session.id !== summary.id))
+                commitHistory((prev) => prev.filter((session) => session.id !== summary.id))
                 finish({ status: 'skipped' })
                 return
               }
             }
 
             applyWrite(committed.write, 'history')
-            setHistory((prev) => {
+            commitHistory((prev) => {
               if (prev.some((h) => h.id === summary.id)) {
                 return historyStore.sortHistory(prev.map((h) => (h.id === summary.id ? summary : h)))
               }
@@ -365,7 +408,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             for (const item of leftover) {
               item.resolve({ status: 'skipped' })
             }
-            setHistory([])
+            commitHistory([])
           }
         })
         clearInFlightRef.current = run
@@ -377,7 +420,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       resetPreferences: () => {
         enqueueAfterLocalData(() => {
           const { preferences: next, write } = resetPreferencesStore()
-          setPreferencesState(next)
+          commitPreferences(next)
           applyWrite(write, 'preferences')
         })
       },
@@ -397,11 +440,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
           historyReadyRef.current = true
           setHistoryReady(true)
-          setPreferencesState(loadPreferences())
-          setFavorites(loadFavorites())
-          setCustomCombos(loadCustomCombos())
-          setDailyDrillsState(loadDailyDrillMap())
-          setHistory(await historyStore.loadHistory())
+          commitPreferences(loadPreferences())
+          commitFavorites(loadFavorites())
+          commitCustomCombos(loadCustomCombos())
+          commitDailyDrills(loadDailyDrillMap())
+          commitHistory(await historyStore.loadHistory())
 
           if (result.ok) {
             setStorageIssue(null)
@@ -425,15 +468,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
           const normalized = normalizeDailyDrillState(state)
           if (!normalized) return
           const result = saveDailyDrill(normalized)
-          setDailyDrillsState((prev) => ({ ...prev, [normalized.dateKey]: normalized }))
+          commitDailyDrills((prev) => ({ ...prev, [normalized.dateKey]: normalized }))
           applyWrite(result, 'daily-drill')
         })
       },
       getDailyDrill: (dateKey) => dailyDrills[dateKey] ?? null,
       exportData: () =>
         dataMutationTailRef.current.then(
-          () => userDataStore.exportUserData(),
-          () => userDataStore.exportUserData(),
+          () => userDataStore.exportCanonicalUserData(canonicalRef.current),
+          () => userDataStore.exportCanonicalUserData(canonicalRef.current),
         ),
       importData: (json) =>
         runLocalDataMutation(async () => {
@@ -441,11 +484,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
           const applied = result.ok || ('applied' in result && result.applied === true)
           if (applied) {
             dataEpochRef.current += 1
-            setPreferencesState(loadPreferences())
-            setFavorites(loadFavorites())
-            setCustomCombos(loadCustomCombos())
-            setHistory(await historyStore.loadHistory())
-            setDailyDrillsState(loadDailyDrillMap())
+            commitPreferences(loadPreferences())
+            commitFavorites(loadFavorites())
+            commitCustomCombos(loadCustomCombos())
+            commitHistory(await historyStore.loadHistory())
+            commitDailyDrills(loadDailyDrillMap())
             historyReadyRef.current = true
             setHistoryReady(true)
             if (result.ok) {
