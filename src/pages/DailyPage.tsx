@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { ComboDisplay } from '../components/ComboDisplay'
 import { useApp } from '../context/useApp'
-import { createDefaultWorkout, definedPartial } from '../data/defaults'
+import { createDefaultWorkout, definedPartial, resolveWorkoutDisplayPrefs } from '../data/defaults'
 import { localDateKey, msUntilNextLocalMidnight } from '../utils/localDate'
 import {
   dailyDrillCompleteMessage,
@@ -107,6 +107,7 @@ export function DailyPage() {
     })
 
     const seedDefined = definedPartial(seed ?? {})
+    const display = resolveWorkoutDisplayPrefs(seed, preferences.preferMinimalMode)
     const config = createDefaultWorkout({
       ...seedDefined,
       martialArt,
@@ -127,6 +128,7 @@ export function DailyPage() {
       sound: seed?.sound ?? preferences.sound,
       sideTerminology: seed?.sideTerminology ?? preferences.sideTerminology,
       resumeBehavior: seed?.resumeBehavior ?? preferences.resumeBehavior,
+      ...display,
       ...(seed?.includeKnees !== undefined ? { includeKnees: seed.includeKnees } : {}),
       ...(seed?.includeElbows !== undefined ? { includeElbows: seed.includeElbows } : {}),
       ...(seed?.includeHeadKicks !== undefined ? { includeHeadKicks: seed.includeHeadKicks } : {}),

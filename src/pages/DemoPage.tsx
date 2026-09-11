@@ -38,6 +38,7 @@ export function DemoPage() {
       sideTerminology: 'lead-rear',
       resumeBehavior: preferences.resumeBehavior,
       minimalMode: preferences.preferMinimalMode,
+      showNextTechnique: !preferences.preferMinimalMode,
     })
 
     const primed = await primeTrainingAudio({ musicFriendly: preferences.speech.musicFriendly })

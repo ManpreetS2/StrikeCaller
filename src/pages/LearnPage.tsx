@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { filterCombos } from '../data/combos'
 import { ComboDisplay } from '../components/ComboDisplay'
 import { useApp } from '../context/useApp'
-import { createDefaultWorkout, definedPartial } from '../data/defaults'
+import { createDefaultWorkout, definedPartial, resolveWorkoutDisplayPrefs } from '../data/defaults'
 import { getTechnique } from '../data/techniques'
 import type { PacePreset, WorkoutConfig } from '../types'
 
@@ -50,6 +50,7 @@ export function LearnPage() {
 
   const practice = () => {
     const seedDefined = definedPartial(seed ?? {})
+    const display = resolveWorkoutDisplayPrefs(seed, preferences.preferMinimalMode)
     const config = createDefaultWorkout({
       ...seedDefined,
       martialArt,
@@ -66,6 +67,7 @@ export function LearnPage() {
       sound: seed?.sound ?? preferences.sound,
       sideTerminology: terminology,
       resumeBehavior: seed?.resumeBehavior ?? preferences.resumeBehavior,
+      ...display,
     })
     navigate('/session', { state: { config } })
   }

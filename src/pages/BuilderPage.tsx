@@ -134,6 +134,7 @@ export function BuilderPage() {
       sideTerminology: preferences.sideTerminology,
       resumeBehavior: preferences.resumeBehavior,
       minimalMode: preferences.preferMinimalMode,
+      showNextTechnique: !preferences.preferMinimalMode,
       categories:
         runtime.martialArt === 'boxing'
           ? ['punch', 'defense', 'movement', 'counter']

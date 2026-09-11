@@ -44,9 +44,10 @@ export function HomePage() {
     }
     const primed = await primeTrainingAudio({ musicFriendly: preferences.speech.musicFriendly })
     const built = preset.build(preferences)
+    const minimalMode = preferences.preferMinimalMode || built.minimalMode
     navigate('/session', {
       state: {
-        config: { ...built, minimalMode: preferences.preferMinimalMode || built.minimalMode },
+        config: { ...built, minimalMode, showNextTechnique: !minimalMode },
         audioPrimed: primed.ok,
       },
     })

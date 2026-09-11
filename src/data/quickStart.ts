@@ -45,6 +45,8 @@ function baseFromPrefs(prefs: UserPreferences, partial: Partial<WorkoutConfig>):
     sideTerminology: prefs.sideTerminology,
     largeText: prefs.largeText,
     resumeBehavior: prefs.resumeBehavior,
+    minimalMode: prefs.preferMinimalMode,
+    showNextTechnique: !prefs.preferMinimalMode,
     defenseFrequency: prefs.includeDefense === false ? 0 : 0.35,
     movementFrequency: prefs.includeMovement === false ? 0 : 0.4,
     includeKnees: boxing ? false : prefs.equipment !== 'shadowboxing',
