@@ -126,6 +126,7 @@ export function DailyPage() {
         callStyle: seed?.callStyle ?? preferences.callStyle,
       },
       sound: seed?.sound ?? preferences.sound,
+      timingMultipliers: seed?.timingMultipliers ?? preferences.timingMultipliers,
       sideTerminology: seed?.sideTerminology ?? preferences.sideTerminology,
       resumeBehavior: seed?.resumeBehavior ?? preferences.resumeBehavior,
       ...display,

@@ -123,6 +123,8 @@ export function BuilderPage() {
       difficulty: preferences.experience,
       callStyle: preferences.callStyle,
       pace: preferences.pace,
+      customPaceMultiplier: preferences.customPaceMultiplier,
+      timingMultipliers: preferences.timingMultipliers,
       sessionDurationSec: Math.max(60, repeats * 20),
       roundDurationSec: Math.max(60, repeats * 20),
       rounds: 1,

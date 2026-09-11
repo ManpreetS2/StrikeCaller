@@ -65,6 +65,7 @@ export function LearnPage() {
       selectedComboIds: [combo.id],
       speech: { ...(seed?.speech ?? preferences.speech), callStyle },
       sound: seed?.sound ?? preferences.sound,
+      timingMultipliers: seed?.timingMultipliers ?? preferences.timingMultipliers,
       sideTerminology: terminology,
       resumeBehavior: seed?.resumeBehavior ?? preferences.resumeBehavior,
       ...display,
