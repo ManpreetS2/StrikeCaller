@@ -47,16 +47,16 @@ StrikeCaller is built so every call is trainable — curated first, generated on
 ## Product walkthrough
 
 <p align="center">
-  <img src="./docs/screenshots/03-session-desktop.png" alt="Active desktop session: Round 1 work clock, current call One, next Body cross, southpaw technical Coach mode, session control dock" width="900">
+  <img src="./docs/screenshots/03-session-desktop.png" alt="Active desktop session: Round 1 WORK timer, current call Two, next Three, southpaw technical Coach mode, and Pause Repeat Skip End dock" width="900">
 </p>
 
 | Customize a workout | Daily Drill |
 |---|---|
-| <img src="./docs/screenshots/02-train-desktop.png" alt="Train screen with Boxing selected, Round Mode, southpaw stance, and a 3×180s technical session summary"> | <img src="./docs/screenshots/04-daily-desktop.png" alt="Daily Drill showing Jab jab rear low kick with Slow practice unlocked and later phases locked"> |
+| <img src="./docs/screenshots/02-train-desktop.png" alt="Train screen with Boxing selected, Round Mode, southpaw stance, and a 3×180s technical session summary"> | <img src="./docs/screenshots/04-daily-desktop.png" alt="Daily Drill showing Body cross lead hook cross with Slow practice unlocked and later phases locked"> |
 
 | Custom Combo Builder | Training Stats |
 |---|---|
-| <img src="./docs/screenshots/05-builder-desktop.png" alt="Custom Combo Builder with Boxing selected, Jab Cross titled sequence Jab then Cross, punch palette, and Save combo"> | <img src="./docs/screenshots/06-stats-desktop.png" alt="Training Stats local-only page with two sessions, Boxing and Muay Thai breakdown, and one saved custom combo"> |
+| <img src="./docs/screenshots/05-builder-desktop.png" alt="Custom Combo Builder with Boxing selected, Jab Cross sequence, punch palette, and Save combo"> | <img src="./docs/screenshots/06-stats-desktop.png" alt="Training Stats local-only page with two sessions, 18 minutes, and Boxing plus Muay Thai breakdown"> |
 
 <p align="center">
   <img src="./docs/screenshots/07-summary-desktop.png" alt="Durable workout summary after a completed Boxing southpaw technical Coach session, with work time, combinations, and frequent techniques" width="900">
@@ -65,9 +65,9 @@ StrikeCaller is built so every call is trainable — curated first, generated on
 Gym-oriented Session layout (mobile):
 
 <p align="center">
-  <img src="./docs/screenshots/08-session-mobile.png" alt="Mobile session: large current call, work timer, combo path, and thumb-zone Pause Repeat Skip End dock" width="390">
+  <img src="./docs/screenshots/08-session-mobile.png" alt="Mobile session: Round 1 WORK, large current call Two, combo path, and thumb-zone Pause Repeat Skip End dock" width="390">
   &nbsp;
-  <img src="./docs/screenshots/09-home-mobile.png" alt="Mobile home: StrikeCaller title, Quick Train, Guided Demo, and Customize Workout on a narrow viewport" width="390">
+  <img src="./docs/screenshots/09-home-mobile.png" alt="Mobile home: StrikeCaller v1.3.3, Quick Boxing, Guided Demo, and Customize Workout on a narrow viewport" width="390">
 </p>
 
 ## Engineering highlights
