@@ -341,8 +341,8 @@ describe('S3 future session timestamps', () => {
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /train again/i })).toBeInTheDocument()
     })
-    const recent = screen.getByRole('heading', { name: /recent workout/i }).closest('div')
-    expect(recent).toHaveTextContent(/muay-thai/i)
+    const recent = screen.getByText(/last session/i)
+    expect(recent).toHaveTextContent(/muay thai/i)
     expect(recent).not.toHaveTextContent(/boxing/i)
   })
 

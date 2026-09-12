@@ -85,7 +85,7 @@ describe('saved timing multipliers across workout entry points', () => {
   it('Quick Start copies the saved punch multiplier', async () => {
     seedPrefs()
     const { router } = renderApp('/')
-    fireEvent.click(screen.getAllByRole('button', { name: /^quick train$/i })[0]!)
+    fireEvent.click(screen.getByRole('button', { name: /start workout: quick train/i }))
     await waitFor(() => expect(router.state.location.pathname).toBe('/session'))
     expect(sessionConfig(router).timingMultipliers.punch).toBe(1.8)
     expect(getQuickStartPreset('quick-train').build({ ...DEFAULT_PREFERENCES, timingMultipliers: SAVED_TIMING }).timingMultipliers.punch).toBe(1.8)

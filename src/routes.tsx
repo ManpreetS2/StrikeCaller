@@ -13,6 +13,7 @@ import { DailyPage } from './pages/DailyPage'
 import { DemoPage } from './pages/DemoPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { StatsPage } from './pages/StatsPage'
+import { MorePage } from './pages/MorePage'
 
 /** Shared route tree used by production (hash) and integration tests (memory). */
 export const appRoutes: RouteObject[] = [
@@ -68,6 +69,7 @@ export const appRoutes: RouteObject[] = [
       { path: 'summary/:sessionId', element: <SummaryPage /> },
       { path: 'stats', element: <StatsPage /> },
       { path: 'settings', element: <SettingsPage /> },
+      { path: 'more', element: <MorePage /> },
       { path: '*', element: <Navigate to="/" replace /> },
     ],
   },

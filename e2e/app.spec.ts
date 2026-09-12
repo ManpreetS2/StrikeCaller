@@ -4,6 +4,7 @@ test.describe('app load and navigation', () => {
   test('loads StrikeCaller and navigates major routes', async ({ page }) => {
     await openApp(page)
     await expect(page.getByRole('heading', { name: 'StrikeCaller' })).toBeVisible()
+    await expect(page.getByRole('button', { name: /start workout/i })).toBeVisible()
     await expect(
       page.getByRole('navigation', { name: 'Primary' }).or(page.getByRole('navigation', { name: 'Mobile' })),
     ).toBeVisible()
