@@ -48,7 +48,7 @@ export function AppLayout() {
             <span className="min-w-0">
               <span className="display block text-xl leading-none tracking-[0.08em] sm:text-2xl">StrikeCaller</span>
               <span className="hidden text-xs text-[var(--text-dim)] sm:block">
-                Boxing & Muay Thai · v{APP_VERSION}
+                Boxing, Muay Thai & MMA · v{APP_VERSION}
               </span>
             </span>
           </Link>

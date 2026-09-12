@@ -1,5 +1,6 @@
 import { DEFAULT_TIMING_MULTIPLIERS } from '../engines/timingEngine'
 import type { SpeechSettings, SoundSettings, UserPreferences, WorkoutConfig } from '../types'
+import { sportUsesKicks } from '../utils/martialArt'
 
 /** Fixed speech profile — browser default English voice; no user voice UI. */
 export const DEFAULT_SPEECH: SpeechSettings = {
@@ -48,7 +49,7 @@ export const DEFAULT_PREFERENCES: UserPreferences = {
   wakeLockNoticeDismissed: false,
 }
 
-export const APP_VERSION = '1.4.0'
+export const APP_VERSION = '1.5.0'
 
 /** Resolve workout display flags: seed wins, otherwise the saved preference. */
 export function resolveWorkoutDisplayPrefs(
@@ -77,6 +78,7 @@ export function createDefaultWorkout(partial?: Partial<WorkoutConfig>): WorkoutC
   const clean = definedPartial(partial)
   const martialArt = clean.martialArt ?? 'muay-thai'
   const boxing = martialArt === 'boxing'
+  const mma = martialArt === 'mma-striking'
   const base: WorkoutConfig = {
     martialArt,
     mode: 'round',
@@ -87,7 +89,7 @@ export function createDefaultWorkout(partial?: Partial<WorkoutConfig>): WorkoutC
     rounds: 3,
     roundDurationSec: 180,
     restDurationSec: 60,
-    comboLength: { min: 2, max: 5 },
+    comboLength: mma ? { min: 2, max: 4 } : { min: 2, max: 5 },
     pace: 'technical',
     customPaceMultiplier: 1,
     timingMultipliers: { ...DEFAULT_TIMING_MULTIPLIERS },
@@ -103,7 +105,7 @@ export function createDefaultWorkout(partial?: Partial<WorkoutConfig>): WorkoutC
     speech: { ...DEFAULT_SPEECH },
     includeHeadKicks: false,
     includeElbows: false,
-    includeKnees: !boxing,
+    includeKnees: sportUsesKicks(martialArt),
     includeClinch: false,
     showNextTechnique: true,
     minimalMode: false,

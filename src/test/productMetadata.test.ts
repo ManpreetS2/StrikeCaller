@@ -8,7 +8,7 @@ import { pngHasAlpha, readPngDimensions } from '../../scripts/pngDimensions.mjs'
 
 const PRODUCTION_SITE_URL = 'https://manpreets2.github.io/StrikeCaller/'
 const PRODUCTION_OG_IMAGE_URL = `${PRODUCTION_SITE_URL}og-image.png`
-const DOCUMENT_TITLE = 'StrikeCaller — Boxing & Muay Thai Combo Coach'
+const DOCUMENT_TITLE = 'StrikeCaller — Boxing, Muay Thai & MMA Striking Coach'
 
 describe('production product metadata', () => {
   const title = documentTitle(indexHtml)

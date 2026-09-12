@@ -2,9 +2,9 @@
 
 **Hear the combo. Set the pace. Build the reaction.**
 
-StrikeCaller is a complete local-first spoken combo coach for **Boxing** and **Muay Thai**. It calls realistic combinations during shadowboxing, bag work, pad work, or solo drills — with adaptive pacing, timed rounds, and training stats that stay in the browser.
+StrikeCaller is a complete local-first spoken combo coach for **Boxing**, **Muay Thai**, and **MMA Striking**. It calls realistic combinations during shadowboxing, bag work, pad work, or solo drills — with adaptive pacing, timed rounds, and training stats that stay in the browser.
 
-Current release: **1.4.0**. See [CHANGELOG.md](./CHANGELOG.md) for what’s new.
+Current release: **1.5.0**. See [CHANGELOG.md](./CHANGELOG.md) for what’s new.
 
 <p align="center">
   <img src="./docs/screenshots/01-home-desktop.png" alt="StrikeCaller home: featured workout with Start workout, Boxing and Muay Thai toggle, For You quick starts, and local weekly progress" width="900">
@@ -18,13 +18,13 @@ Current release: **1.4.0**. See [CHANGELOG.md](./CHANGELOG.md) for what’s new.
 |---|---|
 | **Live** | [GitHub Pages](https://manpreets2.github.io/StrikeCaller/) |
 | **Stack** | React · TypeScript · Vite |
-| **Quality** | 722 Vitest / 47 files · 86 Playwright passed / 36 skipped / 0 failed |
+| **Quality** | 739 Vitest / 48 files · 86 Playwright passed · 36 skipped · 0 failed |
 | **Browsers** | Chromium · Firefox · WebKit · Mobile WebKit |
 | **Storage** | IndexedDB + localStorage |
 | **Privacy** | No account · No backend · Privacy-first anonymous site analytics · No cloud sync |
 | **Release** | [v1.4.0](https://github.com/ManpreetS2/StrikeCaller/releases/tag/v1.4.0) |
 
-**225** curated combinations (**125** Muay Thai, **100** Boxing). Free. No account.
+**300** curated combinations (**125** Muay Thai, **100** Boxing, **75** MMA Striking). Free. No account.
 
 StrikeCaller tracks training activity, not technique quality or accuracy.
 
@@ -42,6 +42,8 @@ StrikeCaller is built so every call is trainable — curated first, generated on
 - **Stance-aware** — orthodox and southpaw as first-class; lead/rear by default, optional left/right
 - **Local stats** — session history, streaks, and durable workout summaries after refresh
 - **Installable / offline** — after one successful online load, later visits can run the app shell and local training features without internet
+
+**MMA Striking** adapts StrikeCaller’s spoken drills for mixed-rules striking: shorter combinations, balanced kick recovery, defensive exits, and takedown-aware distance — without pretending to teach grappling.
 
 ## Product walkthrough
 
@@ -128,9 +130,9 @@ Pull requests run verify, e2e, and Pages build. Deploy and live verification run
 
 ## Reliability and testing
 
-v1.4.0 quality gate:
+v1.5.0 quality gate:
 
-- **722** Vitest tests across **47** files
+- **739** Vitest tests across **48** files
 - **86** Playwright tests passed, **36** skipped, **0** failed
 - Chromium, Firefox, WebKit, and mobile WebKit
 - lint, typecheck, unit/integration tests, Pages artifact verification, and E2E
@@ -260,7 +262,7 @@ Routing uses `HashRouter` so deep links and refresh work without server rewrites
 - Wake lock and vibration support vary by device
 - Clinch, elbows, and some knee work need appropriate equipment or coaching; the app warns or filters where practical
 
-v1.4 supports Boxing and Muay Thai. That is the complete product.
+v1.5 supports Boxing, Muay Thai, and MMA Striking. It is not full MMA instruction: no wrestling teaching, submissions, or ground work.
 
 ## Safety
 

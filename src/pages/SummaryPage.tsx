@@ -6,6 +6,7 @@ import { getSessionById, type SessionByIdResult } from '../storage/historyStore'
 import { parseSessionRouteId, validateSessionSummary } from '../storage/sessionValidation'
 import { buildTrainAgainPayload } from '../utils/trainAgain'
 import type { SessionSummary } from '../types'
+import { martialArtLabel } from '../utils/martialArt'
 
 type SummaryView =
   | { kind: 'loading' }
@@ -35,10 +36,6 @@ function stateSummary(raw: unknown): SessionSummary | null {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw) || !('summary' in raw)) return null
   const candidate = (raw as { summary?: unknown }).summary
   return validateSessionSummary(candidate) ?? (isDisplayableSummary(candidate) ? candidate : null)
-}
-
-function martialArtLabel(art: SessionSummary['martialArt']): string {
-  return art === 'boxing' ? 'Boxing' : 'Muay Thai'
 }
 
 export function SummaryPage() {

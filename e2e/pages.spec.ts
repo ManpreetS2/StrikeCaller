@@ -79,7 +79,7 @@ test.describe('GitHub Pages base path', () => {
     const pagesBase = test.info().project.use.baseURL ?? ''
     await page.goto(new URL('.', pagesBase).href)
 
-    await expect(page).toHaveTitle('StrikeCaller — Boxing & Muay Thai Combo Coach')
+    await expect(page).toHaveTitle('StrikeCaller — Boxing, Muay Thai & MMA Striking Coach')
     expect(await page.title()).not.toMatch(/v\d|hotfix|GitHub Pages/i)
 
     const description = page.locator('meta[name="description"]')
@@ -94,7 +94,7 @@ test.describe('GitHub Pages base path', () => {
     await expect(page.locator('meta[property="og:title"]')).toHaveCount(1)
     await expect(page.locator('meta[property="og:title"]')).toHaveAttribute(
       'content',
-      'StrikeCaller — Boxing & Muay Thai Combo Coach',
+      'StrikeCaller — Boxing, Muay Thai & MMA Striking Coach',
     )
     await expect(page.locator('meta[property="og:description"]')).toHaveCount(1)
     await expect(page.locator('meta[property="og:description"]')).toHaveAttribute('content', /spoken/i)

@@ -131,11 +131,11 @@ describe('parseDailyDrillKey', () => {
       civilDate: '2026-09-08',
       martialArt: 'boxing',
     })
-    expect(parseDailyDrillKey('2026-09-08:muay-thai')).toEqual({
+    expect(parseDailyDrillKey('2026-09-08:mma-striking')).toEqual({
       ok: true,
-      key: '2026-09-08:muay-thai',
+      key: '2026-09-08:mma-striking',
       civilDate: '2026-09-08',
-      martialArt: 'muay-thai',
+      martialArt: 'mma-striking',
     })
   })
 

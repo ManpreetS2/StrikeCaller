@@ -13,6 +13,12 @@ export type QuickStartId =
   | 'boxing-defense'
   | 'boxing-conditioning'
   | 'boxing-daily'
+  | 'quick-mma'
+  | 'mma-low-kick'
+  | 'mma-defense'
+  | 'mma-fight'
+  | 'mma-shadow'
+  | 'mma-daily'
 
 export interface QuickStartPreset {
   id: QuickStartId
@@ -26,6 +32,7 @@ export interface QuickStartPreset {
 function baseFromPrefs(prefs: UserPreferences, partial: Partial<WorkoutConfig>): WorkoutConfig {
   const martialArt = partial.martialArt ?? prefs.martialArt
   const boxing = martialArt === 'boxing'
+  const mma = martialArt === 'mma-striking'
   return createDefaultWorkout({
     stance: prefs.stance,
     difficulty: prefs.experience,
@@ -56,6 +63,7 @@ function baseFromPrefs(prefs: UserPreferences, partial: Partial<WorkoutConfig>):
     categories: boxing
       ? ['punch', 'defense', 'movement', 'counter']
       : ['punch', 'kick', 'teep', 'defense', 'movement'],
+    ...(mma ? { comboLength: { min: 2, max: 4 } } : {}),
     ...partial,
     martialArt,
   })
@@ -242,15 +250,118 @@ const BOXING_PRESETS: QuickStartPreset[] = [
   },
 ]
 
+const MMA_PRESETS: QuickStartPreset[] = [
+  {
+    id: 'quick-mma',
+    title: 'MMA Fundamentals',
+    body: '5 minutes · short mixed combinations',
+    martialArt: 'mma-striking',
+    build: (prefs) =>
+      baseFromPrefs(prefs, {
+        martialArt: 'mma-striking',
+        mode: 'coach',
+        equipment: prefs.equipment || 'shadowboxing',
+        sessionDurationSec: 300,
+        roundDurationSec: 300,
+        rounds: 1,
+      }),
+  },
+  {
+    id: 'mma-low-kick',
+    title: 'Hands to Low Kick',
+    body: '3 × 2-minute rounds · 60s rest',
+    martialArt: 'mma-striking',
+    build: (prefs) =>
+      baseFromPrefs(prefs, {
+        martialArt: 'mma-striking',
+        mode: 'round',
+        equipment: 'heavy-bag',
+        rounds: 3,
+        roundDurationSec: 120,
+        restDurationSec: 60,
+        sessionDurationSec: 120,
+        includeKnees: false,
+        categories: ['punch', 'kick', 'teep', 'defense', 'movement'],
+      }),
+  },
+  {
+    id: 'mma-defense',
+    title: 'Defense & Exit',
+    body: '5 minutes · counters and angle exits',
+    martialArt: 'mma-striking',
+    build: (prefs) =>
+      baseFromPrefs(prefs, {
+        martialArt: 'mma-striking',
+        mode: 'reaction',
+        equipment: 'shadowboxing',
+        sessionDurationSec: 300,
+        roundDurationSec: 300,
+        rounds: 1,
+        defenseFrequency: 0.7,
+        movementFrequency: 0.55,
+        includeKnees: false,
+      }),
+  },
+  {
+    id: 'mma-fight',
+    title: 'MMA Fight Pace',
+    body: '10 minutes · short bursts, clean recovery',
+    martialArt: 'mma-striking',
+    build: (prefs) =>
+      baseFromPrefs(prefs, {
+        martialArt: 'mma-striking',
+        mode: 'coach',
+        sessionDurationSec: 600,
+        roundDurationSec: 600,
+        rounds: 1,
+        pace: prefs.pace === 'learn' || prefs.pace === 'slow' ? 'normal' : prefs.pace,
+      }),
+  },
+  {
+    id: 'mma-shadow',
+    title: 'MMA Shadowboxing',
+    body: '3 × 2-minute rounds · 45s rest',
+    martialArt: 'mma-striking',
+    build: (prefs) =>
+      baseFromPrefs(prefs, {
+        martialArt: 'mma-striking',
+        mode: 'round',
+        equipment: 'shadowboxing',
+        rounds: 3,
+        roundDurationSec: 120,
+        restDurationSec: 45,
+        sessionDurationSec: 120,
+        includeKnees: false,
+      }),
+  },
+  {
+    id: 'mma-daily',
+    title: 'Daily MMA Drill',
+    body: 'One focused combo · slow → fight pace',
+    martialArt: 'mma-striking',
+    routeToDaily: true,
+    build: (prefs) =>
+      baseFromPrefs(prefs, {
+        martialArt: 'mma-striking',
+        mode: 'daily',
+        sessionDurationSec: 45,
+        roundDurationSec: 45,
+        rounds: 1,
+      }),
+  },
+]
+
 /** @deprecated Prefer getQuickStartPresets(martialArt) */
 export const QUICK_START_PRESETS = MUAY_THAI_PRESETS
 
 export function getQuickStartPresets(martialArt: MartialArt): QuickStartPreset[] {
-  return martialArt === 'boxing' ? BOXING_PRESETS : MUAY_THAI_PRESETS
+  if (martialArt === 'boxing') return BOXING_PRESETS
+  if (martialArt === 'mma-striking') return MMA_PRESETS
+  return MUAY_THAI_PRESETS
 }
 
 export function getQuickStartPreset(id: QuickStartId): QuickStartPreset {
-  const preset = [...MUAY_THAI_PRESETS, ...BOXING_PRESETS].find((p) => p.id === id)
+  const preset = [...MUAY_THAI_PRESETS, ...BOXING_PRESETS, ...MMA_PRESETS].find((p) => p.id === id)
   if (!preset) throw new Error(`Unknown quick start: ${id}`)
   return preset
 }

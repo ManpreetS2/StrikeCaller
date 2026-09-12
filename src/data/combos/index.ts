@@ -4,6 +4,7 @@ import { ADVANCED_COMBOS } from './advanced'
 import { DEFENSIVE_COMBOS } from './defensive'
 import { MOVEMENT_COMBOS, CONDITIONING_COMBOS } from './movement'
 import { BOXING_COMBOS, getBoxingComboStats } from '../boxing'
+import { MMA_STRIKING_COMBOS, getMmaStrikingComboStats } from '../mma-striking'
 import type { Combo, Difficulty, Equipment, MartialArt, TrainingMode } from '../../types'
 
 export const MUAY_THAI_COMBOS: Combo[] = [
@@ -16,7 +17,7 @@ export const MUAY_THAI_COMBOS: Combo[] = [
 ]
 
 /** All built-in combinations across sports. */
-export const CURATED_COMBOS: Combo[] = [...MUAY_THAI_COMBOS, ...BOXING_COMBOS]
+export const CURATED_COMBOS: Combo[] = [...MUAY_THAI_COMBOS, ...BOXING_COMBOS, ...MMA_STRIKING_COMBOS]
 
 export const COMBO_MAP: Record<string, Combo> = Object.fromEntries(
   CURATED_COMBOS.map((c) => [c.id, c]),
@@ -122,8 +123,9 @@ export function filterCombos(options: {
 
 export function getComboStats(martialArt?: MartialArt) {
   const boxing = getBoxingComboStats()
+  const mma = getMmaStrikingComboStats()
   if (martialArt === 'boxing') {
-    return { ...boxing, muayThai: 0, boxing: boxing.total }
+    return { ...boxing, muayThai: 0, boxing: boxing.total, mmaStriking: 0 }
   }
   if (martialArt === 'muay-thai') {
     return {
@@ -136,18 +138,28 @@ export function getComboStats(martialArt?: MartialArt) {
       conditioning: CONDITIONING_COMBOS.length,
       muayThai: MUAY_THAI_COMBOS.length,
       boxing: 0,
+      mmaStriking: 0,
+    }
+  }
+  if (martialArt === 'mma-striking') {
+    return {
+      ...mma,
+      muayThai: 0,
+      boxing: 0,
+      mmaStriking: mma.total,
     }
   }
   return {
     total: CURATED_COMBOS.length,
-    beginner: BEGINNER_COMBOS.length + boxing.beginner,
-    intermediate: INTERMEDIATE_COMBOS.length + boxing.intermediate,
-    advanced: ADVANCED_COMBOS.length + boxing.advanced,
-    defensive: DEFENSIVE_COMBOS.length + boxing.defensive,
-    movement: MOVEMENT_COMBOS.length + boxing.movement,
+    beginner: BEGINNER_COMBOS.length + boxing.beginner + mma.beginner,
+    intermediate: INTERMEDIATE_COMBOS.length + boxing.intermediate + mma.intermediate,
+    advanced: ADVANCED_COMBOS.length + boxing.advanced + mma.advanced,
+    defensive: DEFENSIVE_COMBOS.length + boxing.defensive + mma.defensive,
+    movement: MOVEMENT_COMBOS.length + boxing.movement + mma.movement,
     conditioning: CONDITIONING_COMBOS.length + boxing.conditioning,
     muayThai: MUAY_THAI_COMBOS.length,
     boxing: boxing.total,
+    mmaStriking: mma.total,
   }
 }
 
@@ -159,4 +171,5 @@ export {
   MOVEMENT_COMBOS,
   CONDITIONING_COMBOS,
   BOXING_COMBOS,
+  MMA_STRIKING_COMBOS,
 }

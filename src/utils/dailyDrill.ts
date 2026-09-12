@@ -1,17 +1,19 @@
 import { BEGINNER_COMBOS, INTERMEDIATE_COMBOS, COMBO_MAP, getCombo } from '../data/combos'
 import { BOXING_BEGINNER, BOXING_INTERMEDIATE } from '../data/boxing'
+import { MMA_BEGINNER, MMA_INTERMEDIATE } from '../data/mma-striking'
 import type { Combo, DailyDrillMap, DailyDrillState, MartialArt } from '../types'
+import { isMartialArt, martialArtLabel } from './martialArt'
 import { booleanOr, defineOwn, hasOwn, isForbiddenKey, isPlainObject, nonEmptyString, oneOf, readBoolean } from '../storage/parseUnknown'
 import { MARTIAL_ARTS } from '../storage/sessionValidation'
 import { localDateKey } from './localDate'
 
-const DAILY_DRILL_KEY_PATTERN = /^(\d{4})-(\d{2})-(\d{2}):(boxing|muay-thai)$/
+const DAILY_DRILL_KEY_PATTERN = /^(\d{4})-(\d{2})-(\d{2}):(boxing|muay-thai|mma-striking)$/
 
 /** Storage / lookup key: local civil date + martial art. Never shown in UI. */
 export function dailyDrillKey(dateKey: string, martialArt: MartialArt): string {
   if (dateKey.includes(':')) {
     const [, maybeArt] = dateKey.split(':')
-    if (maybeArt === 'boxing' || maybeArt === 'muay-thai') return dateKey
+    if (isMartialArt(maybeArt)) return dateKey
   }
   return `${dateKey}:${martialArt}`
 }
@@ -29,7 +31,7 @@ function isValidCivilDateParts(year: number, month: number, day: number): boolea
 
 /**
  * Strict route-boundary parser for Daily Drill origin keys.
- * Validates canonical `YYYY-MM-DD:boxing|muay-thai` shape and a real civil date.
+ * Validates canonical `YYYY-MM-DD:boxing|muay-thai|mma-striking` shape and a real civil date.
  * Does not require the key to equal today — a previous-day origin is valid after midnight.
  */
 export function parseDailyDrillKey(
@@ -56,7 +58,9 @@ export function pickDailyComboId(key: string, martialArt: MartialArt): string {
   const pool =
     martialArt === 'boxing'
       ? [...BOXING_BEGINNER, ...BOXING_INTERMEDIATE]
-      : [...BEGINNER_COMBOS, ...INTERMEDIATE_COMBOS]
+      : martialArt === 'mma-striking'
+        ? [...MMA_BEGINNER, ...MMA_INTERMEDIATE]
+        : [...BEGINNER_COMBOS, ...INTERMEDIATE_COMBOS]
   let hash = 0
   for (let i = 0; i < key.length; i++) hash = (hash + key.charCodeAt(i) * (i + 1)) % pool.length
   return pool[hash]!.id
@@ -144,9 +148,7 @@ export function validateImportedDailyDrills(
   return { ok: true, value: map }
 }
 
-export function martialArtLabel(art: MartialArt): string {
-  return art === 'boxing' ? 'Boxing' : 'Muay Thai'
-}
+export { martialArtLabel }
 
 export function dailyDrillCompleteMessage(martialArt: MartialArt): string {
   return `Today’s ${martialArtLabel(martialArt)} drill is complete.`
@@ -189,7 +191,12 @@ export function normalizeDailyDrillState(raw: unknown): DailyDrillState | null {
   }
 
   const martialArt: MartialArt =
-    oneOf(raw.martialArt, MARTIAL_ARTS) ?? (dateKey.includes(':boxing') ? 'boxing' : 'muay-thai')
+    oneOf(raw.martialArt, MARTIAL_ARTS) ??
+    (dateKey.includes(':mma-striking')
+      ? 'mma-striking'
+      : dateKey.includes(':boxing')
+        ? 'boxing'
+        : 'muay-thai')
   const key = dailyDrillKey(dateKey, martialArt)
   return {
     dateKey: key,
