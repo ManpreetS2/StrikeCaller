@@ -16,9 +16,16 @@ test.describe('production service worker', () => {
         }),
       )
       .toBe(true)
+
+    const sw = await page.request.get(new URL('sw.js', test.info().project.use.baseURL ?? page.url()))
+    expect(sw.ok()).toBe(true)
+    const swText = await sw.text()
+    expect(swText).toMatch(/precacheAndRoute|precache/)
+    expect(swText).not.toMatch(/url:\s*["'][^"']*cloudflareinsights/)
   })
 
   test('keeps the app shell usable after a controlled reload goes offline', async ({ page, context }) => {
+    await page.route('https://static.cloudflareinsights.com/**', (route) => route.abort())
     await openApp(page)
     await expect
       .poll(async () =>

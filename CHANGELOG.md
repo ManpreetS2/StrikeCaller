@@ -10,6 +10,7 @@ StrikeCaller v1.4 is a complete local-first Boxing and Muay Thai spoken training
 
 - Home now leads with a featured workout and a single **Start workout** action, then For You quick starts, then real stored progress, then compact tools.
 - Mobile navigation is Home · Train · Progress · More. Desktop navigation is Home · Train · Progress · Builder · Settings.
+- On desktop, Customize Workout keeps Start in document flow so it does not cover sport/mode options on short viewports. On smaller screens the Start bar stays sticky with bottom clearance.
 - StrikeCaller red remains Start / End / brand. Electric blue is reserved for navigation and cinematic lighting.
 - Session layout is intentionally unchanged: timer, round, current call, next call, combo path, Pause, Repeat, Skip, End.
 

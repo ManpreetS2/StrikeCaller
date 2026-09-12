@@ -51,14 +51,14 @@ StrikeCaller is built so every call is trainable — curated first, generated on
 
 | Customize a workout | Daily Drill |
 |---|---|
-| <img src="./docs/screenshots/02-train-desktop.png" alt="Train screen with Boxing selected, Round Mode, southpaw stance, and a 3×180s technical session summary"> | <img src="./docs/screenshots/04-daily-desktop.png" alt="Daily Drill showing Body cross lead hook cross with Slow practice unlocked and later phases locked"> |
+| <img src="./docs/screenshots/02-train-desktop.png" alt="Train screen with Muay Thai selected, Round Mode, orthodox stance, and a 3×180s technical session without a sticky Start overlay"> | <img src="./docs/screenshots/04-daily-desktop.png" alt="Daily Drill showing Body cross lead hook cross with Slow practice unlocked and later phases locked"> |
 
 | Custom Combo Builder | Training Stats |
 |---|---|
 | <img src="./docs/screenshots/05-builder-desktop.png" alt="Custom Combo Builder with Boxing selected, Jab Cross sequence, punch palette, and Save combo"> | <img src="./docs/screenshots/06-stats-desktop.png" alt="Training Stats local-only page with two sessions, 18 minutes, and Boxing plus Muay Thai breakdown"> |
 
 <p align="center">
-  <img src="./docs/screenshots/07-summary-desktop.png" alt="Durable workout summary after a completed Boxing southpaw technical Coach session, with work time, combinations, and frequent techniques" width="900">
+  <img src="./docs/screenshots/07-summary-desktop.png" alt="Durable workout summary after a completed Muay Thai orthodox technical Coach session, with work time, combinations, and frequent techniques" width="900">
 </p>
 
 Gym-oriented Session layout (mobile):

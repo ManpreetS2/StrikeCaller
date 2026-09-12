@@ -273,7 +273,7 @@ export function TrainPage() {
   }, [boxing, equipment, includeClinch, includeElbows])
 
   return (
-    <div className="space-y-6">
+    <div className="train-page space-y-6">
       <header>
         <h1 className="display text-5xl">Customize Workout</h1>
         <p className="mt-2 max-w-2xl text-[var(--text-muted)]">

@@ -109,4 +109,34 @@ test.describe('layout smoke', () => {
       expect(settings.scrollWidth).toBeLessThanOrEqual(settings.innerWidth + 2)
     })
   }
+
+  test('Train Start bar does not cover martial-art options on short viewports', async ({ page }) => {
+    for (const viewport of [
+      { width: 1440, height: 900 },
+      { width: 1366, height: 768 },
+      { width: 1280, height: 720 },
+      { width: 1024, height: 600 },
+      { width: 390, height: 844 },
+      { width: 375, height: 667 },
+    ]) {
+      await page.setViewportSize(viewport)
+      await openApp(page, '/train')
+      await expect(page.getByRole('heading', { name: 'Customize Workout' })).toBeVisible()
+      const bar = page.locator('.sticky-start-bar')
+      const sport = page.getByRole('radio', { name: /Muay Thai/ })
+      await expect(bar).toBeVisible()
+      await expect(sport).toBeVisible()
+      const barBox = await bar.boundingBox()
+      const sportBox = await sport.boundingBox()
+      expect(barBox, `${viewport.width}×${viewport.height} Start bar box`).toBeTruthy()
+      expect(sportBox, `${viewport.width}×${viewport.height} sport option box`).toBeTruthy()
+      if (!barBox || !sportBox) continue
+      const overlaps =
+        barBox.x < sportBox.x + sportBox.width &&
+        barBox.x + barBox.width > sportBox.x &&
+        barBox.y < sportBox.y + sportBox.height &&
+        barBox.y + barBox.height > sportBox.y
+      expect(overlaps, `${viewport.width}×${viewport.height} Start bar must not cover Muay Thai`).toBe(false)
+    }
+  })
 })
