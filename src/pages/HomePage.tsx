@@ -11,6 +11,7 @@ import { APP_VERSION } from '../data/defaults'
 import { HeroVisual, PresetVisual, MetricVisual } from '../components/visual'
 import { primeTrainingAudio } from '../utils/primeAudio'
 import { useOnceAction } from '../hooks/useOnceAction'
+import { MARTIAL_ART_ORDER, martialArtLabel } from '../utils/martialArt'
 import type { MartialArt } from '../types'
 
 export function HomePage() {
@@ -28,7 +29,7 @@ export function HomePage() {
   const presets = getQuickStartPresets(preferences.martialArt)
   const featured = presets[0]!
   const forYou = presets.slice(1)
-  const sportLabel = preferences.martialArt === 'boxing' ? 'Boxing' : 'Muay Thai'
+  const sportLabel = martialArtLabel(preferences.martialArt)
   const topTechnique = weekStats.mostCalledTechniqueName ?? allStats.mostCalledTechniqueName
   const sportSplit = allStats.sportBreakdownMs.filter((row) => row.ms > 0)
 
@@ -70,42 +71,47 @@ export function HomePage() {
   })
 
   return (
-    <div className="space-y-8 sm:space-y-10">
+    <div className="space-y-5 sm:space-y-10">
       <section aria-label="Brand">
-        <p className="text-sm font-semibold uppercase tracking-[0.22em] text-[var(--accent-2-text)]">
+        <p className="hidden text-sm font-semibold uppercase tracking-[0.22em] text-[var(--accent-2-text)] min-[361px]:block">
           Ready to train · v{APP_VERSION}
         </p>
-        <h1 className="display mt-1 text-4xl sm:text-5xl lg:text-7xl">StrikeCaller</h1>
+        <h1 className="display mt-1 text-3xl sm:text-5xl lg:text-7xl">StrikeCaller</h1>
         <p className="mt-2 max-w-xl text-[var(--text-muted)]">
-          Spoken {sportLabel} combinations. {stats.total} built-in combos. Local stats only.
+          Spoken {sportLabel} combinations. Local stats only.
         </p>
-        <div className="mt-4 flex flex-wrap gap-2" role="group" aria-label="Martial art">
-          <button
-            type="button"
-            className={`btn !min-h-10 !px-4 ${
-              preferences.martialArt === 'muay-thai' ? 'chip-active' : 'btn-ghost'
-            }`}
-            aria-pressed={preferences.martialArt === 'muay-thai'}
-            onClick={() => setSport('muay-thai')}
-          >
-            Muay Thai
-          </button>
-          <button
-            type="button"
-            className={`btn !min-h-10 !px-4 ${
-              preferences.martialArt === 'boxing' ? 'chip-active' : 'btn-ghost'
-            }`}
-            aria-pressed={preferences.martialArt === 'boxing'}
-            onClick={() => setSport('boxing')}
-          >
-            Boxing
-          </button>
+        <p className="mt-1 text-sm text-[var(--text-dim)]">
+          {stats.total} built-in combos ({stats.muayThai} Muay Thai, {stats.boxing} Boxing,{' '}
+          {stats.mmaStriking} MMA Striking).
+        </p>
+        <div className="mt-2 flex flex-nowrap gap-1.5 overflow-x-auto pb-0.5 sm:mt-3" role="group" aria-label="Martial art">
+          {MARTIAL_ART_ORDER.map((art) => (
+            <button
+              key={art}
+              type="button"
+              className={`btn !min-h-9 !shrink-0 !px-3 !text-sm sm:!min-h-10 sm:!px-4 sm:!text-base ${
+                preferences.martialArt === art ? 'chip-active' : 'btn-ghost'
+              }`}
+              aria-label={martialArtLabel(art)}
+              aria-pressed={preferences.martialArt === art}
+              onClick={() => setSport(art)}
+            >
+              {art === 'mma-striking' ? (
+                <>
+                  <span className="sm:hidden">MMA</span>
+                  <span className="hidden sm:inline">MMA Striking</span>
+                </>
+              ) : (
+                martialArtLabel(art)
+              )}
+            </button>
+          ))}
         </div>
         {historyReady && recent ? (
           <p className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-[var(--text-muted)]">
             <span>
               Last session:{' '}
-              <span className="capitalize text-[var(--text)]">{recent.martialArt.replace('-', ' ')}</span>
+              <span className="text-[var(--text)]">{martialArtLabel(recent.martialArt)}</span>
               {' · '}
               {Math.round(recent.totalTrainingMs / 60000) > 0
                 ? `${Math.round(recent.totalTrainingMs / 60000)} min`
@@ -122,20 +128,20 @@ export function HomePage() {
         ) : null}
       </section>
 
-      <section className="home-hero px-4 py-5 sm:px-8 sm:py-8 lg:px-10" aria-label="Featured workout">
-          <div className="relative z-10 flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+      <section className="home-hero px-4 py-4 sm:px-8 sm:py-8 lg:px-10" aria-label="Featured workout">
+          <div className="relative z-10 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between sm:gap-6">
             <div className="max-w-xl">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent-2-text)]">
                 Featured workout
               </p>
-              <h2 className="display mt-2 text-4xl sm:text-6xl lg:text-7xl">{featured.title}</h2>
-              <p className="mt-2 text-[var(--text-muted)]">{featured.body}</p>
+              <h2 className="display mt-1 text-3xl sm:mt-2 sm:text-6xl lg:text-7xl">{featured.title}</h2>
+              <p className="mt-1 text-[var(--text-muted)] sm:mt-2">{featured.body}</p>
               <p className="mt-1 hidden text-sm text-[var(--text-dim)] sm:block">
                 Uses your saved stance, experience, calls, and pace.
               </p>
               <button
                 type="button"
-                className="btn btn-primary home-hero-cta mt-5"
+                className="btn btn-primary home-hero-cta mt-3 sm:mt-5"
                 aria-label={`Start workout: ${featured.title}`}
                 onClick={() => void startQuick(featured.id)}
               >
@@ -224,7 +230,7 @@ export function HomePage() {
             {historyReady && sportSplit.length > 0 ? (
               <p className="mt-1 text-sm text-[var(--text)]">
                 {sportSplit
-                  .map((row) => `${row.martialArt === 'boxing' ? 'Boxing' : 'Muay Thai'} ${Math.round(row.ms / 60000)}m`)
+                  .map((row) => `${martialArtLabel(row.martialArt)} ${Math.round(row.ms / 60000)}m`)
                   .join(' · ')}
               </p>
             ) : (

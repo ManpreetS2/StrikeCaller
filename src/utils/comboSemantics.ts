@@ -1,12 +1,13 @@
 import type { Combo, MartialArt } from '../types'
 import { lookupTechnique } from '../data/techniques'
 import { MAX_COMBO_LENGTH, validateTechniqueSequence } from '../engines/comboValidator'
+import { isMartialArt, martialArtLabel } from './martialArt'
 
 export const CUSTOM_COMBO_UNKNOWN_TECHNIQUE_MESSAGE = 'Custom combo contains an unknown technique.'
 export const CUSTOM_COMBO_INVALID_SEQUENCE_MESSAGE = 'Custom combo contains an invalid technique sequence.'
 
 export function customComboSportUnavailableMessage(martialArt: MartialArt): string {
-  return `Custom combo contains a technique unavailable for ${martialArt === 'boxing' ? 'Boxing' : 'Muay Thai'}.`
+  return `Custom combo contains a technique unavailable for ${martialArtLabel(martialArt)}.`
 }
 
 export type ComboSemanticReason =
@@ -72,7 +73,7 @@ export function validateRuntimeComboSemantics(
   expectedMartialArt?: MartialArt,
 ): ComboSemanticResult {
   const ids = combo.techniques.map((step) => step.techniqueId)
-  const declared = combo.martialArt === 'boxing' ? 'boxing' : 'muay-thai'
+  const declared = isMartialArt(combo.martialArt) ? combo.martialArt : 'muay-thai'
   const idsResult = validateTechniqueIdsForArt(ids, declared)
   if (!idsResult.ok) return idsResult
   if (expectedMartialArt && declared !== expectedMartialArt) {

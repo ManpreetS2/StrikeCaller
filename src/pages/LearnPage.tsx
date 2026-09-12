@@ -6,6 +6,7 @@ import { useApp } from '../context/useApp'
 import { createDefaultWorkout, definedPartial, resolveWorkoutDisplayPrefs } from '../data/defaults'
 import { getTechnique } from '../data/techniques'
 import type { PacePreset, WorkoutConfig } from '../types'
+import { sportUsesKicks } from '../utils/martialArt'
 
 interface LearnLocationState {
   workoutSeed?: WorkoutConfig
@@ -32,7 +33,7 @@ export function LearnPage() {
         includeClinch: Boolean(seed?.includeClinch),
         includeElbows: Boolean(seed?.includeElbows),
         includeHeadKicks: Boolean(seed?.includeHeadKicks),
-        includeKnees: martialArt === 'muay-thai' && (seed?.includeKnees ?? true),
+        includeKnees: sportUsesKicks(martialArt) && (seed?.includeKnees ?? true),
         equipment: seed?.equipment,
       }),
     [martialArt, difficulty, seed],

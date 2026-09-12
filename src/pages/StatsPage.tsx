@@ -8,6 +8,7 @@ import {
 import { MetricVisual, type MetricVisualId } from '../components/visual'
 import { useCountUp } from '../hooks/useCountUp'
 import type { MartialArt, StatsRange } from '../types'
+import { MARTIAL_ART_ORDER, martialArtLabel } from '../utils/martialArt'
 
 export function StatsPage() {
   const { history, historyReady, favorites, customCombos } = useApp()
@@ -73,8 +74,7 @@ export function StatsPage() {
         {(
           [
             ['all', 'All martial arts'],
-            ['muay-thai', 'Muay Thai'],
-            ['boxing', 'Boxing'],
+            ...MARTIAL_ART_ORDER.map((id) => [id, martialArtLabel(id)] as const),
           ] as const
         ).map(([id, label]) => (
           <button
@@ -153,7 +153,7 @@ export function StatsPage() {
               </p>
               <BarChart
                 items={stats.sportBreakdownMs.map((s) => ({
-                  label: s.martialArt === 'boxing' ? 'Boxing' : 'Muay Thai',
+                  label: martialArtLabel(s.martialArt),
                   value: Math.round(s.ms / 60000),
                   pattern: s.martialArt === 'boxing' ? 'stripe' : 'solid',
                 }))}
@@ -200,6 +200,7 @@ export function StatsPage() {
               <h2 className="text-xl font-semibold">Combo activity</h2>
               <p className="mt-3 text-sm">Muay Thai combos completed: {stats.muayThaiCombos}</p>
               <p className="text-sm">Boxing combos completed: {stats.boxingCombos}</p>
+              <p className="text-sm">MMA Striking combos completed: {stats.mmaStrikingCombos}</p>
               <p className="text-sm">Custom combos completed: {stats.customCombosCompleted}</p>
               <p className="text-sm">Favorites saved: {favorites.length}</p>
               <h3 className="mt-4 font-semibold">Most practiced</h3>

@@ -1,4 +1,5 @@
 import type { Equipment, MartialArt, TechniqueCategory } from '../types'
+import { sportUsesClinch, sportUsesKicks } from './martialArt'
 
 export function buildTechniqueCategories(options: {
   martialArt: MartialArt
@@ -9,8 +10,9 @@ export function buildTechniqueCategories(options: {
   includeClinch: boolean
   equipment: Equipment
 }): TechniqueCategory[] {
-  const boxing = options.martialArt === 'boxing'
-  const categories: TechniqueCategory[] = boxing ? ['punch'] : ['punch', 'kick', 'teep']
+  const categories: TechniqueCategory[] = sportUsesKicks(options.martialArt)
+    ? ['punch', 'kick', 'teep']
+    : ['punch']
 
   if (options.defenseFrequency > 0) {
     categories.push('defense', 'counter')
@@ -18,12 +20,12 @@ export function buildTechniqueCategories(options: {
   if (options.movementFrequency > 0) {
     categories.push('movement')
   }
-  if (!boxing) {
+  if (sportUsesKicks(options.martialArt)) {
     if (options.includeKnees) categories.push('knee')
     if (options.includeElbows) categories.push('elbow')
-    if (options.includeClinch && options.equipment !== 'shadowboxing') {
-      categories.push('clinch')
-    }
+  }
+  if (sportUsesClinch(options.martialArt) && options.includeClinch && options.equipment !== 'shadowboxing') {
+    categories.push('clinch')
   }
 
   return categories

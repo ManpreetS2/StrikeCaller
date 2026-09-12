@@ -91,10 +91,15 @@ export function selectCuratedCombos(options: GeneratorOptions): Combo[] {
   return selectEligibleCuratedCombos(options, { broadenDifficulty: true })
 }
 
+function isCommittedKick(technique: Technique): boolean {
+  return technique.category === 'kick' || technique.category === 'teep'
+}
+
 export function generateRuleBasedCombo(options: GeneratorOptions, rand = Math.random): Combo | null {
-  const length =
-    options.comboLength.min +
-    Math.floor(rand() * Math.max(1, options.comboLength.max - options.comboLength.min + 1))
+  const mma = options.martialArt === 'mma-striking'
+  const maxLen = mma ? Math.min(options.comboLength.max, 5) : options.comboLength.max
+  const minLen = mma ? Math.min(Math.max(options.comboLength.min, 2), maxLen) : options.comboLength.min
+  const length = minLen + Math.floor(rand() * Math.max(1, maxLen - minLen + 1))
 
   const allowed = allowedTechniques(options)
   const starters = allowed.filter(
@@ -108,22 +113,34 @@ export function generateRuleBasedCombo(options: GeneratorOptions, rand = Math.ra
       t.category === 'clinch' ||
       t.category === 'counter',
   )
+  const mmaStarters = mma
+    ? starters.filter((t) => t.category === 'punch' || t.category === 'defense' || t.category === 'counter')
+    : []
+  const startPool = mma && mmaStarters.length ? mmaStarters : starters.length ? starters : allowed
   const sequence: string[] = []
-  let current = pick(starters.length ? starters : allowed, rand)
+  let current = pick(startPool, rand)
   if (!current) return null
   sequence.push(current.id)
 
   while (sequence.length < length) {
     const last = getTechnique(sequence[sequence.length - 1]!)
+    const usedKick = sequence.some((id) => isCommittedKick(getTechnique(id)))
     let candidates = allowed.filter((t) => {
       if (last.incompatibleFollowUps.includes(t.id)) return false
+      if (mma && usedKick && isCommittedKick(t)) return false
       if (last.recommendedFollowUps.includes(t.id)) return true
       if (isReachableSpecialFamily(t)) return true
       if (t.id === last.id) return rand() < options.repetitionFrequency
       return last.recommendedFollowUps.length === 0
     })
 
-    if (rand() < options.defenseFrequency) {
+    if (mma && isCommittedKick(last)) {
+      // MMA kicks need a stable exit before another committed attack.
+      const exits = candidates.filter(
+        (t) => t.category === 'movement' || t.category === 'defense' || t.id === 'jab' || t.id === 'reset-stance',
+      )
+      if (exits.length) candidates = exits
+    } else if (rand() < options.defenseFrequency) {
       const defense = candidates.filter((t) => t.category === 'defense' || t.category === 'counter')
       if (defense.length) candidates = defense
     } else if (options.movementFrequency > 0 && rand() < options.movementFrequency && sequence.length >= length - 1) {
@@ -133,6 +150,9 @@ export function generateRuleBasedCombo(options: GeneratorOptions, rand = Math.ra
 
     if (!candidates.length) {
       candidates = allowed.filter((t) => !last.incompatibleFollowUps.includes(t.id))
+      if (mma && usedKick) {
+        candidates = candidates.filter((t) => !isCommittedKick(t))
+      }
     }
 
     const next = pick(candidates, rand)
@@ -154,7 +174,7 @@ export function generateRuleBasedCombo(options: GeneratorOptions, rand = Math.ra
     }
   }
 
-  if (options.movementFrequency > 0 && rand() < options.movementFrequency && sequence.length < options.comboLength.max) {
+  if (options.movementFrequency > 0 && rand() < options.movementFrequency && sequence.length < maxLen) {
     const exits = ['reset-stance', 'pivot-left', 'angle-out-left', 'step-back']
     const exit = pick(
       exits
@@ -170,7 +190,7 @@ export function generateRuleBasedCombo(options: GeneratorOptions, rand = Math.ra
     )
     if (exit) {
       const trial = [...sequence, exit.id]
-      if (trial.length <= options.comboLength.max && validateTechniqueSequence(trial).valid) {
+      if (trial.length <= maxLen && validateTechniqueSequence(trial).valid) {
         sequence.push(exit.id)
       }
     }
@@ -283,12 +303,18 @@ export function optionsFromWorkout(config: WorkoutConfig): GeneratorOptions {
 
 export const DEMO_COMBO_IDS = ['beg-02', 'beg-06', 'int-04', 'mov-01', 'int-03'] as const
 export const BOXING_DEMO_COMBO_IDS = ['bx-b01', 'bx-b03', 'bx-d03', 'bx-m02', 'bx-i06'] as const
+export const MMA_DEMO_COMBO_IDS = ['mma-b01', 'mma-b05', 'mma-d01', 'mma-m01', 'mma-i03'] as const
 
 export function getDemoCombos(
   stance: Stance = 'orthodox',
   martialArt: import('../types').MartialArt = 'muay-thai',
 ): Combo[] {
-  const ids = martialArt === 'boxing' ? BOXING_DEMO_COMBO_IDS : DEMO_COMBO_IDS
+  const ids =
+    martialArt === 'boxing'
+      ? BOXING_DEMO_COMBO_IDS
+      : martialArt === 'mma-striking'
+        ? MMA_DEMO_COMBO_IDS
+        : DEMO_COMBO_IDS
   return ids.map((id) => {
     const base = CURATED_COMBOS.find((c) => c.id === id)!
     return {

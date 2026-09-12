@@ -621,9 +621,14 @@ textarea {
 }
 
 @media (max-width: 360px) {
+  .home-hero {
+    padding-top: 0.85rem;
+    padding-bottom: 0.85rem;
+  }
+
   .home-hero-cta {
     min-height: 2.85rem;
-    margin-top: 0.85rem;
+    margin-top: 0.7rem;
   }
 }
 
@@ -1014,6 +1019,25 @@ textarea {
 
 .train-page {
   padding-bottom: 5.5rem;
+}
+
+.train-sport-grid .interactive-card {
+  min-width: 0;
+  padding: 0.7rem 0.55rem;
+}
+
+.train-sport-grid .icon-well {
+  display: none;
+}
+
+@media (min-width: 640px) {
+  .train-sport-grid .icon-well {
+    display: flex;
+  }
+
+  .train-sport-grid .interactive-card {
+    padding: 1rem;
+  }
 }
 
 @media (min-width: 768px) {

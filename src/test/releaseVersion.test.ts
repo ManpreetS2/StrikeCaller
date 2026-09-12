@@ -17,11 +17,11 @@ describe('release version consistency', () => {
   const manifest = JSON.parse(manifestRaw) as { name: string; short_name: string }
   const title = documentTitle(indexHtml)
 
-  it('keeps package, lockfile, and APP_VERSION on 1.4.0', () => {
-    expect(pkg.version).toBe('1.4.0')
-    expect(lock.version).toBe('1.4.0')
-    expect(lock.packages[''].version).toBe('1.4.0')
-    expect(APP_VERSION).toBe('1.4.0')
+  it('keeps package, lockfile, and APP_VERSION on 1.5.0', () => {
+    expect(pkg.version).toBe('1.5.0')
+    expect(lock.version).toBe('1.5.0')
+    expect(lock.packages[''].version).toBe('1.5.0')
+    expect(APP_VERSION).toBe('1.5.0')
   })
 
   it('keeps the README current release aligned with package version', () => {
@@ -29,7 +29,7 @@ describe('release version consistency', () => {
   })
 
   it('keeps the production document title free of version numbers', () => {
-    expect(title).toBe('StrikeCaller — Boxing & Muay Thai Combo Coach')
+    expect(title).toBe('StrikeCaller — Boxing, Muay Thai & MMA Striking Coach')
     expect(title).not.toMatch(/v?\d+\.\d+/)
   })
 

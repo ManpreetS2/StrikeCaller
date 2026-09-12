@@ -17,23 +17,10 @@ import {
   validateCustomComboSemantics,
 } from '../utils/customCombo'
 import type { CustomCombo, MartialArt, TechniqueCategory } from '../types'
-
-const MT_CATEGORIES: TechniqueCategory[] = [
-  'punch',
-  'kick',
-  'teep',
-  'knee',
-  'elbow',
-  'defense',
-  'movement',
-  'counter',
-  'clinch',
-]
-
-const BX_CATEGORIES: TechniqueCategory[] = ['punch', 'defense', 'movement', 'counter']
+import { categoriesForSport, isMartialArt, martialArtLabel, MARTIAL_ART_ORDER } from '../utils/martialArt'
 
 function categoriesFor(art: MartialArt): TechniqueCategory[] {
-  return art === 'boxing' ? BX_CATEGORIES : MT_CATEGORIES
+  return categoriesForSport(art)
 }
 
 function techniqueSupportsArt(techniqueId: string, art: MartialArt): boolean {
@@ -94,7 +81,7 @@ export function BuilderPage() {
 
   const addTechnique = (id: string) => {
     if (!techniqueSupportsArt(id, activeArt)) {
-      setSaveError(`That technique is not available for ${activeArt === 'boxing' ? 'Boxing' : 'Muay Thai'}.`)
+      setSaveError(`That technique is not available for ${martialArtLabel(activeArt)}.`)
       return
     }
     setSaveError(null)
@@ -141,7 +128,7 @@ export function BuilderPage() {
         runtime.martialArt === 'boxing'
           ? ['punch', 'defense', 'movement', 'counter']
           : ['punch', 'kick', 'teep', 'defense', 'movement'],
-      includeKnees: runtime.martialArt === 'muay-thai',
+      includeKnees: runtime.martialArt !== 'boxing',
       includeElbows: false,
       includeHeadKicks: false,
       includeClinch: false,
@@ -179,7 +166,7 @@ export function BuilderPage() {
   })
 
   const startEdit = (combo: CustomCombo) => {
-    const art: MartialArt = combo.martialArt === 'boxing' ? 'boxing' : 'muay-thai'
+    const art: MartialArt = isMartialArt(combo.martialArt) ? combo.martialArt : 'muay-thai'
     setEditingId(combo.id)
     setEditingArt(art)
     setBuilderArt(art)
@@ -210,7 +197,7 @@ export function BuilderPage() {
           <h1 className="display text-5xl">Custom Combo Builder</h1>
           <p className="mt-2 max-w-2xl text-[var(--text-muted)]">
             Tap techniques into a sequence (max {MAX_COMBO_LENGTH}). Invalid transitions are explained before you can
-            save. Building for {activeArt === 'boxing' ? 'Boxing' : 'Muay Thai'}.
+            save. Building for {martialArtLabel(activeArt)}.
           </p>
         </div>
       </header>
@@ -223,12 +210,7 @@ export function BuilderPage() {
 
       {!editingArt && (
         <div className="flex flex-wrap gap-2" role="group" aria-label="Builder martial art">
-          {(
-            [
-              ['muay-thai', 'Muay Thai'],
-              ['boxing', 'Boxing'],
-            ] as const
-          ).map(([id, label]) => (
+          {MARTIAL_ART_ORDER.map((id) => (
             <button
               key={id}
               type="button"
@@ -240,7 +222,7 @@ export function BuilderPage() {
                 setSequence((prev) => prev.filter((tid) => techniqueSupportsArt(tid, id)))
               }}
             >
-              {label}
+              {martialArtLabel(id)}
             </button>
           ))}
         </div>
@@ -248,7 +230,7 @@ export function BuilderPage() {
 
       {editingArt && (
         <p className="text-sm text-[var(--text-muted)]" role="status">
-          Editing a {editingArt === 'boxing' ? 'Boxing' : 'Muay Thai'} combo — martial art is locked on save.
+          Editing a {martialArtLabel(editingArt)} combo — martial art is locked on save.
         </p>
       )}
 
@@ -369,8 +351,7 @@ export function BuilderPage() {
             {(
               [
                 ['all', 'All'],
-                ['muay-thai', 'Muay Thai'],
-                ['boxing', 'Boxing'],
+                ...MARTIAL_ART_ORDER.map((id) => [id, martialArtLabel(id)] as const),
               ] as const
             ).map(([id, label]) => (
               <button
@@ -401,7 +382,7 @@ export function BuilderPage() {
                     {combo.title}
                     {combo.migrated ? ' · migrated' : ''}
                     <span className="ml-2 text-xs font-normal text-[var(--text-dim)]">
-                      {combo.martialArt === 'boxing' ? 'Boxing' : 'Muay Thai'}
+                      {martialArtLabel(isMartialArt(combo.martialArt) ? combo.martialArt : 'muay-thai')}
                     </span>
                   </p>
                   <p className="text-sm text-[var(--text-muted)]">

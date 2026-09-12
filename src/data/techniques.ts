@@ -11,14 +11,15 @@ const ALL_MODES: TrainingMode[] = [
   'demo',
 ]
 
-const BOTH: MartialArt[] = ['muay-thai', 'boxing']
+const BOTH: MartialArt[] = ['muay-thai', 'boxing', 'mma-striking']
 const MT: MartialArt[] = ['muay-thai']
+const STRIKE: MartialArt[] = ['muay-thai', 'mma-striking']
 
 function tech(
   partial: Omit<Technique, 'martialArts'> & Partial<Pick<Technique, 'martialArts'>>,
 ): Technique {
   return {
-    martialArts: MT,
+    martialArts: STRIKE,
     ...partial,
   }
 }
@@ -295,7 +296,7 @@ const TECHNIQUES_RAW: Technique[] = [
     tags: ['low-kick'],
     coachingCue: 'Chop across the thigh and plant back into stance.',
     weightCommit: 'medium',
-    martialArts: MT,
+    martialArts: STRIKE,
     leavesGuardOpen: true,
   }),
   tech({
@@ -317,7 +318,7 @@ const TECHNIQUES_RAW: Technique[] = [
     tags: ['low-kick', 'finisher'],
     coachingCue: 'Turn the hip over and recover the hands high.',
     weightCommit: 'heavy',
-    martialArts: MT,
+    martialArts: STRIKE,
     leavesGuardOpen: true,
   }),
   tech({
@@ -339,7 +340,7 @@ const TECHNIQUES_RAW: Technique[] = [
     tags: ['body-kick'],
     coachingCue: 'Chamber and whip the shin into the ribs.',
     weightCommit: 'medium',
-    martialArts: MT,
+    martialArts: STRIKE,
     leavesGuardOpen: true,
   }),
   tech({
@@ -361,7 +362,7 @@ const TECHNIQUES_RAW: Technique[] = [
     tags: ['body-kick', 'finisher'],
     coachingCue: 'Pivot hard and return to base before the next strike.',
     weightCommit: 'heavy',
-    martialArts: MT,
+    martialArts: STRIKE,
     leavesGuardOpen: true,
   }),
   tech({
@@ -384,7 +385,7 @@ const TECHNIQUES_RAW: Technique[] = [
     coachingCue: 'Only after a real setup — recover balance immediately.',
     safetyNote: 'Use controlled contact and proper warm-up for head kicks.',
     weightCommit: 'heavy',
-    martialArts: MT,
+    martialArts: STRIKE,
     leavesGuardOpen: true,
   }),
   tech({
@@ -407,7 +408,7 @@ const TECHNIQUES_RAW: Technique[] = [
     coachingCue: 'Throw only when the opponent’s guard is drawn down.',
     safetyNote: 'Head kicks require space, control, and coaching supervision.',
     weightCommit: 'heavy',
-    martialArts: MT,
+    martialArts: STRIKE,
     leavesGuardOpen: true,
   }),
   tech({
@@ -453,7 +454,7 @@ const TECHNIQUES_RAW: Technique[] = [
     tags: ['distance', 'teep'],
     coachingCue: 'Push through the ball of the foot, hands stay high.',
     weightCommit: 'medium',
-    martialArts: MT,
+    martialArts: STRIKE,
     leavesGuardOpen: false,
   }),
   tech({
@@ -475,7 +476,7 @@ const TECHNIQUES_RAW: Technique[] = [
     tags: ['distance', 'teep'],
     coachingCue: 'Drive from the rear hip and return to stance.',
     weightCommit: 'medium',
-    martialArts: MT,
+    martialArts: STRIKE,
     leavesGuardOpen: true,
   }),
   tech({
@@ -497,7 +498,7 @@ const TECHNIQUES_RAW: Technique[] = [
     tags: ['distance', 'body'],
     coachingCue: 'Target the solar plexus and reset range.',
     weightCommit: 'medium',
-    martialArts: MT,
+    martialArts: STRIKE,
     leavesGuardOpen: false,
   }),
   tech({
@@ -519,7 +520,7 @@ const TECHNIQUES_RAW: Technique[] = [
     tags: ['teep', 'disrupt'],
     coachingCue: 'Jam the lead thigh to break their base.',
     weightCommit: 'light',
-    martialArts: MT,
+    martialArts: STRIKE,
     leavesGuardOpen: false,
   }),
 
@@ -544,7 +545,7 @@ const TECHNIQUES_RAW: Technique[] = [
     coachingCue: 'Pull the posture down as the knee rises.',
     safetyNote: 'Knees need control and appropriate targets.',
     weightCommit: 'medium',
-    martialArts: MT,
+    martialArts: STRIKE,
     leavesGuardOpen: true,
   }),
   tech({
@@ -567,7 +568,7 @@ const TECHNIQUES_RAW: Technique[] = [
     coachingCue: 'Drive the rear hip through and keep the frame.',
     safetyNote: 'Use pads, bag, or supervised partner work for knees.',
     weightCommit: 'heavy',
-    martialArts: MT,
+    martialArts: STRIKE,
     leavesGuardOpen: true,
   }),
   tech({
@@ -589,7 +590,7 @@ const TECHNIQUES_RAW: Technique[] = [
     tags: ['knee'],
     coachingCue: 'Spear straight up the middle.',
     weightCommit: 'medium',
-    martialArts: MT,
+    martialArts: STRIKE,
     leavesGuardOpen: true,
   }),
   tech({
@@ -658,7 +659,7 @@ const TECHNIQUES_RAW: Technique[] = [
     coachingCue: 'Cut across with the forearm bone, chin tucked.',
     safetyNote: 'Elbows require pads or supervised contact.',
     weightCommit: 'medium',
-    martialArts: MT,
+    martialArts: STRIKE,
     leavesGuardOpen: true,
   }),
   tech({
@@ -681,7 +682,7 @@ const TECHNIQUES_RAW: Technique[] = [
     coachingCue: 'Short path, high hands after impact.',
     safetyNote: 'Do not throw elbows without proper equipment and coaching.',
     weightCommit: 'medium',
-    martialArts: MT,
+    martialArts: STRIKE,
     leavesGuardOpen: true,
   }),
   tech({
@@ -704,7 +705,7 @@ const TECHNIQUES_RAW: Technique[] = [
     coachingCue: 'Lift under the chin line and exit.',
     safetyNote: 'High-risk technique — controlled practice only.',
     weightCommit: 'medium',
-    martialArts: MT,
+    martialArts: STRIKE,
     leavesGuardOpen: true,
   }),
   tech({
@@ -773,7 +774,7 @@ const TECHNIQUES_RAW: Technique[] = [
     tags: ['defense', 'frame'],
     coachingCue: 'Extend the lead arm to manage range.',
     weightCommit: 'light',
-    martialArts: MT,
+    martialArts: STRIKE,
     leavesGuardOpen: false,
   }),
   tech({
@@ -795,7 +796,7 @@ const TECHNIQUES_RAW: Technique[] = [
     tags: ['defense', 'counter-setup'],
     coachingCue: 'Deflect just enough, then fire the return.',
     weightCommit: 'light',
-    martialArts: MT,
+    martialArts: STRIKE,
     leavesGuardOpen: false,
   }),
   tech({
@@ -817,7 +818,7 @@ const TECHNIQUES_RAW: Technique[] = [
     tags: ['defense'],
     coachingCue: 'Catch on the palm and shell immediately.',
     weightCommit: 'light',
-    martialArts: MT,
+    martialArts: STRIKE,
     leavesGuardOpen: false,
   }),
   tech({
@@ -839,7 +840,7 @@ const TECHNIQUES_RAW: Technique[] = [
     tags: ['defense', 'head-movement'],
     coachingCue: 'Move the head off the center line, keep eyes on target.',
     weightCommit: 'light',
-    martialArts: MT,
+    martialArts: STRIKE,
     leavesGuardOpen: false,
   }),
   tech({
@@ -861,7 +862,7 @@ const TECHNIQUES_RAW: Technique[] = [
     tags: ['defense', 'head-movement'],
     coachingCue: 'Slip outside and load the return.',
     weightCommit: 'light',
-    martialArts: MT,
+    martialArts: STRIKE,
     leavesGuardOpen: false,
   }),
   tech({
@@ -905,7 +906,7 @@ const TECHNIQUES_RAW: Technique[] = [
     tags: ['defense'],
     coachingCue: 'Weight on the rear foot, return to base quickly.',
     weightCommit: 'light',
-    martialArts: MT,
+    martialArts: STRIKE,
     leavesGuardOpen: true,
   }),
   tech({
@@ -927,7 +928,7 @@ const TECHNIQUES_RAW: Technique[] = [
     tags: ['defense', 'check'],
     coachingCue: 'Lift the shin to meet the kick, hands stay home.',
     weightCommit: 'medium',
-    martialArts: MT,
+    martialArts: STRIKE,
     leavesGuardOpen: false,
   }),
   tech({
@@ -949,7 +950,7 @@ const TECHNIQUES_RAW: Technique[] = [
     tags: ['defense', 'check'],
     coachingCue: 'Check with the rear shin when the angle demands it.',
     weightCommit: 'medium',
-    martialArts: MT,
+    martialArts: STRIKE,
     leavesGuardOpen: false,
   }),
   tech({
@@ -971,7 +972,7 @@ const TECHNIQUES_RAW: Technique[] = [
     tags: ['defense', 'block'],
     coachingCue: 'Elbows glued to the ribs, absorb and return.',
     weightCommit: 'light',
-    martialArts: MT,
+    martialArts: STRIKE,
     leavesGuardOpen: false,
   }),
   tech({
@@ -993,7 +994,7 @@ const TECHNIQUES_RAW: Technique[] = [
     tags: ['defense', 'teep'],
     coachingCue: 'Catch the foot, dump or step offline, then counter.',
     weightCommit: 'medium',
-    martialArts: MT,
+    martialArts: STRIKE,
     leavesGuardOpen: false,
   }),
   tech({
@@ -1037,7 +1038,7 @@ const TECHNIQUES_RAW: Technique[] = [
     tags: ['defense', 'cover'],
     coachingCue: 'Tight cover, then explode out on the counter.',
     weightCommit: 'light',
-    martialArts: MT,
+    martialArts: STRIKE,
     leavesGuardOpen: false,
   }),
 
@@ -1105,7 +1106,7 @@ const TECHNIQUES_RAW: Technique[] = [
     tags: ['movement'],
     coachingCue: 'Lateral step without crossing the feet.',
     weightCommit: 'light',
-    martialArts: MT,
+    martialArts: STRIKE,
     leavesGuardOpen: false,
   }),
   tech({
@@ -1127,7 +1128,7 @@ const TECHNIQUES_RAW: Technique[] = [
     tags: ['movement'],
     coachingCue: 'Move offline and keep the lead foot outside.',
     weightCommit: 'light',
-    martialArts: MT,
+    martialArts: STRIKE,
     leavesGuardOpen: false,
   }),
   tech({
@@ -1149,7 +1150,7 @@ const TECHNIQUES_RAW: Technique[] = [
     tags: ['movement', 'exit', 'angle'],
     coachingCue: 'Pivot off the lead foot and take the new angle.',
     weightCommit: 'light',
-    martialArts: MT,
+    martialArts: STRIKE,
     leavesGuardOpen: false,
   }),
   tech({
@@ -1171,7 +1172,7 @@ const TECHNIQUES_RAW: Technique[] = [
     tags: ['movement', 'exit', 'angle'],
     coachingCue: 'Open the rear foot and swing to the new line.',
     weightCommit: 'light',
-    martialArts: MT,
+    martialArts: STRIKE,
     leavesGuardOpen: false,
   }),
   tech({
@@ -1193,7 +1194,7 @@ const TECHNIQUES_RAW: Technique[] = [
     tags: ['movement', 'exit'],
     coachingCue: 'Exit on a diagonal — do not stay on the center line.',
     weightCommit: 'light',
-    martialArts: MT,
+    martialArts: STRIKE,
     leavesGuardOpen: false,
   }),
   tech({
@@ -1215,7 +1216,7 @@ const TECHNIQUES_RAW: Technique[] = [
     tags: ['movement', 'exit'],
     coachingCue: 'Clear the pocket to the right and reset.',
     weightCommit: 'light',
-    martialArts: MT,
+    martialArts: STRIKE,
     leavesGuardOpen: false,
   }),
   tech({
@@ -1237,7 +1238,7 @@ const TECHNIQUES_RAW: Technique[] = [
     tags: ['movement', 'distance'],
     coachingCue: 'Circle with purpose — stay in stance the whole way.',
     weightCommit: 'light',
-    martialArts: MT,
+    martialArts: STRIKE,
     leavesGuardOpen: false,
   }),
   tech({
@@ -1283,7 +1284,7 @@ const TECHNIQUES_RAW: Technique[] = [
     tags: ['counter', 'kick'],
     coachingCue: 'Check hard, plant, and return the rear kick immediately.',
     weightCommit: 'heavy',
-    martialArts: MT,
+    martialArts: STRIKE,
     leavesGuardOpen: true,
   }),
   tech({
@@ -1305,7 +1306,7 @@ const TECHNIQUES_RAW: Technique[] = [
     tags: ['counter', 'punch'],
     coachingCue: 'Parry and fire the cross on the same beat.',
     weightCommit: 'medium',
-    martialArts: MT,
+    martialArts: STRIKE,
     leavesGuardOpen: false,
   }),
   tech({
@@ -1327,7 +1328,7 @@ const TECHNIQUES_RAW: Technique[] = [
     tags: ['counter', 'punch'],
     coachingCue: 'Slip outside and drive the cross through.',
     weightCommit: 'medium',
-    martialArts: MT,
+    martialArts: STRIKE,
     leavesGuardOpen: false,
   }),
   tech({
@@ -1349,7 +1350,7 @@ const TECHNIQUES_RAW: Technique[] = [
     tags: ['counter', 'punch'],
     coachingCue: 'Absorb on the cover and rip the lead hook.',
     weightCommit: 'medium',
-    martialArts: MT,
+    martialArts: STRIKE,
     leavesGuardOpen: false,
   }),
   tech({
@@ -1371,7 +1372,7 @@ const TECHNIQUES_RAW: Technique[] = [
     tags: ['counter', 'teep'],
     coachingCue: 'Catch, dump or step in, then punish with the cross or kick.',
     weightCommit: 'heavy',
-    martialArts: MT,
+    martialArts: STRIKE,
     leavesGuardOpen: true,
   }),
   tech({
@@ -1393,7 +1394,7 @@ const TECHNIQUES_RAW: Technique[] = [
     tags: ['counter'],
     coachingCue: 'Pull the head, then return with the cross.',
     weightCommit: 'medium',
-    martialArts: MT,
+    martialArts: STRIKE,
     leavesGuardOpen: false,
   }),
   tech({

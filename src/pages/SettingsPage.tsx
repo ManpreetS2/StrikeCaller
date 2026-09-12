@@ -8,6 +8,7 @@ import { DEFAULT_TIMING_MULTIPLIERS } from '../engines/timingEngine'
 import { MAX_IMPORT_BYTES, storageAvailable } from '../storage/localStore'
 import { DELETE_ALL_PARTIAL_MESSAGE, DELETE_ALL_SUCCESS_MESSAGE, IMPORT_EXECUTION_FAILED_MESSAGE } from '../storage/storageTypes'
 import type { CallStyle, MartialArt, MusicCompatibilityResult, SideTerminology, Stance } from '../types'
+import { MARTIAL_ART_ORDER, martialArtLabel } from '../utils/martialArt'
 
 const COMPAT_OPTIONS: { id: MusicCompatibilityResult; label: string }[] = [
   { id: 'music-lowered', label: 'Music lowered' },
@@ -65,8 +66,11 @@ export function SettingsPage() {
             aria-label="Default martial art"
             onChange={(e) => updatePreferences({ martialArt: e.target.value as MartialArt })}
           >
-            <option value="muay-thai">Muay Thai</option>
-            <option value="boxing">Boxing</option>
+            {MARTIAL_ART_ORDER.map((art) => (
+              <option key={art} value={art}>
+                {martialArtLabel(art)}
+              </option>
+            ))}
           </select>
         </Field>
         <Field label="Stance">

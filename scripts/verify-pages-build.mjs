@@ -17,7 +17,7 @@ import { documentTitle, uniqueLink, uniqueMeta } from './htmlMetadata.mjs'
 
 const PRODUCTION_SITE_URL = 'https://manpreets2.github.io/StrikeCaller/'
 const PRODUCTION_OG_IMAGE_URL = `${PRODUCTION_SITE_URL}og-image.png`
-const DOCUMENT_TITLE = 'StrikeCaller — Boxing & Muay Thai Combo Coach'
+const DOCUMENT_TITLE = 'StrikeCaller — Boxing, Muay Thai & MMA Striking Coach'
 
 const distDir = path.resolve(process.cwd(), 'dist')
 const indexPath = path.join(distDir, 'index.html')

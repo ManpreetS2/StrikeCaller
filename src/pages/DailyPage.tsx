@@ -8,6 +8,7 @@ import {
   dailyDrillCompleteMessage,
   dailyDrillKey,
   emptyDailyDrill,
+  martialArtLabel,
   phaseLockReason,
   phaseUnlocked,
   pickDailyComboId,
@@ -146,7 +147,7 @@ export function DailyPage() {
       <header>
         <h1 className="display text-5xl">Daily Drill</h1>
         <p className="mt-2 max-w-2xl text-[var(--text-muted)]">
-          One focused {martialArt === 'boxing' ? 'Boxing' : 'Muay Thai'} combination. Complete Slow, then Normal,
+          One focused {martialArtLabel(martialArt)} combination. Complete Slow, then Normal,
           then Fight Pace.
         </p>
       </header>
