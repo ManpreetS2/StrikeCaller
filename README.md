@@ -18,7 +18,7 @@ Current release: **1.4.0**. See [CHANGELOG.md](./CHANGELOG.md) for what’s new.
 |---|---|
 | **Live** | [GitHub Pages](https://manpreets2.github.io/StrikeCaller/) |
 | **Stack** | React · TypeScript · Vite |
-| **Quality** | 722 Vitest / 47 files · 85 Playwright passed / 33 skipped / 0 failed |
+| **Quality** | 722 Vitest / 47 files · 86 Playwright passed / 36 skipped / 0 failed |
 | **Browsers** | Chromium · Firefox · WebKit · Mobile WebKit |
 | **Storage** | IndexedDB + localStorage |
 | **Privacy** | No account · No backend · Privacy-first anonymous site analytics · No cloud sync |
@@ -131,7 +131,7 @@ Pull requests run verify, e2e, and Pages build. Deploy and live verification run
 v1.4.0 local gate evidence:
 
 - **722** Vitest tests across **47** files
-- **85** Playwright tests passed, **33** skipped, **0** failed
+- **86** Playwright tests passed, **36** skipped, **0** failed
 - Chromium, Firefox, WebKit, and mobile WebKit
 - lint, typecheck, unit/integration tests, Pages artifact verification, E2E, deploy, and post-deploy `verify-live`
 
