@@ -115,5 +115,6 @@ describe('PWA install assets', () => {
     expect(indexHtml).toMatch(/rel="icon"[^>]*href="\.\/favicon-32\.png"/)
     expect(indexHtml).toMatch(/rel="apple-touch-icon"[^>]*href="\.\/apple-touch-icon\.png"/)
     expect(indexHtml).not.toMatch(/apple-touch-icon\.svg/)
+    expect(indexHtml).not.toMatch(/fonts\.googleapis\.com|fonts\.gstatic\.com/)
   })
 })

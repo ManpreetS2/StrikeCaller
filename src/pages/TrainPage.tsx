@@ -289,7 +289,7 @@ export function TrainPage() {
           {(
             [
               { id: 'muay-thai' as const, title: 'Muay Thai', body: '125 curated combinations' },
-              { id: 'boxing' as const, title: 'Boxing', body: '100+ curated combinations' },
+              { id: 'boxing' as const, title: 'Boxing', body: '100 curated combinations' },
             ] as const
           ).map((art) => (
             <SelectableCard

@@ -61,7 +61,10 @@ describe('accessibility and UI', () => {
     expect(screen.getAllByRole('link', { name: 'Builder' }).length).toBeGreaterThan(0)
     expect(screen.getByRole('link', { name: 'Stats' })).toBeInTheDocument()
     expect(screen.getAllByRole('link', { name: 'Settings' }).length).toBeGreaterThan(0)
-    expect(screen.getAllByText(/coming soon/i).length).toBeGreaterThan(0)
+    expect(screen.getByRole('link', { name: 'Learn' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Guided Demo' })).toBeInTheDocument()
+    expect(screen.queryByText(/coming soon/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/kickboxing|taekwondo|karate|mma striking/i)).not.toBeInTheDocument()
   }, 15000)
 })
 

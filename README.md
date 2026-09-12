@@ -2,31 +2,29 @@
 
 **Hear the combo. Set the pace. Build the reaction.**
 
-StrikeCaller is a local-first spoken combo coach for **Boxing** and **Muay Thai**. It calls realistic combinations during shadowboxing, bag work, pad work, or solo drills — with adaptive pacing, timed rounds, and training stats that stay in the browser.
+StrikeCaller is a complete local-first spoken combo coach for **Boxing** and **Muay Thai**. It calls realistic combinations during shadowboxing, bag work, pad work, or solo drills — with adaptive pacing, timed rounds, and training stats that stay in the browser.
 
-Current release: **1.3.3**. See [CHANGELOG.md](./CHANGELOG.md) for what’s new.
+Current release: **1.4.0**. See [CHANGELOG.md](./CHANGELOG.md) for what’s new.
 
 <p align="center">
-  <img src="./docs/screenshots/01-home-desktop.png" alt="StrikeCaller home: v1.3.3, Quick Train, Guided Demo, Customize Workout, hanging-gloves hero, and local weekly stats" width="900">
+  <img src="./docs/screenshots/01-home-desktop.png" alt="StrikeCaller home: featured workout with Start workout, Boxing and Muay Thai toggle, For You quick starts, and local weekly progress" width="900">
 </p>
 
 <p align="center">
   <a href="https://manpreets2.github.io/StrikeCaller/"><strong>Live Demo</strong></a>
-  ·
-  <a href="https://github.com/ManpreetS2/StrikeCaller/releases/tag/v1.3.3">v1.3.3 Release</a>
 </p>
 
 | | |
 |---|---|
 | **Live** | [GitHub Pages](https://manpreets2.github.io/StrikeCaller/) |
 | **Stack** | React · TypeScript · Vite |
-| **Quality** | 712 Vitest / 46 files · 69 Playwright passed / 21 skipped / 0 failed |
+| **Quality** | 722 Vitest / 47 files · 85 Playwright passed / 33 skipped / 0 failed |
 | **Browsers** | Chromium · Firefox · WebKit · Mobile WebKit |
 | **Storage** | IndexedDB + localStorage |
-| **Privacy** | No account · No backend · No analytics · No cloud sync |
-| **Release** | [v1.3.3](https://github.com/ManpreetS2/StrikeCaller/releases/tag/v1.3.3) |
+| **Privacy** | No account · No backend · No cookies added by StrikeCaller · No cloud sync |
+| **Release** | v1.4.0 candidate |
 
-225 curated combinations (125 Muay Thai, 100 Boxing). Free. No account. No download.
+**225** curated combinations (**125** Muay Thai, **100** Boxing). Free. No account.
 
 StrikeCaller tracks training activity, not technique quality or accuracy.
 
@@ -43,6 +41,7 @@ StrikeCaller is built so every call is trainable — curated first, generated on
 - **Adaptive timing** — each technique carries execution, recovery, and transition timing; kicks and committed strikes get more time than jabs
 - **Stance-aware** — orthodox and southpaw as first-class; lead/rear by default, optional left/right
 - **Local stats** — session history, streaks, and durable workout summaries after refresh
+- **Installable / offline** — after one successful online load, later visits can run the app shell and local training features without internet
 
 ## Product walkthrough
 
@@ -67,7 +66,7 @@ Gym-oriented Session layout (mobile):
 <p align="center">
   <img src="./docs/screenshots/08-session-mobile.png" alt="Mobile session: Round 1 WORK, large current call Two, combo path, and thumb-zone Pause Repeat Skip End dock" width="390">
   &nbsp;
-  <img src="./docs/screenshots/09-home-mobile.png" alt="Mobile home: StrikeCaller v1.3.3, Quick Boxing, Guided Demo, and Customize Workout on a narrow viewport" width="390">
+  <img src="./docs/screenshots/09-home-mobile.png" alt="Mobile home: featured Start workout, For You quick starts, and Home Train Progress More navigation" width="390">
 </p>
 
 ## Engineering highlights
@@ -129,14 +128,14 @@ Pull requests run verify, e2e, and Pages build. Deploy and live verification run
 
 ## Reliability and testing
 
-v1.3.3 protected CI evidence:
+v1.4.0 local gate evidence:
 
-- **712** Vitest tests across **46** files
-- **69** Playwright tests passed, **21** skipped, **0** failed
+- **722** Vitest tests across **47** files
+- **85** Playwright tests passed, **33** skipped, **0** failed
 - Chromium, Firefox, WebKit, and mobile WebKit
 - lint, typecheck, unit/integration tests, Pages artifact verification, E2E, deploy, and post-deploy `verify-live`
 
-These counts describe the current release. They are not a permanent guarantee.
+These counts describe a specific build. They are not a permanent guarantee.
 
 Selected hardening (see [CHANGELOG.md](./CHANGELOG.md) for the full history):
 
@@ -156,20 +155,33 @@ Selected hardening (see [CHANGELOG.md](./CHANGELOG.md) for the full history):
 
 - No account
 - No backend
-- No analytics
+- No cookies added by StrikeCaller
 - No advertising
 - No cloud sync
 - Training data stays in browser storage (IndexedDB + localStorage)
+- StrikeCaller does not send workout contents, preferences, history, or user-entered information off-device
 
-The live site may load Google Fonts. StrikeCaller does not send training data off-device.
+Optional anonymous Cloudflare Web Analytics (page views only) is a separate, non-required production concern. The app works if that script is blocked or offline.
 
-Home-screen install is available through the web manifest (`display: standalone`). There is **no service worker and no offline cache** — this is not an offline-first PWA.
+Fonts are bundled with the app. The UI does not depend on `fonts.googleapis.com` at runtime.
 
-An already-open tab may need a refresh to reflect changes made in another tab. Multi-tab live sync is out of scope.
+## PWA / offline behavior
+
+Home-screen install uses the web manifest (`display: standalone`) plus a production service worker.
+
+After one successful online load, a later visit can use the cached application shell and local training features without internet: Home, Train, Builder, Daily, Stats, Settings, session launch, captions, local tones, completion, Summary, and history.
+
+Limits:
+
+- Browser/OS text-to-speech voices are **not** guaranteed offline. If speech cannot run, the workout continues and captions stay truthful.
+- Waiting service workers do not skip waiting, so an active workout is not reloaded because a newer build exists.
+- Local data does not live in Cache Storage. Clearing site cache does not delete workout history.
+
+See [docs/physical-device-release-checklist.md](./docs/physical-device-release-checklist.md) for device install checks that still need a human.
 
 ## Tech stack
 
-React, TypeScript, Vite, React Router (`HashRouter`), IndexedDB, localStorage, Web Speech API, Web Audio API, Screen Wake Lock API, Vitest, Testing Library, Playwright, GitHub Actions, GitHub Pages.
+React, TypeScript, Vite, React Router (`HashRouter`), IndexedDB, localStorage, Web Speech API, Web Audio API, Screen Wake Lock API, Workbox via `vite-plugin-pwa`, Vitest, Testing Library, Playwright, GitHub Actions, GitHub Pages.
 
 ## Training system
 
@@ -203,7 +215,7 @@ Technique library: punches, kicks, teeps, knees, elbows, defense, movement, coun
 - Round bells and countdown tones use the Web Audio API after a user gesture starts a session
 - Vibration and screen wake lock are optional and device-dependent
 - Voice quality depends on voices installed in the browser/OS
-- Add to Home Screen uses the web manifest; offline use is not supported
+- Add to Home Screen uses the web manifest; offline app-shell use requires a successful first online load
 
 ## Run locally
 
@@ -236,18 +248,18 @@ The public site is [https://manpreets2.github.io/StrikeCaller/](https://manpreet
 
 CI (`.github/workflows/ci.yml`) runs lint, typecheck, tests, Pages build, and `verify:pages` on pull requests and on `main`. Artifact upload, deploy, and `verify-live` run only for `refs/heads/main`. Pages source must be **GitHub Actions**, not a `gh-pages` branch.
 
-Routing uses `HashRouter` so deep links and refresh work without server rewrites (for example `https://manpreets2.github.io/StrikeCaller/#/train`). Historical release notes live in [CHANGELOG.md](./CHANGELOG.md).
+Routing uses `HashRouter` so deep links and refresh work without server rewrites (for example `https://manpreets2.github.io/StrikeCaller/#/train`). Historical release notes live in [CHANGELOG.md](./CHANGELOG.md). Visual system notes live in [docs/v1.4-ui-polish-plan.md](./docs/v1.4-ui-polish-plan.md).
 
 ## Limitations
 
 - Does **not** evaluate technique quality, power, speed, accuracy, or calories
 - **No** motion tracking
 - Combinations are training drills — **not** fight-performance guarantees
-- Speech voice quality is browser/OS dependent
+- Speech voice quality is browser/OS dependent and is not guaranteed offline
 - Wake lock and vibration support vary by device
 - Clinch, elbows, and some knee work need appropriate equipment or coaching; the app warns or filters where practical
 
-Muay Thai and Boxing are available now. Kickboxing, MMA Striking, Karate, and Taekwondo are labeled **Coming soon** in the product — no fake functionality is exposed.
+v1.4 supports Boxing and Muay Thai. That is the complete product.
 
 ## Safety
 
@@ -255,13 +267,12 @@ Warm up. Use appropriate equipment. Keep enough clear space. Prioritize balance 
 
 StrikeCaller is a training aid, not medical advice, sparring supervision, or a replacement for a coach.
 
-## Future work
+## Post-v1 ideas / maintenance
 
 Possible later investigations (not committed for a timeline):
 
 - Multi-tab UI synchronization
-- Bundle-size / route-level code splitting if it improves first load
-- Physical-device testing (iPhone Safari, headphones, lock/wake)
+- Physical-device follow-up after install and offline relaunch on specific phones
 
 ## Author
 

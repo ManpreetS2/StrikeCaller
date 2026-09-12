@@ -10,6 +10,8 @@ import {
 } from './helpers/app'
 
 const VIEWPORTS = [
+  { width: 320, height: 568 },
+  { width: 375, height: 667 },
   { width: 390, height: 844 },
   { width: 430, height: 932 },
   { width: 768, height: 1024 },
@@ -82,6 +84,19 @@ test.describe('layout smoke', () => {
       await expect(page.getByRole('heading', { name: 'StrikeCaller' })).toBeVisible()
       const home = await measureOverflow(page)
       expect(home.scrollWidth).toBeLessThanOrEqual(home.innerWidth + 2)
+
+      if (viewport.width <= 390) {
+        const start = page.getByRole('button', { name: /start workout/i })
+        await expect(start).toBeVisible()
+        const startBox = await start.boundingBox()
+        const nav = page.getByRole('navigation', { name: 'Mobile' })
+        const navBox = await nav.boundingBox()
+        expect(startBox, 'Start workout should have a box').toBeTruthy()
+        expect(navBox, 'Mobile nav should have a box').toBeTruthy()
+        if (startBox && navBox) {
+          expect(startBox.y + startBox.height).toBeLessThanOrEqual(navBox.y + 2)
+        }
+      }
 
       await openApp(page, '/stats')
       await expect(page.getByRole('heading', { name: 'Training Stats' })).toBeVisible()

@@ -75,7 +75,7 @@ export function HomePage() {
         <p className="text-sm font-semibold uppercase tracking-[0.22em] text-[var(--accent-2-text)]">
           Ready to train · v{APP_VERSION}
         </p>
-        <h1 className="display mt-1 text-5xl sm:text-7xl">StrikeCaller</h1>
+        <h1 className="display mt-1 text-4xl sm:text-5xl lg:text-7xl">StrikeCaller</h1>
         <p className="mt-2 max-w-xl text-[var(--text-muted)]">
           Spoken {sportLabel} combinations. {stats.total} built-in combos. Local stats only.
         </p>
@@ -101,38 +101,36 @@ export function HomePage() {
             Boxing
           </button>
         </div>
-        {recent ? (
-          <p className="mt-3 text-sm text-[var(--text-muted)]">
-            Last session:{' '}
-            <span className="capitalize text-[var(--text)]">{recent.martialArt.replace('-', ' ')}</span>
-            {' · '}
-            {Math.round(recent.totalTrainingMs / 60000) > 0
-              ? `${Math.round(recent.totalTrainingMs / 60000)} min`
-              : `${Math.round(recent.totalTrainingMs / 1000)}s`}
+        {historyReady && recent ? (
+          <p className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-[var(--text-muted)]">
+            <span>
+              Last session:{' '}
+              <span className="capitalize text-[var(--text)]">{recent.martialArt.replace('-', ' ')}</span>
+              {' · '}
+              {Math.round(recent.totalTrainingMs / 60000) > 0
+                ? `${Math.round(recent.totalTrainingMs / 60000)} min`
+                : `${Math.round(recent.totalTrainingMs / 1000)}s`}
+            </span>
             <button
               type="button"
-              className="ml-2 inline-flex items-center gap-1 text-[var(--accent-text)]"
+              className="btn btn-ghost !min-h-9 !px-2.5 !py-1"
               onClick={trainAgain}
             >
               Train again <ArrowRight size={14} aria-hidden />
             </button>
           </p>
-        ) : !historyReady ? (
-          <p className="mt-3 text-sm text-[var(--text-muted)]" aria-busy="true">
-            Loading sessions…
-          </p>
         ) : null}
       </section>
 
-      <section className="home-hero px-5 py-6 sm:px-8 sm:py-8 lg:px-10" aria-label="Featured workout">
+      <section className="home-hero px-4 py-5 sm:px-8 sm:py-8 lg:px-10" aria-label="Featured workout">
           <div className="relative z-10 flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
             <div className="max-w-xl">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent-2-text)]">
                 Featured workout
               </p>
-              <h2 className="display mt-2 text-5xl sm:text-6xl lg:text-7xl">{featured.title}</h2>
+              <h2 className="display mt-2 text-4xl sm:text-6xl lg:text-7xl">{featured.title}</h2>
               <p className="mt-2 text-[var(--text-muted)]">{featured.body}</p>
-              <p className="mt-1 text-sm text-[var(--text-dim)]">
+              <p className="mt-1 hidden text-sm text-[var(--text-dim)] sm:block">
                 Uses your saved stance, experience, calls, and pace.
               </p>
               <button
@@ -186,31 +184,53 @@ export function HomePage() {
             Full stats
           </Link>
         </div>
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <ProgressMetric label="Sessions this week" value={String(preview.sessionsThisWeek)} kind="sessions" />
-          <ProgressMetric label="Minutes trained" value={String(preview.minutesThisWeek)} kind="minutes" />
-          <ProgressMetric label="Current streak" value={`${preview.currentStreak}d`} kind="streak" />
-          <ProgressMetric label="Rounds this week" value={String(weekStats.roundsCompleted)} kind="rounds" />
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4" aria-busy={!historyReady}>
+          <ProgressMetric
+            label="Sessions this week"
+            value={historyReady ? String(preview.sessionsThisWeek) : '—'}
+            kind="sessions"
+          />
+          <ProgressMetric
+            label="Minutes trained"
+            value={historyReady ? String(preview.minutesThisWeek) : '—'}
+            kind="minutes"
+          />
+          <ProgressMetric
+            label="Current streak"
+            value={historyReady ? `${preview.currentStreak}d` : '—'}
+            kind="streak"
+          />
+          <ProgressMetric
+            label="Rounds this week"
+            value={historyReady ? String(weekStats.roundsCompleted) : '—'}
+            kind="rounds"
+          />
         </div>
         <div className="mt-3 grid gap-3 lg:grid-cols-3">
           <div className="progress-card panel">
             <p className="text-xs uppercase tracking-[0.14em] text-[var(--text-dim)]">Combinations this week</p>
-            <p className="mt-1 text-xl font-semibold">{weekStats.combinationsCompleted}</p>
+            <p className="mt-1 text-xl font-semibold">
+              {historyReady ? weekStats.combinationsCompleted : '—'}
+            </p>
           </div>
           <div className="progress-card panel">
             <p className="text-xs uppercase tracking-[0.14em] text-[var(--text-dim)]">Frequent technique</p>
-            <p className="mt-1 text-xl font-semibold">{topTechnique ?? '—'}</p>
+            <p className="mt-1 truncate text-xl font-semibold" title={topTechnique ?? undefined}>
+              {historyReady ? (topTechnique ?? '—') : '—'}
+            </p>
           </div>
           <div className="progress-card panel">
             <p className="text-xs uppercase tracking-[0.14em] text-[var(--text-dim)]">Sport breakdown</p>
-            {sportSplit.length > 0 ? (
+            {historyReady && sportSplit.length > 0 ? (
               <p className="mt-1 text-sm text-[var(--text)]">
                 {sportSplit
                   .map((row) => `${row.martialArt === 'boxing' ? 'Boxing' : 'Muay Thai'} ${Math.round(row.ms / 60000)}m`)
                   .join(' · ')}
               </p>
             ) : (
-              <p className="mt-1 text-sm text-[var(--text-muted)]">No sessions yet.</p>
+              <p className="mt-1 text-sm text-[var(--text-muted)]">
+                {historyReady ? 'No sessions yet.' : '—'}
+              </p>
             )}
           </div>
         </div>

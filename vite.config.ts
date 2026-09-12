@@ -2,6 +2,7 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import { VitePWA } from 'vite-plugin-pwa'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { resolvePagesBase } from './scripts/pages-base.mjs'
@@ -16,7 +17,27 @@ const base = resolvePagesBase({ isPagesBuild, pagesBaseUrl: process.env.PAGES_BA
 
 export default defineConfig({
   base,
-  plugins: [react(), tailwindcss()],
+  plugins: [
+    react(),
+    tailwindcss(),
+    VitePWA({
+      disable: process.env.VITEST === 'true',
+      registerType: 'prompt',
+      injectRegister: false,
+      filename: 'sw.js',
+      manifest: false,
+      includeManifestIcons: false,
+      devOptions: { enabled: false },
+      workbox: {
+        skipWaiting: false,
+        clientsClaim: false,
+        cleanupOutdatedCaches: true,
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest,woff,woff2}'],
+        navigateFallback: 'index.html',
+        navigateFallbackDenylist: [/^\/cdn-cgi\//, /cloudflareinsights/],
+      },
+    }),
+  ],
   resolve: {
     alias: {
       '@': path.resolve(rootDir, './src'),

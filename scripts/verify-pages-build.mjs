@@ -8,7 +8,7 @@
 // Run locally with `npm run verify:pages` (uses the documented base fallback)
 // or in CI with PAGES_BASE_URL set to GitHub's canonical Pages URL.
 
-import { readFileSync, existsSync } from 'node:fs'
+import { readFileSync, existsSync, readdirSync } from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
 import { resolvePagesBase } from './pages-base.mjs'
@@ -162,9 +162,31 @@ for (const ref of [...jsRefs, ...cssRefs]) {
   }
 }
 
+if (/fonts\.googleapis\.com|fonts\.gstatic\.com/i.test(html)) {
+  fail('Pages HTML still requests Google Fonts (offline UI must use local fonts)')
+}
+
+const swPath = path.join(distDir, 'sw.js')
+if (!existsSync(swPath)) {
+  fail('required file missing from dist: sw.js')
+} else {
+  const sw = readFileSync(swPath, 'utf8')
+  if (!/precacheAndRoute|precache/.test(sw)) {
+    fail('dist/sw.js does not look like a Workbox-generated service worker')
+  }
+  if (/url:\s*["'][^"']*cloudflareinsights/i.test(sw)) {
+    fail('service worker must not precache Cloudflare Insights')
+  }
+}
+
+if (!readdirSync(distDir).some((name) => name.startsWith('workbox-') && name.endsWith('.js'))) {
+  fail('required Workbox runtime helper missing from dist (workbox-*.js)')
+}
+
 // Required PWA / icon files must be present in the artifact.
 const requiredFiles = [
   'index.html',
+  'sw.js',
   'favicon.svg',
   'favicon-32.png',
   'manifest.webmanifest',
@@ -321,6 +343,8 @@ console.log(`  - title is "${DOCUMENT_TITLE}"`)
 console.log(`  - description, canonical, Open Graph, and Twitter tags present`)
 console.log(`  - ${jsRefs.length} JS and ${cssRefs.length} CSS bundle(s) prefixed with ${expectedBase}`)
 console.log(`  - all local asset references exist in dist`)
-console.log(`  - favicon, manifest, PNG install icons, apple-touch-icon, and og-image present`)
+  console.log(`  - favicon, manifest, PNG install icons, apple-touch-icon, and og-image present`)
+  console.log(`  - service worker sw.js present with Workbox precache`)
+  console.log(`  - no Google Fonts runtime dependency in index.html`)
 console.log(`  - manifest JSON parsed; 192/512/maskable PNG dimensions match`)
 console.log(`  - og-image.png is 1200×630 opaque RGB`)

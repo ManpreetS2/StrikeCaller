@@ -3,24 +3,20 @@ import {
   BarChart3,
   BookOpen,
   CalendarDays,
-  Lock,
   Settings,
   Shield,
   SlidersHorizontal,
   Sparkles,
 } from 'lucide-react'
-import { SportVisual } from '../components/visual'
-
-const COMING_SOON = ['Kickboxing', 'MMA Striking', 'Karate', 'Taekwondo'] as const
 
 const TOOLS = [
   { to: '/daily', title: 'Daily', body: 'One focused combo, slow to fight pace.', icon: CalendarDays },
   { to: '/builder', title: 'Builder', body: 'Create a custom combination.', icon: Shield },
   { to: '/stats', title: 'Stats', body: 'Sessions, minutes, streaks, and records.', icon: BarChart3 },
-  { to: '/train', title: 'Customize Workout', body: 'Full mode, rounds, pace, and filters.', icon: SlidersHorizontal },
+  { to: '/settings', title: 'Settings', body: 'Theme, speech, storage, and privacy.', icon: Settings },
   { to: '/learn', title: 'Learn', body: 'Study one combination at a time.', icon: BookOpen },
   { to: '/demo', title: 'Guided Demo', body: 'Hear StrikeCaller call a short workout.', icon: Sparkles },
-  { to: '/settings', title: 'Settings', body: 'Theme, speech, storage, and privacy.', icon: Settings },
+  { to: '/train', title: 'Customize Workout', body: 'Full mode, rounds, pace, and filters.', icon: SlidersHorizontal },
 ] as const
 
 export function MorePage() {
@@ -48,27 +44,6 @@ export function MorePage() {
             </div>
           </Link>
         ))}
-      </section>
-
-      <section aria-label="Coming soon">
-        <h2 className="mb-3 text-2xl font-semibold">Coming soon</h2>
-        <div className="coming-soon-grid grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {COMING_SOON.map((name) => (
-            <div key={name} className="panel p-4 opacity-55" aria-disabled="true">
-              <div className="flex items-start gap-3">
-                <div className="icon-well" aria-hidden>
-                  <SportVisual art="coming-soon" size="md" />
-                </div>
-                <div>
-                  <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--text-dim)]">
-                    <Lock size={12} aria-hidden /> Coming soon
-                  </p>
-                  <h3 className="mt-1 text-xl font-semibold">{name}</h3>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
       </section>
     </div>
   )

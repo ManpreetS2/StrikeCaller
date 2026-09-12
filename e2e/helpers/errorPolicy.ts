@@ -14,10 +14,12 @@ export const E2E_APP_ORIGINS = [
 
 const GOOGLE_FONT_HOST = /(^|\.)((fonts\.googleapis\.com)|(fonts\.gstatic\.com))$/i
 const GOOGLE_FONT_IN_TEXT = /fonts\.googleapis\.com|fonts\.gstatic\.com/i
+const CLOUDFLARE_INSIGHTS_HOST = /(^|\.)cloudflareinsights\.com$/i
+const CLOUDFLARE_INSIGHTS_IN_TEXT = /cloudflareinsights\.com|static\.cloudflareinsights\.com/i
 const EXHAUSTION_TOKEN = /net::ERR_NO_BUFFER_SPACE|net::ERR_INSUFFICIENT_RESOURCES/i
 const FAILED_RESOURCE_PREFIX = /^Failed to load resource:\s*net::ERR_/i
 const APP_ASSET_IN_TEXT = /\/StrikeCaller\/|\/assets\/index-|manifest\.webmanifest/i
-const REQUIRED_PATH = /\.(js|mjs|css|webmanifest|html|svg|ico|png)(\?|$)/i
+const REQUIRED_PATH = /\.(js|mjs|css|webmanifest|html|svg|ico|png|woff2?|ttf)(\?|$)/i
 const ABORTED = /ERR_ABORTED|NS_BINDING_ABORTED|NS_BINDING_CANCELLED/i
 
 export function extractUrls(text: string): string[] {
@@ -36,6 +38,12 @@ export function isGoogleFontUrl(url: string): boolean {
   const host = hostnameOf(url)
   if (host && GOOGLE_FONT_HOST.test(host)) return true
   return GOOGLE_FONT_IN_TEXT.test(url)
+}
+
+export function isCloudflareInsightsUrl(url: string): boolean {
+  const host = hostnameOf(url)
+  if (host && CLOUDFLARE_INSIGHTS_HOST.test(host)) return true
+  return CLOUDFLARE_INSIGHTS_IN_TEXT.test(url)
 }
 
 export function isStrikeCallerOwnedUrl(url: string): boolean {
@@ -93,7 +101,12 @@ export function isIgnorableConsoleError(input: ConsoleErrorInput): boolean {
     return false
   }
 
-  if (urls.some(isGoogleFontUrl) || GOOGLE_FONT_IN_TEXT.test(input.text)) {
+  if (
+    urls.some(isGoogleFontUrl) ||
+    GOOGLE_FONT_IN_TEXT.test(input.text) ||
+    urls.some(isCloudflareInsightsUrl) ||
+    CLOUDFLARE_INSIGHTS_IN_TEXT.test(input.text)
+  ) {
     return true
   }
 

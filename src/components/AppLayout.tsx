@@ -40,13 +40,13 @@ export function AppLayout() {
         Skip to content
       </a>
       <header className="app-header sticky top-0 z-40 border-b border-[var(--border)] bg-[color-mix(in_srgb,var(--bg)_88%,transparent)] backdrop-blur-md">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
+        <div className="mx-auto flex max-w-6xl flex-nowrap items-center justify-between gap-2 px-3 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] sm:gap-3 sm:px-4">
           <Link to="/" className="flex items-center gap-2" aria-label="StrikeCaller home">
             <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--accent-soft)] text-[var(--accent-text)]">
               <Dumbbell aria-hidden size={18} />
             </span>
-            <span>
-              <span className="display block text-2xl leading-none tracking-[0.08em]">StrikeCaller</span>
+            <span className="min-w-0">
+              <span className="display block text-xl leading-none tracking-[0.08em] sm:text-2xl">StrikeCaller</span>
               <span className="hidden text-xs text-[var(--text-dim)] sm:block">
                 Boxing & Muay Thai · v{APP_VERSION}
               </span>
@@ -85,7 +85,7 @@ export function AppLayout() {
         </div>
       </header>
 
-      <main id="main" className="app-main mx-auto max-w-6xl px-4 py-6 pb-24 md:pb-10">
+      <main id="main" className="app-main mx-auto max-w-6xl px-4 py-6 pb-28 md:pb-10">
         {!sessionActive && storageWarningVisible && storageIssue ? (
           <div
             role="alert"

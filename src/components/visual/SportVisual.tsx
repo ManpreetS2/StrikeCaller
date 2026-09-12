@@ -7,11 +7,11 @@ export function SportVisual({
   size = 'md',
   decorative = true,
 }: {
-  art: MartialArt | 'coming-soon'
+  art: MartialArt
   size?: IconSize
   decorative?: boolean
 }) {
-  const title = art === 'boxing' ? 'Boxing' : art === 'coming-soon' ? 'Coming soon' : 'Muay Thai'
+  const title = art === 'boxing' ? 'Boxing' : 'Muay Thai'
   return (
     <DimensionalIcon size={size} decorative={decorative} title={title}>
       <SportMark art={art} />
@@ -19,7 +19,7 @@ export function SportVisual({
   )
 }
 
-function SportMark({ art }: { art: MartialArt | 'coming-soon' }) {
+function SportMark({ art }: { art: MartialArt }) {
   const ids = useDimIds()
   if (art === 'boxing') {
     return (
@@ -32,14 +32,6 @@ function SportMark({ art }: { art: MartialArt | 'coming-soon' }) {
           <path d="M44 22l8-6" stroke="var(--accent-text)" strokeWidth="2" strokeLinecap="round" />
           <circle cx="52" cy="16" r="2.2" fill="var(--accent-text)" />
         </g>
-      </>
-    )
-  }
-  if (art === 'coming-soon') {
-    return (
-      <>
-        <IconPlate />
-        <path d="M22 34h20M32 24v20" stroke="var(--text-dim)" strokeWidth="2.5" strokeLinecap="round" opacity="0.55" />
       </>
     )
   }

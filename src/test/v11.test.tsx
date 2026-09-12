@@ -80,10 +80,10 @@ describe('custom combo maximum eight', () => {
 })
 
 describe('boxing library', () => {
-  it('loads 100+ boxing combos and all validate', () => {
-    expect(BOXING_COMBOS.length).toBeGreaterThanOrEqual(100)
-    expect(MUAY_THAI_COMBOS.length).toBeGreaterThanOrEqual(125)
-    expect(CURATED_COMBOS.length).toBeGreaterThanOrEqual(225)
+  it('loads exactly 100 boxing combos, 125 Muay Thai combos, and 225 curated combos', () => {
+    expect(BOXING_COMBOS.length).toBe(100)
+    expect(MUAY_THAI_COMBOS.length).toBe(125)
+    expect(CURATED_COMBOS.length).toBe(225)
     for (const combo of BOXING_COMBOS) {
       expect(combo.martialArt).toBe('boxing')
       expect(combo.techniques.length).toBeLessThanOrEqual(8)

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   extractUrls,
+  isCloudflareInsightsUrl,
   isGoogleFontUrl,
   isIgnorableConsoleError,
   isStrikeCallerOwnedUrl,
@@ -104,6 +105,34 @@ describe('E2E console / request failure policy', () => {
         url: 'https://fonts.gstatic.com/s/ibmplexsans/v1.woff2',
         resourceType: 'font',
         failureText: 'net::ERR_NO_BUFFER_SPACE',
+      }),
+    ).toBe(false)
+  })
+
+  it('fails missing same-origin bundled fonts', () => {
+    expect(
+      shouldFailAppRequest({
+        url: 'http://127.0.0.1:4173/assets/ibm-plex-sans-latin-400-normal-XXXX.woff2',
+        resourceType: 'font',
+        status: 404,
+      }),
+    ).toBe(true)
+  })
+
+  it('treats a blocked Cloudflare Insights beacon as optional noise', () => {
+    const beacon = 'https://static.cloudflareinsights.com/beacon.min.js'
+    expect(isCloudflareInsightsUrl(beacon)).toBe(true)
+    expect(
+      isIgnorableConsoleError({
+        text: `GET ${beacon} net::ERR_BLOCKED_BY_CLIENT`,
+        urls: [beacon],
+      }),
+    ).toBe(true)
+    expect(
+      shouldFailAppRequest({
+        url: beacon,
+        resourceType: 'script',
+        failureText: 'net::ERR_BLOCKED_BY_CLIENT',
       }),
     ).toBe(false)
   })

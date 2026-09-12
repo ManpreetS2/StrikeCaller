@@ -600,7 +600,7 @@ textarea {
 .home-hero {
   position: relative;
   overflow: hidden;
-  min-height: 17.5rem;
+  min-height: 0;
   border-radius: 22px;
   border: 1px solid color-mix(in srgb, var(--accent-2) 22%, var(--border));
   background:
@@ -620,6 +620,13 @@ textarea {
   font-weight: 700;
 }
 
+@media (max-width: 360px) {
+  .home-hero-cta {
+    min-height: 2.85rem;
+    margin-top: 0.85rem;
+  }
+}
+
 .workout-rail {
   display: flex;
   gap: 0.75rem;
@@ -636,6 +643,7 @@ textarea {
 
 .workout-card {
   flex: 0 0 min(78vw, 16.5rem);
+  min-height: 9.75rem;
   scroll-snap-align: start;
   text-align: left;
   padding: 0.9rem;
@@ -1073,10 +1081,6 @@ textarea {
   .hero-visual-layer {
     max-width: 140px;
     margin-top: 0.75rem;
-  }
-
-  .coming-soon-grid {
-    display: none;
   }
 }
 
