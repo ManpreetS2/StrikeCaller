@@ -1,8 +1,10 @@
 import type { ConsoleMessage, Page, Request, Response } from '@playwright/test'
 import {
   extractUrls,
+  isCloudflareInsightsUrl,
   isGoogleFontUrl,
   isIgnorableConsoleError,
+  isIgnorablePageError,
   isLikelyAssetUrl,
   shouldFailAppRequest,
 } from './errorPolicy'
@@ -17,7 +19,7 @@ export type ErrorWatch = {
 function urlsFromConsole(message: ConsoleMessage): string[] {
   const urls = new Set<string>(extractUrls(message.text()))
   const locationUrl = message.location().url
-  if (locationUrl && (isLikelyAssetUrl(locationUrl) || isGoogleFontUrl(locationUrl))) {
+  if (locationUrl && (isLikelyAssetUrl(locationUrl) || isGoogleFontUrl(locationUrl) || isCloudflareInsightsUrl(locationUrl))) {
     urls.add(locationUrl)
   }
   return [...urls]
@@ -25,15 +27,21 @@ function urlsFromConsole(message: ConsoleMessage): string[] {
 
 /**
  * Fail on pageerror, unexpected console.error, and required same-origin asset load
- * failures. Google Fonts hosts may be ignored. Resource-exhaustion tokens are not
+ * failures. Google Fonts and Cloudflare Web Analytics hosts may be ignored. Resource-exhaustion tokens are not
  * a global pass — see `isIgnorableConsoleError` / `shouldFailAppRequest`.
  */
 export function attachErrorWatch(page: Page): ErrorWatch {
   const pageErrors: string[] = []
   const consoleErrors: string[] = []
   const assetFailures: string[] = []
+  let cloudflareInsightsSeen = false
+
+  page.on('request', (request: Request) => {
+    if (isCloudflareInsightsUrl(request.url())) cloudflareInsightsSeen = true
+  })
 
   page.on('pageerror', (error) => {
+    if (isIgnorablePageError(error.message)) return
     pageErrors.push(error.message)
   })
 
@@ -41,7 +49,7 @@ export function attachErrorWatch(page: Page): ErrorWatch {
     if (message.type() !== 'error') return
     const text = message.text()
     const urls = urlsFromConsole(message)
-    if (isIgnorableConsoleError({ text, urls })) return
+    if (isIgnorableConsoleError({ text, urls, cloudflareInsightsSeen })) return
     consoleErrors.push(text)
   })
 
