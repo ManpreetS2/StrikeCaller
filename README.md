@@ -23,7 +23,7 @@ Current release: **1.3.3**. See [CHANGELOG.md](./CHANGELOG.md) for what’s new.
 | **Quality** | 712 Vitest / 46 files · 69 Playwright passed / 21 skipped / 0 failed |
 | **Browsers** | Chromium · Firefox · WebKit · Mobile WebKit |
 | **Storage** | IndexedDB + localStorage |
-| **Privacy** | No account · No backend · No analytics · No cloud sync |
+| **Privacy** | No account · No backend · Privacy-first anonymous site analytics · No cloud sync |
 | **Release** | [v1.3.3](https://github.com/ManpreetS2/StrikeCaller/releases/tag/v1.3.3) |
 
 225 curated combinations (125 Muay Thai, 100 Boxing). Free. No account. No download.
@@ -156,7 +156,7 @@ Selected hardening (see [CHANGELOG.md](./CHANGELOG.md) for the full history):
 
 - No account
 - No backend
-- No analytics
+- Privacy-first anonymous site analytics
 - No advertising
 - No cloud sync
 - Training data stays in browser storage (IndexedDB + localStorage)
