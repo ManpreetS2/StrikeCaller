@@ -17,7 +17,7 @@ test.describe('production service worker', () => {
       )
       .toBe(true)
 
-    const sw = await page.request.get(new URL('sw.js', test.info().project.use.baseURL ?? page.url()))
+    const sw = await page.request.get(new URL('sw.js', test.info().project.use.baseURL ?? page.url()).href)
     expect(sw.ok()).toBe(true)
     const swText = await sw.text()
     expect(swText).toMatch(/precacheAndRoute|precache/)

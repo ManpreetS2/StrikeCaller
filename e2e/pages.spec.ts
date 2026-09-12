@@ -115,7 +115,7 @@ test.describe('GitHub Pages base path', () => {
     expect(image.status(), 'Pages og-image.png should be HTTP 200').toBe(200)
     expect(image.headers()['content-type'] ?? '').toMatch(/image\/png/i)
 
-    const html = await page.content()
+    const html = await (await page.request.get(new URL('.', pagesBase).href)).text()
     expect(html).not.toMatch(/fonts\.googleapis\.com|fonts\.gstatic\.com/)
     expect((html.match(/static\.cloudflareinsights\.com\/beacon\.min\.js/g) ?? []).length).toBe(1)
     expect(html).toContain(
@@ -124,6 +124,8 @@ test.describe('GitHub Pages base path', () => {
 
     const sw = await page.request.get(new URL('sw.js', pagesBase).href)
     expect(sw.status(), 'Pages sw.js should be HTTP 200').toBe(200)
-    expect(await sw.text()).toMatch(/precacheAndRoute|precache/)
+    const swText = await sw.text()
+    expect(swText).toMatch(/precacheAndRoute|precache/)
+    expect(swText).not.toMatch(/url:\s*["'][^"']*cloudflareinsights/)
   })
 })
