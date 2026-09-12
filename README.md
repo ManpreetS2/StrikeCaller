@@ -21,7 +21,7 @@ Current release: **1.4.0**. See [CHANGELOG.md](./CHANGELOG.md) for what’s new.
 | **Quality** | 722 Vitest / 47 files · 85 Playwright passed / 33 skipped / 0 failed |
 | **Browsers** | Chromium · Firefox · WebKit · Mobile WebKit |
 | **Storage** | IndexedDB + localStorage |
-| **Privacy** | No account · No backend · No cookies added by StrikeCaller · No cloud sync |
+| **Privacy** | No account · No backend · Privacy-first anonymous site analytics · No cloud sync |
 | **Release** | v1.4.0 candidate |
 
 **225** curated combinations (**125** Muay Thai, **100** Boxing). Free. No account.
@@ -155,13 +155,14 @@ Selected hardening (see [CHANGELOG.md](./CHANGELOG.md) for the full history):
 
 - No account
 - No backend
+- Privacy-first anonymous site analytics for site-level traffic
 - No cookies added by StrikeCaller
 - No advertising
 - No cloud sync
 - Training data stays in browser storage (IndexedDB + localStorage)
-- StrikeCaller does not send workout contents, preferences, history, or user-entered information off-device
+- StrikeCaller does not send workout contents, custom combos, preferences, history, or user-entered information to analytics
 
-Optional anonymous Cloudflare Web Analytics (page views only) is a separate, non-required production concern. The app works if that script is blocked or offline.
+Cloudflare Web Analytics is optional. The app works if that script is blocked or offline.
 
 Fonts are bundled with the app. The UI does not depend on `fonts.googleapis.com` at runtime.
 

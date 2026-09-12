@@ -117,6 +117,10 @@ test.describe('GitHub Pages base path', () => {
 
     const html = await page.content()
     expect(html).not.toMatch(/fonts\.googleapis\.com|fonts\.gstatic\.com/)
+    expect((html.match(/static\.cloudflareinsights\.com\/beacon\.min\.js/g) ?? []).length).toBe(1)
+    expect(html).toContain(
+      `<!-- Cloudflare Web Analytics --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "1de936f97a9e42d29b745fce4e7cb946"}'></script><!-- End Cloudflare Web Analytics -->`,
+    )
 
     const sw = await page.request.get(new URL('sw.js', pagesBase).href)
     expect(sw.status(), 'Pages sw.js should be HTTP 200').toBe(200)

@@ -35,7 +35,7 @@ StrikeCaller v1.4 is a complete local-first Boxing and Muay Thai spoken training
 #### Fonts and runtime network
 
 - UI fonts are bundled (Fontsource Bebas Neue, IBM Plex Sans, IBM Plex Mono) instead of Google Fonts.
-- Optional Cloudflare Web Analytics remains a separate, non-required change. A blocked Insights script does not break the app.
+- Optional Cloudflare Web Analytics (anonymous site-level page views only) is included from PR #11. A blocked Insights script does not break the app. Workout contents, preferences, and history are not sent.
 
 #### Documentation
 

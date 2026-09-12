@@ -4,6 +4,7 @@ import {
   isCloudflareInsightsUrl,
   isGoogleFontUrl,
   isIgnorableConsoleError,
+  isIgnorablePageError,
   isStrikeCallerOwnedUrl,
   shouldFailAppRequest,
 } from '../../e2e/helpers/errorPolicy'
@@ -119,13 +120,23 @@ describe('E2E console / request failure policy', () => {
     ).toBe(true)
   })
 
-  it('treats a blocked Cloudflare Insights beacon as optional noise', () => {
+  it('allows a blocked Cloudflare Web Analytics beacon without failing the app', () => {
     const beacon = 'https://static.cloudflareinsights.com/beacon.min.js'
+    const rum = 'https://cloudflareinsights.com/cdn-cgi/rum'
     expect(isCloudflareInsightsUrl(beacon)).toBe(true)
+    expect(isCloudflareInsightsUrl(rum)).toBe(true)
     expect(
       isIgnorableConsoleError({
-        text: `GET ${beacon} net::ERR_BLOCKED_BY_CLIENT`,
-        urls: [beacon],
+        text: `Failed to load resource: net::ERR_BLOCKED_BY_CLIENT ${beacon}`,
+        urls: extractUrls(`Failed to load resource: net::ERR_BLOCKED_BY_CLIENT ${beacon}`),
+      }),
+    ).toBe(true)
+    expect(
+      isIgnorableConsoleError({
+        text: `Access to XMLHttpRequest at '${rum}' from origin 'http://127.0.0.1:4173' has been blocked by CORS policy`,
+        urls: extractUrls(
+          `Access to XMLHttpRequest at '${rum}' from origin 'http://127.0.0.1:4173' has been blocked by CORS policy`,
+        ),
       }),
     ).toBe(true)
     expect(
@@ -135,5 +146,29 @@ describe('E2E console / request failure policy', () => {
         failureText: 'net::ERR_BLOCKED_BY_CLIENT',
       }),
     ).toBe(false)
+    expect(
+      isIgnorableConsoleError({
+        text: `Failed to load resource: net::ERR_NO_BUFFER_SPACE ${beacon} ${'http://127.0.0.1:4173/assets/index-C__6zYoy.js'}`,
+        urls: [beacon, 'http://127.0.0.1:4173/assets/index-C__6zYoy.js'],
+      }),
+    ).toBe(false)
+    expect(isIgnorablePageError('/cloudflareinsights.com/cdn-cgi/rum due to access control checks.')).toBe(
+      true,
+    )
+    expect(isIgnorablePageError('TypeError: undefined is not an object')).toBe(false)
+    const webkitCors = 'Origin http://127.0.0.1:4173 is not allowed by Access-Control-Allow-Origin. Status code: 200'
+    expect(
+      isIgnorableConsoleError({
+        text: webkitCors,
+        urls: extractUrls(webkitCors),
+      }),
+    ).toBe(false)
+    expect(
+      isIgnorableConsoleError({
+        text: webkitCors,
+        urls: extractUrls(webkitCors),
+        cloudflareInsightsSeen: true,
+      }),
+    ).toBe(true)
   })
 })

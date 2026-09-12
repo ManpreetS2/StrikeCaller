@@ -166,6 +166,15 @@ if (/fonts\.googleapis\.com|fonts\.gstatic\.com/i.test(html)) {
   fail('Pages HTML still requests Google Fonts (offline UI must use local fonts)')
 }
 
+const CLOUDFLARE_BEACON =
+  `<!-- Cloudflare Web Analytics --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "1de936f97a9e42d29b745fce4e7cb946"}'></script><!-- End Cloudflare Web Analytics -->`
+if ((html.match(/static\.cloudflareinsights\.com\/beacon\.min\.js/g) ?? []).length !== 1) {
+  fail('Pages HTML must contain exactly one Cloudflare Web Analytics beacon')
+}
+if (!html.includes(CLOUDFLARE_BEACON)) {
+  fail('Pages HTML is missing the exact Cloudflare Web Analytics snippet/token from PR #11')
+}
+
 const swPath = path.join(distDir, 'sw.js')
 if (!existsSync(swPath)) {
   fail('required file missing from dist: sw.js')
@@ -346,5 +355,6 @@ console.log(`  - all local asset references exist in dist`)
   console.log(`  - favicon, manifest, PNG install icons, apple-touch-icon, and og-image present`)
   console.log(`  - service worker sw.js present with Workbox precache`)
   console.log(`  - no Google Fonts runtime dependency in index.html`)
+  console.log(`  - exactly one Cloudflare Web Analytics beacon with the PR #11 token`)
 console.log(`  - manifest JSON parsed; 192/512/maskable PNG dimensions match`)
 console.log(`  - og-image.png is 1200×630 opaque RGB`)
