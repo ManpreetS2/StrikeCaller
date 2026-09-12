@@ -22,7 +22,7 @@ Current release: **1.4.0**. See [CHANGELOG.md](./CHANGELOG.md) for what’s new.
 | **Browsers** | Chromium · Firefox · WebKit · Mobile WebKit |
 | **Storage** | IndexedDB + localStorage |
 | **Privacy** | No account · No backend · Privacy-first anonymous site analytics · No cloud sync |
-| **Release** | v1.4.0 candidate |
+| **Release** | [v1.4.0](https://github.com/ManpreetS2/StrikeCaller/releases/tag/v1.4.0) |
 
 **225** curated combinations (**125** Muay Thai, **100** Boxing). Free. No account.
 
@@ -128,12 +128,12 @@ Pull requests run verify, e2e, and Pages build. Deploy and live verification run
 
 ## Reliability and testing
 
-v1.4.0 local gate evidence:
+v1.4.0 quality gate:
 
 - **722** Vitest tests across **47** files
 - **86** Playwright tests passed, **36** skipped, **0** failed
 - Chromium, Firefox, WebKit, and mobile WebKit
-- lint, typecheck, unit/integration tests, Pages artifact verification, E2E, deploy, and post-deploy `verify-live`
+- lint, typecheck, unit/integration tests, Pages artifact verification, and E2E
 
 These counts describe a specific build. They are not a permanent guarantee.
 
