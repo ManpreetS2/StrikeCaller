@@ -1,0 +1,50 @@
+import { Link } from 'react-router-dom'
+import {
+  BarChart3,
+  BookOpen,
+  CalendarDays,
+  Settings,
+  Shield,
+  SlidersHorizontal,
+  Sparkles,
+} from 'lucide-react'
+
+const TOOLS = [
+  { to: '/daily', title: 'Daily', body: 'One focused combo, slow to fight pace.', icon: CalendarDays },
+  { to: '/builder', title: 'Builder', body: 'Create a custom combination.', icon: Shield },
+  { to: '/stats', title: 'Stats', body: 'Sessions, minutes, streaks, and records.', icon: BarChart3 },
+  { to: '/settings', title: 'Settings', body: 'Theme, speech, storage, and privacy.', icon: Settings },
+  { to: '/learn', title: 'Learn', body: 'Study one combination at a time.', icon: BookOpen },
+  { to: '/demo', title: 'Guided Demo', body: 'Hear StrikeCaller call a short workout.', icon: Sparkles },
+  { to: '/train', title: 'Customize Workout', body: 'Full mode, rounds, pace, and filters.', icon: SlidersHorizontal },
+] as const
+
+export function MorePage() {
+  return (
+    <div className="space-y-8">
+      <header>
+        <p className="text-sm font-semibold uppercase tracking-[0.22em] text-[var(--accent-2-text)]">Tools</p>
+        <h1 className="display mt-1 text-5xl">More</h1>
+        <p className="mt-2 max-w-xl text-[var(--text-muted)]">
+          Daily, Builder, Stats, and Settings stay here so training stays one tap away.
+        </p>
+      </header>
+
+      <section aria-label="App tools" className="grid gap-3 sm:grid-cols-2">
+        {TOOLS.map(({ to, title, body, icon: Icon }) => (
+          <Link key={to} to={to} aria-label={title} className="interactive-card panel block p-4 no-underline">
+            <div className="flex items-start gap-3">
+              <span className="icon-well !h-11 !w-11 text-[var(--accent-2-text)]" aria-hidden>
+                <Icon size={18} />
+              </span>
+              <span>
+                <h2 className="text-lg font-semibold text-[var(--text)]">{title}</h2>
+                <p className="mt-1 text-sm text-[var(--text-muted)]">{body}</p>
+              </span>
+            </div>
+          </Link>
+        ))}
+      </section>
+    </div>
+  )
+}

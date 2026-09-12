@@ -128,7 +128,7 @@ describe('v1.1.3 data-router session entry integration', () => {
 
     renderApp('/')
     expect(screen.getByRole('heading', { name: /^strikecaller$/i })).toBeInTheDocument()
-    const quick = screen.getAllByRole('button', { name: /^quick train$/i })[0]!
+    const quick = screen.getByRole('button', { name: /start workout/i })
     await user.click(quick)
     await assertSessionVisible()
     expect(errors.some((e) => String(e).includes('useBlocker'))).toBe(false)

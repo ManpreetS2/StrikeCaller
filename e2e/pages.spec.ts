@@ -114,5 +114,18 @@ test.describe('GitHub Pages base path', () => {
     const image = await page.request.get(new URL('og-image.png', pagesBase).href)
     expect(image.status(), 'Pages og-image.png should be HTTP 200').toBe(200)
     expect(image.headers()['content-type'] ?? '').toMatch(/image\/png/i)
+
+    const html = await (await page.request.get(new URL('.', pagesBase).href)).text()
+    expect(html).not.toMatch(/fonts\.googleapis\.com|fonts\.gstatic\.com/)
+    expect((html.match(/static\.cloudflareinsights\.com\/beacon\.min\.js/g) ?? []).length).toBe(1)
+    expect(html).toContain(
+      `<!-- Cloudflare Web Analytics --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "1de936f97a9e42d29b745fce4e7cb946"}'></script><!-- End Cloudflare Web Analytics -->`,
+    )
+
+    const sw = await page.request.get(new URL('sw.js', pagesBase).href)
+    expect(sw.status(), 'Pages sw.js should be HTTP 200').toBe(200)
+    const swText = await sw.text()
+    expect(swText).toMatch(/precacheAndRoute|precache/)
+    expect(swText).not.toMatch(/url:\s*["'][^"']*cloudflareinsights/)
   })
 })

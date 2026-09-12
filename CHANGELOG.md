@@ -1,5 +1,48 @@
 # Changelog
 
+## 1.4.0 — 2026-09-11
+
+### Product Completion & Offline Training
+
+StrikeCaller v1.4 is a complete local-first Boxing and Muay Thai spoken training coach. It may receive maintenance later; this release is intended to enter maintenance mode.
+
+#### Visual hierarchy
+
+- Home now leads with a featured workout and a single **Start workout** action, then For You quick starts, then real stored progress, then compact tools.
+- Mobile navigation is Home · Train · Progress · More. Desktop navigation is Home · Train · Progress · Builder · Settings.
+- On desktop, Customize Workout keeps Start in document flow so it does not cover sport/mode options on short viewports. On smaller screens the Start bar stays sticky with bottom clearance.
+- StrikeCaller red remains Start / End / brand. Electric blue is reserved for navigation and cinematic lighting.
+- Session layout is intentionally unchanged: timer, round, current call, next call, combo path, Pause, Repeat, Skip, End.
+
+#### Boxing + Muay Thai only
+
+- Active product UI is Boxing and Muay Thai only.
+- Unsupported sports are no longer shown as Coming soon in the app.
+- Curated library counts are exact: **225** total, **125** Muay Thai, **100** Boxing.
+
+#### Honest progress
+
+- Home and Stats continue to show only stored activity: sessions, minutes, streak, rounds, combinations, frequent technique, and sport breakdown.
+- StrikeCaller still does not claim punch speed, accuracy, power, or calories.
+
+#### Offline / PWA
+
+- Production builds register a Workbox service worker (`sw.js`) scoped to the GitHub Pages base (`/StrikeCaller/`).
+- After one successful online load and a subsequent visit, the application shell and local training features work without internet.
+- Waiting workers do not skip waiting or claim clients, so an active workout is not reloaded because a newer build exists.
+- Workout history and preferences stay in IndexedDB and localStorage. Deleting Cache Storage does not delete training data.
+- Browser/OS text-to-speech is not guaranteed offline. Captions and local tones still work; the workout continues if speech cannot run.
+
+#### Fonts and runtime network
+
+- UI fonts are bundled (Fontsource Bebas Neue, IBM Plex Sans, IBM Plex Mono) instead of Google Fonts.
+- Optional Cloudflare Web Analytics (anonymous site-level page views only) is included from PR #11. A blocked Insights script does not break the app. Workout contents, preferences, and history are not sent.
+
+#### Documentation
+
+- `docs/v1.4-ui-polish-plan.md` records the implemented visual system.
+- `docs/physical-device-release-checklist.md` lists remaining iPhone Safari and Android Chrome checks. Those checks are not claimed as passed in this changelog.
+
 ## 1.3.3 — 2026-09-11
 
 ### Reliability, Recovery & Workout Consistency

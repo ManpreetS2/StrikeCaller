@@ -51,7 +51,8 @@ export function SettingsPage() {
       <header>
         <h1 className="display text-5xl">Settings</h1>
         <p className="mt-2 text-[var(--text-muted)]">
-          Preferences stay on this device. No accounts or cloud sync. Privacy-first anonymous site analytics.
+          Preferences stay on this device. No accounts or cloud sync. Privacy-first anonymous site
+          analytics. Training data never leaves this browser.
         </p>
       </header>
 

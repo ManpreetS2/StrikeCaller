@@ -214,6 +214,7 @@ describe('v1.2.1 mobile gym experience', () => {
     const start = screen.getByRole('button', { name: /start workout/i })
     expect(start).toBeEnabled()
     expect(document.querySelector('.sticky-start-bar')).toBeTruthy()
+    expect(document.querySelector('.train-page')).toBeTruthy()
     const rounds = screen.getByLabelText(/number of rounds/i)
     await userEvent.clear(rounds)
     await userEvent.type(rounds, '99')

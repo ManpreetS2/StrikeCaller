@@ -1,5 +1,17 @@
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom'
-import { Moon, Sun, Monitor, Settings, Home, Dumbbell, Shield, BarChart3, AlertTriangle, X } from 'lucide-react'
+import {
+  Moon,
+  Sun,
+  Monitor,
+  Settings,
+  Home,
+  Dumbbell,
+  Shield,
+  BarChart3,
+  MoreHorizontal,
+  AlertTriangle,
+  X,
+} from 'lucide-react'
 import { useApp } from '../context/useApp'
 import type { ThemePreference } from '../types'
 import { APP_VERSION } from '../data/defaults'
@@ -10,10 +22,17 @@ const themes: { id: ThemePreference; label: string; icon: typeof Moon }[] = [
   { id: 'system', label: 'System', icon: Monitor },
 ]
 
+const MORE_ROUTES = ['/more', '/daily', '/builder', '/settings', '/learn', '/demo', '/onboarding'] as const
+
+function isMoreRoute(pathname: string): boolean {
+  return MORE_ROUTES.some((route) => pathname === route || pathname.startsWith(`${route}/`))
+}
+
 export function AppLayout() {
   const { preferences, setTheme, storageIssue, storageWarningVisible, dismissStorageIssue } = useApp()
   const location = useLocation()
   const sessionActive = location.pathname === '/session'
+  const moreActive = isMoreRoute(location.pathname)
 
   return (
     <div className={`app-shell ${sessionActive ? 'session-active' : ''}`}>
@@ -21,13 +40,13 @@ export function AppLayout() {
         Skip to content
       </a>
       <header className="app-header sticky top-0 z-40 border-b border-[var(--border)] bg-[color-mix(in_srgb,var(--bg)_88%,transparent)] backdrop-blur-md">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-3 px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
+        <div className="mx-auto flex max-w-6xl flex-nowrap items-center justify-between gap-2 px-3 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] sm:gap-3 sm:px-4">
           <Link to="/" className="flex items-center gap-2" aria-label="StrikeCaller home">
             <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--accent-soft)] text-[var(--accent-text)]">
               <Dumbbell aria-hidden size={18} />
             </span>
-            <span>
-              <span className="display block text-2xl leading-none tracking-[0.08em]">StrikeCaller</span>
+            <span className="min-w-0">
+              <span className="display block text-xl leading-none tracking-[0.08em] sm:text-2xl">StrikeCaller</span>
               <span className="hidden text-xs text-[var(--text-dim)] sm:block">
                 Boxing & Muay Thai · v{APP_VERSION}
               </span>
@@ -35,10 +54,10 @@ export function AppLayout() {
           </Link>
 
           <nav aria-label="Primary" className="hidden items-center gap-1 lg:flex">
-            <NavItem to="/" label="Home" icon={Home} />
+            <NavItem to="/" label="Home" icon={Home} end />
             <NavItem to="/train" label="Train" icon={Dumbbell} />
+            <NavItem to="/stats" label="Progress" icon={BarChart3} />
             <NavItem to="/builder" label="Builder" icon={Shield} />
-            <NavItem to="/stats" label="Stats" icon={BarChart3} />
             <NavItem to="/settings" label="Settings" icon={Settings} />
           </nav>
 
@@ -66,7 +85,7 @@ export function AppLayout() {
         </div>
       </header>
 
-      <main id="main" className="app-main mx-auto max-w-6xl px-4 py-6 pb-24 md:pb-10">
+      <main id="main" className="app-main mx-auto max-w-6xl px-4 py-6 pb-28 md:pb-10">
         {!sessionActive && storageWarningVisible && storageIssue ? (
           <div
             role="alert"
@@ -99,12 +118,20 @@ export function AppLayout() {
         aria-label="Mobile"
         className="mobile-nav fixed inset-x-0 bottom-0 z-40 border-t border-[var(--border)] bg-[color-mix(in_srgb,var(--bg)_92%,transparent)] backdrop-blur-md lg:hidden"
       >
-        <div className="mx-auto grid max-w-6xl grid-cols-5 gap-1 px-2 py-2">
-          <MobileNav to="/" label="Home" icon={Home} />
+        <div className="mx-auto grid max-w-6xl grid-cols-4 gap-1 px-2 py-2">
+          <MobileNav to="/" label="Home" icon={Home} end />
           <MobileNav to="/train" label="Train" icon={Dumbbell} />
-          <MobileNav to="/builder" label="Builder" icon={Shield} />
-          <MobileNav to="/stats" label="Stats" icon={BarChart3} />
-          <MobileNav to="/settings" label="Settings" icon={Settings} />
+          <MobileNav to="/stats" label="Progress" icon={BarChart3} />
+          <Link
+            to="/more"
+            aria-current={moreActive ? 'page' : undefined}
+            className={`mobile-nav-link flex flex-col items-center justify-center gap-1 rounded-lg px-2 py-2 text-xs ${
+              moreActive ? '' : 'text-[var(--text-muted)]'
+            }`}
+          >
+            <MoreHorizontal size={18} aria-hidden />
+            More
+          </Link>
         </div>
       </nav>
     </div>
@@ -115,17 +142,18 @@ function NavItem({
   to,
   label,
   icon: Icon,
+  end,
 }: {
   to: string
   label: string
   icon: typeof Home
+  end?: boolean
 }) {
   return (
     <NavLink
       to={to}
-      className={({ isActive }) =>
-        `btn btn-ghost !rounded-full !px-3 ${isActive ? 'chip-active' : ''}`
-      }
+      end={end}
+      className={({ isActive }) => `btn btn-ghost !rounded-full !px-3 ${isActive ? 'nav-active' : ''}`}
     >
       <Icon size={16} aria-hidden />
       {label}
@@ -137,14 +165,17 @@ function MobileNav({
   to,
   label,
   icon: Icon,
+  end,
 }: {
   to: string
   label: string
   icon: typeof Home
+  end?: boolean
 }) {
   return (
     <NavLink
       to={to}
+      end={end}
       className={({ isActive }) =>
         `mobile-nav-link flex flex-col items-center justify-center gap-1 rounded-lg px-2 py-2 text-xs ${
           isActive ? '' : 'text-[var(--text-muted)]'

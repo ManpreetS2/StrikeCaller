@@ -19,7 +19,7 @@ const CLOUDFLARE_INSIGHTS_IN_TEXT = /cloudflareinsights\.com/i
 const EXHAUSTION_TOKEN = /net::ERR_NO_BUFFER_SPACE|net::ERR_INSUFFICIENT_RESOURCES/i
 const FAILED_RESOURCE_PREFIX = /^Failed to load resource:\s*net::ERR_/i
 const APP_ASSET_IN_TEXT = /\/StrikeCaller\/|\/assets\/index-|manifest\.webmanifest/i
-const REQUIRED_PATH = /\.(js|mjs|css|webmanifest|html|svg|ico|png)(\?|$)/i
+const REQUIRED_PATH = /\.(js|mjs|css|webmanifest|html|svg|ico|png|woff2?|ttf)(\?|$)/i
 const ABORTED = /ERR_ABORTED|NS_BINDING_ABORTED|NS_BINDING_CANCELLED/i
 
 export function extractUrls(text: string): string[] {
@@ -135,11 +135,12 @@ export function isIgnorableConsoleError(input: ConsoleErrorInput): boolean {
     return false
   }
 
-  if (urls.some(isGoogleFontUrl) || GOOGLE_FONT_IN_TEXT.test(input.text)) {
-    return true
-  }
-
-  if (urls.some(isCloudflareInsightsUrl) || CLOUDFLARE_INSIGHTS_IN_TEXT.test(input.text)) {
+  if (
+    urls.some(isGoogleFontUrl) ||
+    GOOGLE_FONT_IN_TEXT.test(input.text) ||
+    urls.some(isCloudflareInsightsUrl) ||
+    CLOUDFLARE_INSIGHTS_IN_TEXT.test(input.text)
+  ) {
     return true
   }
 

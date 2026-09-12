@@ -115,5 +115,10 @@ describe('PWA install assets', () => {
     expect(indexHtml).toMatch(/rel="icon"[^>]*href="\.\/favicon-32\.png"/)
     expect(indexHtml).toMatch(/rel="apple-touch-icon"[^>]*href="\.\/apple-touch-icon\.png"/)
     expect(indexHtml).not.toMatch(/apple-touch-icon\.svg/)
+    expect(indexHtml).not.toMatch(/fonts\.googleapis\.com|fonts\.gstatic\.com/)
+    expect((indexHtml.match(/static\.cloudflareinsights\.com\/beacon\.min\.js/g) ?? []).length).toBe(1)
+    expect(indexHtml).toContain(
+      `<!-- Cloudflare Web Analytics --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "1de936f97a9e42d29b745fce4e7cb946"}'></script><!-- End Cloudflare Web Analytics -->`,
+    )
   })
 })

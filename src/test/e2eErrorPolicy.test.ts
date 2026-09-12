@@ -110,6 +110,16 @@ describe('E2E console / request failure policy', () => {
     ).toBe(false)
   })
 
+  it('fails missing same-origin bundled fonts', () => {
+    expect(
+      shouldFailAppRequest({
+        url: 'http://127.0.0.1:4173/assets/ibm-plex-sans-latin-400-normal-XXXX.woff2',
+        resourceType: 'font',
+        status: 404,
+      }),
+    ).toBe(true)
+  })
+
   it('allows a blocked Cloudflare Web Analytics beacon without failing the app', () => {
     const beacon = 'https://static.cloudflareinsights.com/beacon.min.js'
     const rum = 'https://cloudflareinsights.com/cdn-cgi/rum'

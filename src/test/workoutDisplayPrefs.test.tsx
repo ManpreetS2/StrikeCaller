@@ -141,7 +141,7 @@ describe('workout display preference propagation', () => {
   it('Home Quick Train saved ON → session is minimal', async () => {
     seedPrefs(true)
     const { router } = renderApp('/')
-    fireEvent.click(screen.getAllByRole('button', { name: /^quick train$/i })[0]!)
+    fireEvent.click(screen.getByRole('button', { name: /start workout/i }))
     await waitFor(() => expect(router.state.location.pathname).toBe('/session'))
     expect(sessionConfig(router).minimalMode).toBe(true)
     expect(sessionConfig(router).showNextTechnique).toBe(false)
@@ -150,7 +150,7 @@ describe('workout display preference propagation', () => {
   it('Home Quick Train saved OFF → session is not minimal', async () => {
     seedPrefs(false)
     const { router } = renderApp('/')
-    fireEvent.click(screen.getAllByRole('button', { name: /^quick train$/i })[0]!)
+    fireEvent.click(screen.getByRole('button', { name: /start workout/i }))
     await waitFor(() => expect(router.state.location.pathname).toBe('/session'))
     expect(sessionConfig(router).minimalMode).toBe(false)
     expect(sessionConfig(router).showNextTechnique).toBe(true)

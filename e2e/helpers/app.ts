@@ -19,13 +19,34 @@ export async function openApp(page: Page, route = '/'): Promise<void> {
   await page.goto(hashUrl(route))
 }
 
-export async function goToNav(page: Page, name: 'Home' | 'Train' | 'Stats' | 'Settings'): Promise<void> {
+export async function goToNav(
+  page: Page,
+  name: 'Home' | 'Train' | 'Stats' | 'Settings' | 'Progress' | 'More' | 'Builder',
+): Promise<void> {
   const desktop = page.getByRole('navigation', { name: 'Primary' })
+  const desktopLabel = name === 'Stats' ? 'Progress' : name
+
   if (await desktop.isVisible()) {
-    await desktop.getByRole('link', { name, exact: true }).click()
+    if (name === 'More') {
+      await page.goto(hashUrl('/more'))
+      return
+    }
+    await desktop.getByRole('link', { name: desktopLabel, exact: true }).click()
     return
   }
-  await page.getByRole('navigation', { name: 'Mobile' }).getByRole('link', { name, exact: true }).click()
+
+  const mobile = page.getByRole('navigation', { name: 'Mobile' })
+  if (name === 'Stats' || name === 'Progress') {
+    await mobile.getByRole('link', { name: 'Progress', exact: true }).click()
+    return
+  }
+  if (name === 'Settings' || name === 'Builder' || name === 'More') {
+    await mobile.getByRole('link', { name: 'More', exact: true }).click()
+    if (name === 'More') return
+    await page.getByRole('main').getByRole('link', { name, exact: true }).click()
+    return
+  }
+  await mobile.getByRole('link', { name, exact: true }).click()
 }
 
 export async function startShortCoachSession(page: Page): Promise<void> {

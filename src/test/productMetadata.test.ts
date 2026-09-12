@@ -43,6 +43,10 @@ describe('production product metadata', () => {
     expect(canonical.href).not.toContain('#')
   })
 
+  it('does not load fonts from Google at runtime', () => {
+    expect(indexHtml).not.toMatch(/fonts\.googleapis\.com|fonts\.gstatic\.com/)
+  })
+
   it('declares required Open Graph tags once', () => {
     expect(uniqueMeta(indexHtml, 'property', 'og:title')).toEqual(
       expect.objectContaining({ ok: true, content: DOCUMENT_TITLE }),

@@ -40,14 +40,32 @@ describe('accessibility and UI', () => {
   it('home screen exposes Quick Start controls', () => {
     renderApp()
     expect(screen.getByRole('heading', { name: /^strikecaller$/i })).toBeInTheDocument()
-    expect(screen.getAllByRole('button', { name: /quick train|quick boxing/i }).length).toBeGreaterThan(0)
-    expect(screen.getAllByText(/coming soon/i).length).toBeGreaterThan(0)
+    expect(screen.getByRole('button', { name: /start workout: quick train|start workout: quick boxing/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /muay thai/i })).toHaveAttribute('aria-pressed')
   }, 15000)
 
   it('spoken calls have visible text region on home caption philosophy', () => {
     renderApp()
-    expect(screen.getByText(/225\+ realistic combinations/i)).toBeInTheDocument()
+    expect(screen.getByText(/built-in combos/i)).toBeInTheDocument()
   })
+
+  it('More hub keeps Daily, Builder, Stats, and Settings reachable', () => {
+    const router = createMemoryRouter(appRoutes, { initialEntries: ['/more'] })
+    render(
+      <AppProvider>
+        <RouterProvider router={router} />
+      </AppProvider>,
+    )
+    expect(screen.getByRole('heading', { name: /^more$/i })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Daily' })).toBeInTheDocument()
+    expect(screen.getAllByRole('link', { name: 'Builder' }).length).toBeGreaterThan(0)
+    expect(screen.getByRole('link', { name: 'Stats' })).toBeInTheDocument()
+    expect(screen.getAllByRole('link', { name: 'Settings' }).length).toBeGreaterThan(0)
+    expect(screen.getByRole('link', { name: 'Learn' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Guided Demo' })).toBeInTheDocument()
+    expect(screen.queryByText(/coming soon/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/kickboxing|taekwondo|karate|mma striking/i)).not.toBeInTheDocument()
+  }, 15000)
 })
 
 describe('session engine controls', () => {
