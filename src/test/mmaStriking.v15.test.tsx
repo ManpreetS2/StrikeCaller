@@ -1,12 +1,12 @@
-import { describe, expect, it, beforeEach } from 'vitest'
+import { describe, expect, it, beforeEach, afterEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import { AppProvider } from '../context/AppContext'
 import { HomePage } from '../pages/HomePage'
 import { CURATED_COMBOS } from '../data/combos'
 import { MMA_STRIKING_COMBOS, MMA_BEGINNER, MMA_INTERMEDIATE } from '../data/mma-striking'
-import { getTechniquesForSport, lookupTechnique } from '../data/techniques'
-import { generateRuleBasedCombo, getDemoCombos, nextCombo } from '../engines/comboGenerator'
+import { getTechnique, getTechniquesForSport, lookupTechnique } from '../data/techniques'
+import { generateRuleBasedCombo, getDemoCombos, isMmaKickExit, nextCombo } from '../engines/comboGenerator'
 import type { GeneratorOptions } from '../engines/comboGenerator'
 import { validateTechniqueSequence } from '../engines/comboValidator'
 import { validateRuntimeComboSemantics, validateTechniqueIdsForArt } from '../utils/comboSemantics'
@@ -59,6 +59,25 @@ describe('MMA Striking curated library', () => {
       const semantic = validateRuntimeComboSemantics(combo, 'mma-striking')
       expect(semantic.ok, `${combo.id}: ${semantic.ok ? '' : semantic.message}`).toBe(true)
       expect(validateTechniqueIdsForArt(ids, 'mma-striking').ok).toBe(true)
+    }
+  })
+
+  it('keeps mma-d01 title, techniques, and setup in agreement', () => {
+    const combo = MMA_STRIKING_COMBOS.find((c) => c.id === 'mma-d01')
+    expect(combo).toBeTruthy()
+    expect(combo!.title).toBe('Parry jab')
+    expect(combo!.techniques.map((t) => t.techniqueId)).toEqual(['parry', 'jab'])
+    expect(combo!.setupExplanation.toLowerCase()).toContain('parry')
+    expect(combo!.setupExplanation.toLowerCase()).toContain('jab')
+    expect(combo!.setupExplanation.toLowerCase()).not.toContain('cross')
+  })
+
+  it('keeps MMA-exposed coaching cues free of takedown teaching', () => {
+    for (const technique of getTechniquesForSport('mma-striking')) {
+      expect(technique.coachingCue, technique.id).not.toMatch(/\bdump\b/i)
+      expect(technique.coachingCue, technique.id).not.toMatch(/\btakedown\b/i)
+      expect(technique.coachingCue, technique.id).not.toMatch(/\bwrestl/i)
+      expect(technique.coachingCue, technique.id).not.toMatch(/\bsubmission\b/i)
     }
   })
 
@@ -119,6 +138,92 @@ describe('MMA Striking generator', () => {
     const combo = nextCombo({ ...options, preferCurated: true, seed: 2 })
     const ids = combo?.techniques.map((t) => t.techniqueId) ?? []
     expect(ids.some((id) => id.includes('head-kick'))).toBe(false)
+  })
+
+  it('requires an MMA kick/teep follow-up to be movement, defense, jab, or reset-stance', () => {
+    for (let i = 0; i < 40; i++) {
+      const combo = generateRuleBasedCombo(
+        { ...options, comboLength: { min: 3, max: 5 }, seed: i * 19 },
+        () => ((i * 17 + 3) % 100) / 100,
+      )
+      expect(combo, `seed ${i}`).not.toBeNull()
+      const ids = combo!.techniques.map((t) => t.techniqueId)
+      for (let step = 0; step < ids.length - 1; step++) {
+        const current = lookupTechnique(ids[step]!)!
+        if (current.category !== 'kick' && current.category !== 'teep') continue
+        const next = lookupTechnique(ids[step + 1]!)!
+        expect(isMmaKickExit(next), `${ids.join(' → ')} after ${current.id}`).toBe(true)
+      }
+    }
+  })
+})
+
+describe('MMA post-kick exit invariant', () => {
+  const jab = getTechnique('jab')
+  const kick = getTechnique('rear-low-kick')
+  const originalJabFollowUps = [...jab.recommendedFollowUps]
+  const originalKickFollowUps = [...kick.recommendedFollowUps]
+  const originalKickIncompatible = [...kick.incompatibleFollowUps]
+
+  afterEach(() => {
+    jab.recommendedFollowUps = originalJabFollowUps
+    kick.recommendedFollowUps = originalKickFollowUps
+    kick.incompatibleFollowUps = originalKickIncompatible
+  })
+
+  const forceKickOptions: GeneratorOptions = {
+    martialArt: 'mma-striking',
+    difficulty: 'beginner',
+    stance: 'orthodox',
+    mode: 'coach',
+    equipment: 'shadowboxing',
+    categories: ['punch', 'kick', 'teep', 'defense', 'movement'],
+    defenseFrequency: 0.35,
+    movementFrequency: 0.5,
+    repetitionFrequency: 0,
+    comboLength: { min: 3, max: 3 },
+    includeHeadKicks: false,
+    includeElbows: false,
+    includeKnees: false,
+    includeClinch: false,
+    preferCurated: false,
+  }
+
+  it('still exits after a kick whose recommended follow-ups are only attacks', () => {
+    jab.recommendedFollowUps = ['rear-low-kick']
+    kick.recommendedFollowUps = ['cross', 'lead-hook']
+    const combo = generateRuleBasedCombo(forceKickOptions, () => 0)
+    expect(combo).not.toBeNull()
+    const ids = combo!.techniques.map((t) => t.techniqueId)
+    expect(ids[0]).toBe('jab')
+    expect(ids[1]).toBe('rear-low-kick')
+    expect(ids.length).toBeGreaterThan(2)
+    const exit = lookupTechnique(ids[2]!)!
+    expect(isMmaKickExit(exit)).toBe(true)
+    expect(['cross', 'lead-hook']).not.toContain(exit.id)
+  })
+
+  it('ends the combo at the kick when no compatible exit exists', () => {
+    jab.recommendedFollowUps = ['rear-low-kick']
+    kick.recommendedFollowUps = ['cross', 'lead-hook']
+    kick.incompatibleFollowUps = [
+      ...originalKickIncompatible,
+      'jab',
+      'reset-stance',
+      'step-back',
+      'pivot-left',
+      'angle-out-left',
+      'high-guard',
+      'parry',
+      'slip-left',
+      'pull-back',
+    ]
+    const combo = generateRuleBasedCombo(
+      { ...forceKickOptions, defenseFrequency: 0, movementFrequency: 0 },
+      () => 0,
+    )
+    expect(combo).not.toBeNull()
+    expect(combo!.techniques.map((t) => t.techniqueId)).toEqual(['jab', 'rear-low-kick'])
   })
 })
 

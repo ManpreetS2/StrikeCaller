@@ -95,6 +95,24 @@ function isCommittedKick(technique: Technique): boolean {
   return technique.category === 'kick' || technique.category === 'teep'
 }
 
+/** Stable MMA recovery after a committed kick/teep — not another attack. */
+export function isMmaKickExit(technique: Technique): boolean {
+  return (
+    technique.category === 'movement' ||
+    technique.category === 'defense' ||
+    technique.id === 'jab' ||
+    technique.id === 'reset-stance'
+  )
+}
+
+function mmaExitsAfterKick(last: Technique, allowed: Technique[], sequence: string[]): Technique[] {
+  return allowed.filter((t) => {
+    if (last.incompatibleFollowUps.includes(t.id)) return false
+    if (!isMmaKickExit(t)) return false
+    return validateTechniqueSequence([...sequence, t.id]).valid
+  })
+}
+
 export function generateRuleBasedCombo(options: GeneratorOptions, rand = Math.random): Combo | null {
   const mma = options.martialArt === 'mma-striking'
   const maxLen = mma ? Math.min(options.comboLength.max, 5) : options.comboLength.max
@@ -125,6 +143,16 @@ export function generateRuleBasedCombo(options: GeneratorOptions, rand = Math.ra
   while (sequence.length < length) {
     const last = getTechnique(sequence[sequence.length - 1]!)
     const usedKick = sequence.some((id) => isCommittedKick(getTechnique(id)))
+
+    if (mma && isCommittedKick(last)) {
+      const exits = mmaExitsAfterKick(last, allowed, sequence)
+      if (!exits.length) break
+      const exit = pick(exits, rand)
+      if (!exit) break
+      sequence.push(exit.id)
+      continue
+    }
+
     let candidates = allowed.filter((t) => {
       if (last.incompatibleFollowUps.includes(t.id)) return false
       if (mma && usedKick && isCommittedKick(t)) return false
@@ -134,13 +162,7 @@ export function generateRuleBasedCombo(options: GeneratorOptions, rand = Math.ra
       return last.recommendedFollowUps.length === 0
     })
 
-    if (mma && isCommittedKick(last)) {
-      // MMA kicks need a stable exit before another committed attack.
-      const exits = candidates.filter(
-        (t) => t.category === 'movement' || t.category === 'defense' || t.id === 'jab' || t.id === 'reset-stance',
-      )
-      if (exits.length) candidates = exits
-    } else if (rand() < options.defenseFrequency) {
+    if (rand() < options.defenseFrequency) {
       const defense = candidates.filter((t) => t.category === 'defense' || t.category === 'counter')
       if (defense.length) candidates = defense
     } else if (options.movementFrequency > 0 && rand() < options.movementFrequency && sequence.length >= length - 1) {

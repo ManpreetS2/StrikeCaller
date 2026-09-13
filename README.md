@@ -7,7 +7,7 @@ StrikeCaller is a complete local-first spoken combo coach for **Boxing**, **Muay
 Current release: **1.5.0**. See [CHANGELOG.md](./CHANGELOG.md) for what’s new.
 
 <p align="center">
-  <img src="./docs/screenshots/01-home-desktop.png" alt="StrikeCaller home: featured workout with Start workout, Boxing and Muay Thai toggle, For You quick starts, and local weekly progress" width="900">
+  <img src="./docs/screenshots/01-home-desktop.png" alt="StrikeCaller home: featured workout with Start workout, Muay Thai, Boxing, and MMA Striking sport selector, For You quick starts, and local weekly progress" width="900">
 </p>
 
 <p align="center">
@@ -18,11 +18,11 @@ Current release: **1.5.0**. See [CHANGELOG.md](./CHANGELOG.md) for what’s new.
 |---|---|
 | **Live** | [GitHub Pages](https://manpreets2.github.io/StrikeCaller/) |
 | **Stack** | React · TypeScript · Vite |
-| **Quality** | 739 Vitest / 48 files · 86 Playwright passed · 36 skipped · 0 failed |
+| **Quality** | 744 Vitest / 48 files · 86 Playwright passed · 36 skipped · 0 failed |
 | **Browsers** | Chromium · Firefox · WebKit · Mobile WebKit |
 | **Storage** | IndexedDB + localStorage |
 | **Privacy** | No account · No backend · Privacy-first anonymous site analytics · No cloud sync |
-| **Release** | [v1.4.0](https://github.com/ManpreetS2/StrikeCaller/releases/tag/v1.4.0) |
+| **Release** | [v1.5.0](https://github.com/ManpreetS2/StrikeCaller/releases/tag/v1.5.0) |
 
 **300** curated combinations (**125** Muay Thai, **100** Boxing, **75** MMA Striking). Free. No account.
 
@@ -132,7 +132,7 @@ Pull requests run verify, e2e, and Pages build. Deploy and live verification run
 
 v1.5.0 quality gate:
 
-- **739** Vitest tests across **48** files
+- **744** Vitest tests across **48** files
 - **86** Playwright tests passed, **36** skipped, **0** failed
 - Chromium, Firefox, WebKit, and mobile WebKit
 - lint, typecheck, unit/integration tests, Pages artifact verification, and E2E

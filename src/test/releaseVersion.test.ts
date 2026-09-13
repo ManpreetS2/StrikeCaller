@@ -26,6 +26,8 @@ describe('release version consistency', () => {
 
   it('keeps the README current release aligned with package version', () => {
     expect(readme).toContain(`Current release: **${pkg.version}**`)
+    expect(readme).toContain(`https://github.com/ManpreetS2/StrikeCaller/releases/tag/v${pkg.version}`)
+    expect(readme).not.toContain('releases/tag/v1.4.0')
   })
 
   it('keeps the production document title free of version numbers', () => {

@@ -8,7 +8,7 @@ export const MMA_DEFENSIVE: Combo[] = [
     difficulty: 'beginner',
     purpose: 'defend-and-return',
     techniques: ['parry', 'jab'],
-    setup: 'Catch the jab line and return the cross.',
+    setup: 'Parry the jab line and return the jab.',
     tags: ['defense'],
   }),
   mma({
