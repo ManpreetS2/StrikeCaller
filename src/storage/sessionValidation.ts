@@ -45,7 +45,7 @@ import {
   stringValue,
 } from './parseUnknown'
 
-export const MARTIAL_ARTS = ['muay-thai', 'boxing'] as const satisfies readonly MartialArt[]
+export const MARTIAL_ARTS = ['muay-thai', 'boxing', 'mma-striking'] as const satisfies readonly MartialArt[]
 export const TRAINING_MODES = [
   'learn',
   'coach',

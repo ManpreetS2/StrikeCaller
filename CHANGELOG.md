@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.5.0 — 2026-09-12
+
+### MMA Striking
+
+StrikeCaller now supports a third spoken sport: **MMA Striking**. Boxing and Muay Thai stay as they were.
+
+- Curated library is **300** combinations: **125** Muay Thai, **100** Boxing, **75** MMA Striking.
+- MMA Striking uses shorter mixed combinations, one committed kick at a time, and exits after kicks. It is not relabeled Muay Thai.
+- Clinch wrestling, takedown technique, and ground work are not taught. Head kicks stay difficulty-gated. Spinning attacks are not filler.
+- Home, Train, Daily Drill, Builder, Quick Starts, Stats, and import/export accept `mma-striking` without rewriting old Boxing / Muay Thai data.
+- Old v1.4 preferences, history, and exports that only contain `boxing` and `muay-thai` still load.
+
 ## 1.4.0 — 2026-09-11
 
 ### Product Completion & Offline Training

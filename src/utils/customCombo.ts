@@ -1,5 +1,6 @@
 import type { Combo, CustomCombo, MartialArt } from '../types'
 import { MAX_COMBO_LENGTH } from '../engines/comboValidator'
+import { isMartialArt } from './martialArt'
 import {
   validateTechniqueIdsForArt,
   type ComboSemanticReason,
@@ -22,7 +23,7 @@ export type CustomComboSemanticReason = ComboSemanticReason
 export type CustomComboSemanticResult = ComboSemanticResult
 
 function normalizedCustomComboArt(martialArt: MartialArt | undefined): MartialArt {
-  return martialArt === 'boxing' ? 'boxing' : 'muay-thai'
+  return isMartialArt(martialArt) ? martialArt : 'muay-thai'
 }
 
 /**
@@ -54,7 +55,7 @@ export function clampTechniqueIds(ids: string[]): string[] {
 
 function toRuntimeCombo(combo: CustomCombo): Combo {
   const techniqueIds = clampTechniqueIds(combo.techniqueIds)
-  const martialArt: MartialArt = combo.martialArt === 'boxing' ? 'boxing' : 'muay-thai'
+  const martialArt: MartialArt = isMartialArt(combo.martialArt) ? combo.martialArt : 'muay-thai'
   return {
     id: combo.id,
     title: combo.title,

@@ -1,4 +1,4 @@
-export type MartialArt = 'muay-thai' | 'boxing'
+export type MartialArt = 'muay-thai' | 'boxing' | 'mma-striking'
 
 export type Stance = 'orthodox' | 'southpaw'
 
@@ -76,7 +76,7 @@ export type ComboPurpose =
   | 'clinch-entry'
   | 'conditioning'
 
-export type ComingSoonArt = 'kickboxing' | 'mma-striking' | 'karate' | 'taekwondo'
+export type ComingSoonArt = 'kickboxing' | 'karate' | 'taekwondo'
 
 export interface Technique {
   id: string

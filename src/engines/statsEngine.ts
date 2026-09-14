@@ -13,11 +13,13 @@ import { isTemporallyPlausibleSession } from '../utils/sessionTime'
 import { getPaceMultiplier } from './timingEngine'
 import { getTechnique } from '../data/techniques'
 import { COMBO_MAP } from '../data/combos'
+import { categoriesForSport, isMartialArt } from '../utils/martialArt'
 
 export const MILESTONES: MilestoneDefinition[] = [
   { id: 'first-session', title: 'First session', description: 'Completed your first training session.' },
   { id: 'first-muay-thai', title: 'First Muay Thai session', description: 'Trained Muay Thai for the first time.' },
   { id: 'first-boxing', title: 'First Boxing session', description: 'Trained Boxing for the first time.' },
+  { id: 'first-mma-striking', title: 'First MMA Striking session', description: 'Trained MMA Striking for the first time.' },
   { id: 'both-sports', title: 'Trained both sports', description: 'Logged sessions in Muay Thai and Boxing.' },
   { id: 'rounds-10', title: '10 rounds completed', description: 'Completed 10 rounds across all sessions.' },
   { id: 'rounds-25', title: '25 rounds completed', description: 'Completed 25 rounds across all sessions.' },
@@ -28,19 +30,6 @@ export const MILESTONES: MilestoneDefinition[] = [
   { id: 'unique-25', title: '25 unique combos', description: 'Trained 25 different combinations.' },
   { id: 'streak-7', title: 'Seven-day streak', description: 'Trained on seven consecutive days.' },
 ]
-
-const MT_CATEGORIES: TechniqueCategory[] = [
-  'punch',
-  'kick',
-  'teep',
-  'knee',
-  'elbow',
-  'defense',
-  'movement',
-  'counter',
-  'clinch',
-]
-const BX_CATEGORIES: TechniqueCategory[] = ['punch', 'defense', 'movement', 'counter']
 
 function isGenuineSession(summary: SessionSummary): boolean {
   if (summary.cancelled) return false
@@ -143,6 +132,7 @@ export interface TrainingStats {
   recentCombos: { id: string; title: string }[]
   muayThaiCombos: number
   boxingCombos: number
+  mmaStrikingCombos: number
   customCombosCompleted: number
   personalRecords: {
     longestSessionMs: number
@@ -184,14 +174,15 @@ function techniqueName(id: string): string {
 
 function resolveComboSport(comboId: string, session: SessionSummary): MartialArt | 'custom' {
   const snap = session.comboSnapshots?.find((c) => c.id === comboId)
-  if (snap?.martialArt === 'boxing' || snap?.martialArt === 'muay-thai') return snap.martialArt
+  if (isMartialArt(snap?.martialArt)) return snap.martialArt
   const curated = COMBO_MAP[comboId]
-  if (curated?.martialArt === 'boxing' || curated?.martialArt === 'muay-thai') return curated.martialArt
+  if (isMartialArt(curated?.martialArt)) return curated.martialArt
   if (comboId.startsWith('custom-') || (session.usedCustomCombo && comboId.startsWith('custom'))) {
     return 'custom'
   }
   if (comboId.startsWith('bx-')) return 'boxing'
-  return session.martialArt === 'boxing' ? 'boxing' : 'muay-thai'
+  if (comboId.startsWith('mma-')) return 'mma-striking'
+  return isMartialArt(session.martialArt) ? session.martialArt : 'muay-thai'
 }
 
 function comboTitle(comboId: string, history: SessionSummary[]): string {
@@ -207,9 +198,8 @@ function comboTitle(comboId: string, history: SessionSummary[]): string {
 }
 
 function applicableCategories(martialArt: MartialArt | 'all' | undefined): TechniqueCategory[] {
-  if (martialArt === 'boxing') return BX_CATEGORIES
-  if (martialArt === 'muay-thai') return MT_CATEGORIES
-  return [...new Set([...MT_CATEGORIES, ...BX_CATEGORIES])]
+  if (martialArt && martialArt !== 'all') return categoriesForSport(martialArt)
+  return [...new Set([...categoriesForSport('muay-thai'), ...categoriesForSport('boxing'), ...categoriesForSport('mma-striking')])]
 }
 
 export function computeTrainingStats(
@@ -225,13 +215,16 @@ export function computeTrainingStats(
   const modeCounts: Record<string, number> = {}
   let muayThaiCombos = 0
   let boxingCombos = 0
+  let mmaStrikingCombos = 0
   let customCombosCompleted = 0
   let sportMt = 0
   let sportBx = 0
+  let sportMma = 0
 
   for (const h of filtered) {
     modeCounts[h.mode] = (modeCounts[h.mode] ?? 0) + 1
     if (h.martialArt === 'boxing') sportBx += h.totalTrainingMs
+    else if (h.martialArt === 'mma-striking') sportMma += h.totalTrainingMs
     else sportMt += h.totalTrainingMs
     for (const [id, count] of Object.entries(h.techniqueCounts ?? {})) {
       techniqueCounts[id] = (techniqueCounts[id] ?? 0) + count
@@ -245,11 +238,13 @@ export function computeTrainingStats(
         comboCounts[id] = (comboCounts[id] ?? 0) + 1
         const sport = resolveComboSport(id, h)
         if (sport === 'boxing') boxingCombos += 1
+        else if (sport === 'mma-striking') mmaStrikingCombos += 1
         else if (sport === 'custom') customCombosCompleted += 1
         else muayThaiCombos += 1
       }
     } else {
       if (h.martialArt === 'boxing') boxingCombos += h.combinationsCompleted
+      else if (h.martialArt === 'mma-striking') mmaStrikingCombos += h.combinationsCompleted
       else muayThaiCombos += h.combinationsCompleted
       if (h.usedCustomCombo) customCombosCompleted += h.combinationsCompleted
     }
@@ -331,6 +326,7 @@ export function computeTrainingStats(
     sportBreakdownMs: [
       { martialArt: 'muay-thai', ms: sportMt },
       { martialArt: 'boxing', ms: sportBx },
+      { martialArt: 'mma-striking', ms: sportMma },
     ],
     modeBreakdown: Object.entries(modeCounts).map(([mode, count]) => ({ mode, count })),
     topTechniques,
@@ -342,6 +338,7 @@ export function computeTrainingStats(
     recentCombos,
     muayThaiCombos,
     boxingCombos,
+    mmaStrikingCombos,
     customCombosCompleted,
     personalRecords: {
       longestSessionMs: filtered.reduce((m, h) => Math.max(m, h.totalTrainingMs), 0),
@@ -377,6 +374,8 @@ export function unlockMilestones(history: SessionSummary[], now = Date.now()): U
   if (firstMt) mark('first-muay-thai', firstMt.endedAt || firstMt.startedAt)
   const firstBx = active.find((h) => h.martialArt === 'boxing')
   if (firstBx) mark('first-boxing', firstBx.endedAt || firstBx.startedAt)
+  const firstMma = active.find((h) => h.martialArt === 'mma-striking')
+  if (firstMma) mark('first-mma-striking', firstMma.endedAt || firstMma.startedAt)
   if (firstMt && firstBx) mark('both-sports', Math.max(firstMt.endedAt, firstBx.endedAt))
 
   let rounds = 0

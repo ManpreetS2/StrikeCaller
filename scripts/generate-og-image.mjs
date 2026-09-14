@@ -121,6 +121,20 @@ const GLYPHS = {
       ],
     ],
   },
+  A: {
+    adv: 6.6,
+    strokes: [
+      [
+        [0.6, 7.4],
+        [3.3, 0.6],
+        [6.0, 7.4],
+      ],
+      [
+        [1.8, 5.0],
+        [4.8, 5.0],
+      ],
+    ],
+  },
   T: {
     adv: 6.4,
     strokes: [
@@ -644,7 +658,7 @@ function downsample(src, sw, sh, dw, dh) {
 }
 
 const title = 'StrikeCaller'
-const subtitle = 'Boxing & Muay Thai combo coach'
+const subtitle = 'Boxing & Muay Thai & MMA'
 
 const hiW = WIDTH * SCALE
 const hiH = HEIGHT * SCALE

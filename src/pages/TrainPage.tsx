@@ -17,6 +17,7 @@ import {
   WORKOUT_LIMITS,
 } from '../utils/workoutValidation'
 import { buildTechniqueCategories } from '../utils/techniqueCategories'
+import { martialArtLabel, sportUsesClinch, sportUsesKicks } from '../utils/martialArt'
 import type {
   CallStyle,
   Difficulty,
@@ -57,7 +58,7 @@ export function TrainPage() {
   const [defenseFrequency, setDefenseFrequency] = useState(preferences.includeDefense ? 0.35 : 0)
   const [movementFrequency, setMovementFrequency] = useState(preferences.includeMovement ? 0.4 : 0)
   const [repetitionFrequency, setRepetitionFrequency] = useState(0.25)
-  const [includeKnees, setIncludeKnees] = useState(martialArt === 'muay-thai' && equipment !== 'shadowboxing')
+  const [includeKnees, setIncludeKnees] = useState(sportUsesKicks(martialArt) && equipment !== 'shadowboxing')
   const [includeElbows, setIncludeElbows] = useState(false)
   const [includeHeadKicks, setIncludeHeadKicks] = useState(false)
   const [includeClinch, setIncludeClinch] = useState(false)
@@ -75,7 +76,8 @@ export function TrainPage() {
   const [openAudio, setOpenAudio] = useState(false)
   const [openDisplay, setOpenDisplay] = useState(false)
 
-  const boxing = martialArt === 'boxing'
+  const usesKicks = sportUsesKicks(martialArt)
+  const usesClinch = sportUsesClinch(martialArt)
   const rounds = parseIntegerInput(roundsInput)
   const roundDurationSec = parseIntegerInput(roundDurationInput)
   const restDurationSec = parseIntegerInput(restDurationInput)
@@ -131,6 +133,8 @@ export function TrainPage() {
       setIncludeElbows(false)
       setIncludeHeadKicks(false)
       setIncludeClinch(false)
+    } else if (art === 'mma-striking') {
+      setIncludeClinch(false)
     }
   }
 
@@ -183,17 +187,17 @@ export function TrainPage() {
       defenseFrequency,
       movementFrequency,
       repetitionFrequency,
-      includeKnees: boxing ? false : includeKnees,
-      includeElbows: boxing ? false : includeElbows,
-      includeHeadKicks: boxing ? false : includeHeadKicks,
-      includeClinch: boxing ? false : includeClinch && equipment !== 'shadowboxing',
+      includeKnees: usesKicks && includeKnees,
+      includeElbows: usesKicks && includeElbows,
+      includeHeadKicks: usesKicks && includeHeadKicks,
+      includeClinch: usesClinch && includeClinch && equipment !== 'shadowboxing',
       categories: buildTechniqueCategories({
         martialArt,
         defenseFrequency,
         movementFrequency,
-        includeKnees: boxing ? false : includeKnees,
-        includeElbows: boxing ? false : includeElbows,
-        includeClinch: boxing ? false : includeClinch,
+        includeKnees: usesKicks && includeKnees,
+        includeElbows: usesKicks && includeElbows,
+        includeClinch: usesClinch && includeClinch,
         equipment,
       }),
       speech: {
@@ -262,7 +266,7 @@ export function TrainPage() {
   })
 
   const equipmentWarning = useMemo(() => {
-    if (boxing) return null
+    if (!usesKicks) return null
     if (equipment === 'shadowboxing' && (includeClinch || includeElbows)) {
       return 'Clinch and elbows are limited or cautioned for solo shadowboxing.'
     }
@@ -270,7 +274,7 @@ export function TrainPage() {
       return 'Large lateral movement and circling may be limited in small spaces.'
     }
     return null
-  }, [boxing, equipment, includeClinch, includeElbows])
+  }, [usesKicks, equipment, includeClinch, includeElbows])
 
   return (
     <div className="train-page space-y-6">
@@ -285,11 +289,12 @@ export function TrainPage() {
         <h2 id="art-heading" className="mb-3 text-xl font-semibold">
           Martial art
         </h2>
-        <div className="grid gap-3 sm:grid-cols-2" role="radiogroup" aria-label="Martial art">
+        <div className="train-sport-grid grid grid-cols-3 gap-2 sm:gap-3" role="radiogroup" aria-label="Martial art">
           {(
             [
-              { id: 'muay-thai' as const, title: 'Muay Thai', body: '125 curated combinations' },
-              { id: 'boxing' as const, title: 'Boxing', body: '100 curated combinations' },
+              { id: 'muay-thai' as const, title: 'Muay Thai', body: '125 combos' },
+              { id: 'boxing' as const, title: 'Boxing', body: '100 combos' },
+              { id: 'mma-striking' as const, title: 'MMA Striking', body: '75 combos' },
             ] as const
           ).map((art) => (
             <SelectableCard
@@ -297,7 +302,7 @@ export function TrainPage() {
               selected={martialArt === art.id}
               title={art.title}
               body={art.body}
-              visual={<SportVisual art={art.id} size="md" />}
+              visual={<SportVisual art={art.id} size="sm" />}
               onSelect={() => selectMartialArt(art.id)}
             />
           ))}
@@ -546,7 +551,7 @@ export function TrainPage() {
                     />
                   </Field>
                 </div>
-                {!boxing && (
+                {usesKicks && (
                   <div className="mt-4 grid gap-2 sm:grid-cols-2">
                     <label className="flex items-center gap-3">
                       <input type="checkbox" checked={includeKnees} onChange={(e) => setIncludeKnees(e.target.checked)} />
@@ -568,15 +573,17 @@ export function TrainPage() {
                       />
                       Include head kicks
                     </label>
-                    <label className="flex items-center gap-3">
-                      <input
-                        type="checkbox"
-                        checked={includeClinch}
-                        disabled={equipment === 'shadowboxing'}
-                        onChange={(e) => setIncludeClinch(e.target.checked)}
-                      />
-                      Include clinch
-                    </label>
+                    {usesClinch && (
+                      <label className="flex items-center gap-3">
+                        <input
+                          type="checkbox"
+                          checked={includeClinch}
+                          disabled={equipment === 'shadowboxing'}
+                          onChange={(e) => setIncludeClinch(e.target.checked)}
+                        />
+                        Include clinch
+                      </label>
+                    )}
                   </div>
                 )}
               </Collapsible>
@@ -693,7 +700,7 @@ export function TrainPage() {
 
           <div className="sticky-start-bar">
             <p className="mb-2 text-sm text-[var(--text-muted)]">
-              {martialArt === 'boxing' ? 'Boxing' : 'Muay Thai'} · {mode}
+              {martialArtLabel(martialArt)} · {mode}
               {showRoundControls
                 ? ` · ${roundsInput || '—'} rounds × ${roundDurationInput || '—'}s`
                 : showSessionDuration

@@ -8,6 +8,7 @@ import { InteractiveCard } from '../components/InteractiveCard'
 import { SportVisual, ModeVisual, MetricVisual } from '../components/visual'
 import { getQuickStartPreset, type QuickStartId } from '../data/quickStart'
 import type { CallStyle, Difficulty, MartialArt, Stance } from '../types'
+import { MARTIAL_ART_ORDER, martialArtLabel } from '../utils/martialArt'
 
 const STEPS = ['Martial art', 'Stance', 'Experience', 'Calling style'] as const
 
@@ -149,18 +150,11 @@ export function OnboardingPage() {
           {step === 0 && (
             <Choice
               title="Martial art"
-              options={[
-                {
-                  id: 'muay-thai',
-                  label: 'Muay Thai',
-                  visual: <SportVisual art="muay-thai" size="md" />,
-                },
-                {
-                  id: 'boxing',
-                  label: 'Boxing',
-                  visual: <SportVisual art="boxing" size="md" />,
-                },
-              ]}
+              options={MARTIAL_ART_ORDER.map((id) => ({
+                id,
+                label: martialArtLabel(id),
+                visual: <SportVisual art={id} size="md" />,
+              }))}
               value={martialArt}
               onChange={(v) => {
                 setMartialArt(v as MartialArt)
@@ -290,7 +284,7 @@ function Choice({
   return (
     <fieldset>
       <legend className="mb-3 text-xl font-semibold">{title}</legend>
-      <div className="grid gap-2 sm:grid-cols-2">
+      <div className={`grid gap-2 ${options.length >= 3 ? 'sm:grid-cols-3' : 'sm:grid-cols-2'}`}>
         {options.map((opt) => (
           <InteractiveCard
             key={opt.id}

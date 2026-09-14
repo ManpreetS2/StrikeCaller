@@ -1,7 +1,7 @@
 {
   "name": "StrikeCaller",
   "short_name": "StrikeCaller",
-  "description": "Spoken boxing and Muay Thai combo coach — hear the combo, set the pace, build the reaction.",
+  "description": "Spoken boxing, Muay Thai, and MMA striking combo coach — hear the combo, set the pace, build the reaction.",
   "start_url": "./#/",
   "scope": "./",
   "display": "standalone",

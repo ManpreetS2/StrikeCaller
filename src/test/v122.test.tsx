@@ -36,7 +36,7 @@ describe('v1.2.2 GitHub Pages availability hotfix', () => {
   })
 
   it('index.html uses a production document title without the hotfix version string', () => {
-    expect(indexHtml).toMatch(/<title>StrikeCaller — Boxing & Muay Thai Combo Coach<\/title>/)
+    expect(indexHtml).toMatch(/<title>StrikeCaller — Boxing, Muay Thai & MMA Striking Coach<\/title>/)
     expect(indexHtml).not.toMatch(/<title>[^<]*v1\.2\.2[^<]*<\/title>/)
     expect(indexHtml).not.toMatch(/<title>[^<]*Hotfix[^<]*<\/title>/i)
   })

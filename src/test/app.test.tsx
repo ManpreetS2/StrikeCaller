@@ -64,7 +64,7 @@ describe('accessibility and UI', () => {
     expect(screen.getByRole('link', { name: 'Learn' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Guided Demo' })).toBeInTheDocument()
     expect(screen.queryByText(/coming soon/i)).not.toBeInTheDocument()
-    expect(screen.queryByText(/kickboxing|taekwondo|karate|mma striking/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/kickboxing|taekwondo|karate/i)).not.toBeInTheDocument()
   }, 15000)
 })
 

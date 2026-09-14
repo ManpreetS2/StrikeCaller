@@ -5,11 +5,13 @@ import { SafetyNotice } from '../components/SafetyNotice'
 import { Sparkles } from 'lucide-react'
 import { primeTrainingAudio } from '../utils/primeAudio'
 import { useOnceAction } from '../hooks/useOnceAction'
+import { martialArtLabel, sportUsesKicks } from '../utils/martialArt'
 
 export function DemoPage() {
   const navigate = useNavigate()
   const { preferences } = useApp()
   const boxing = preferences.martialArt === 'boxing'
+  const sportLabel = martialArtLabel(preferences.martialArt)
 
   const startDemo = useOnceAction(async () => {
     // Temporary demo values only — never mutate saved preferences
@@ -64,12 +66,14 @@ export function DemoPage() {
             : 'Uses hybrid calls (One, two / jab, cross, rear low kick)'}
         </li>
         <li>Runs a 60-second technical round</li>
-        <li>Calls curated beginner combinations for {boxing ? 'Boxing' : 'Muay Thai'}</li>
+        <li>Calls curated beginner combinations for {sportLabel}</li>
         <li>Includes a defensive counter and a movement exit</li>
         <li>
           {boxing
             ? 'Gives hooks and uppercuts more recovery time than jabs'
-            : 'Gives kicks more time than punches'}
+            : sportUsesKicks(preferences.martialArt)
+              ? 'Gives kicks more time than punches'
+              : 'Gives hooks and uppercuts more recovery time than jabs'}
         </li>
         <li>Ends with a session summary</li>
       </ol>

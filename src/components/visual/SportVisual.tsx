@@ -1,6 +1,7 @@
 import { DimensionalIcon, IconPlate, type IconSize } from './DimensionalIcon'
 import { useDimIds } from './dimIds'
 import type { MartialArt } from '../../types'
+import { martialArtLabel } from '../../utils/martialArt'
 
 export function SportVisual({
   art,
@@ -11,9 +12,8 @@ export function SportVisual({
   size?: IconSize
   decorative?: boolean
 }) {
-  const title = art === 'boxing' ? 'Boxing' : 'Muay Thai'
   return (
-    <DimensionalIcon size={size} decorative={decorative} title={title}>
+    <DimensionalIcon size={size} decorative={decorative} title={martialArtLabel(art)}>
       <SportMark art={art} />
     </DimensionalIcon>
   )
@@ -31,6 +31,19 @@ function SportMark({ art }: { art: MartialArt }) {
           <path d="M24 24c4-6 12-6 16 0" stroke="rgba(255,255,255,0.35)" strokeWidth="1.6" />
           <path d="M44 22l8-6" stroke="var(--accent-text)" strokeWidth="2" strokeLinecap="round" />
           <circle cx="52" cy="16" r="2.2" fill="var(--accent-text)" />
+        </g>
+      </>
+    )
+  }
+  if (art === 'mma-striking') {
+    return (
+      <>
+        <IconPlate />
+        <g transform="translate(0,1)">
+          <ellipse cx="24" cy="32" rx="8" ry="10" fill={`url(#${ids.accent})`} stroke={`url(#${ids.edge})`} strokeWidth="1.2" />
+          <ellipse cx="40" cy="32" rx="8" ry="10" fill={`url(#${ids.accent})`} stroke={`url(#${ids.edge})`} strokeWidth="1.2" />
+          <path d="M20 44h24" stroke="var(--accent-text)" strokeWidth="2.2" strokeLinecap="round" />
+          <path d="M46 22l8 4-4 8" stroke="var(--accent-text)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
         </g>
       </>
     )
